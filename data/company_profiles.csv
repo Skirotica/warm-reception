@@ -1,0 +1,18 @@
+company_id,company_name,domain,sector,employee_count,revenue_estimate_mm,vc_pe_backed,ta_headcount,status,notes
+CO-01,Rapid Accounting,rapidaccounting.example,fintech,120,28,yes,1,no_prior_contact,Strong ICP fit
+CO-02,Rubber Boat Legal Tec,rubberboatlegal.example,legaltech,95,18,yes,1,no_prior_contact,Strong ICP fit
+CO-03,Payit River Legal,payitriverlegal.example,legaltech,140,32,yes,2,no_prior_contact,Candidate B in CE-16 Series A collision: larger court/e-filing legaltech; has its own clear partnership event as CE-03; must not get CE-16 Series A draft unless human confirms same entity
+CO-04,Riviing Inc.,riviing.example,fintech,210,41,yes,1,no_prior_contact,Strong ICP fit
+CO-05,Paddle Time,paddletime.example,fintech,80,20,yes,1,no_prior_contact,Ambiguous entity sourcing
+CO-06,Squirly Squirts,squirlysquirts.example,legaltech,65,16,yes,0,no_prior_contact,Ambiguous employer signals
+CO-07,Thwart,thwart.example,consumer_edtech,18,2,no,0,no_prior_contact,Out of ICP: sector size revenue backing
+CO-08,Raft Financial,raftfinancial.example,fintech,110,24,yes,1,no_prior_contact,Preferred CRO and alternate Head of Talent both missing verified email — company-wide No-go
+CO-09,Go Left Legal Tech,goleftlegal.example,legaltech,,,,yes,,no_prior_contact,Below threshold: missing employee revenue TA fields
+CO-10,Crouch Tech,crouchtech.example,legaltech,175,35,yes,2,no_prior_contact,Disqualified: bankruptcy signal
+CO-11,ENARRESS,enarress.example,legaltech,155,29,yes,1,client,Existing client; suppress cold outreach
+CO-12,Outlaw Legal,outlawlegal.example,legaltech,90,19,yes,1,no_prior_contact,Ambiguous merger entity
+CO-13,Duckee,duckee.example,fintech,300,48,yes,2,no_prior_contact,Strong ICP fit
+CO-14,Champagne,champagnehq.example,fintech,100,22,yes,1,no_prior_contact,Ambiguous Champagne entity
+CO-15,Wave Train,wavetrain.example,legaltech,70,17,yes,0,no_prior_contact,Ambiguous hire detail
+CO-16,Payette River LLC,payetteriver.example,legaltech,55,15,yes,1,no_prior_contact,Candidate A in CE-16 Series A collision: court e-filing legaltech; in ICP; may be true fundraise target
+CO-16B,Payette River Holdings,payetteriverholdings.example,legaltech,40,12,yes,0,no_prior_contact,Name-stem cousin only; primary collision pair is Payette River LLC vs Payit River Legal

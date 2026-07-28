@@ -1,0 +1,22 @@
+{
+  "checks": [
+    {"company_id": "CO-01", "contact_id": "CT-01", "works_at_company": true},
+    {"company_id": "CO-02", "contact_id": "CT-02", "works_at_company": true},
+    {"company_id": "CO-03", "contact_id": "CT-03", "works_at_company": true},
+    {"company_id": "CO-04", "contact_id": "CT-04", "works_at_company": true},
+    {"company_id": "CO-05", "contact_id": "CT-05", "works_at_company": true},
+    {"company_id": "CO-06", "contact_id": "CT-06", "works_at_company": false},
+    {"company_id": "CO-07", "contact_id": "CT-07", "works_at_company": true},
+    {"company_id": "CO-08", "contact_id": "CT-08", "works_at_company": true},
+    {"company_id": "CO-08", "contact_id": "CT-08B", "works_at_company": true},
+    {"company_id": "CO-09", "contact_id": "CT-09", "works_at_company": false},
+    {"company_id": "CO-10", "contact_id": "CT-10", "works_at_company": true},
+    {"company_id": "CO-11", "contact_id": "CT-11", "works_at_company": true},
+    {"company_id": "CO-12", "contact_id": "CT-12", "works_at_company": true},
+    {"company_id": "CO-13", "contact_id": "CT-13", "works_at_company": true},
+    {"company_id": "CO-14", "contact_id": "CT-14", "works_at_company": true},
+    {"company_id": "CO-15", "contact_id": "CT-15", "works_at_company": false},
+    {"company_id": "CO-16", "contact_id": "CT-16", "works_at_company": true},
+    {"company_id": "CO-16B", "contact_id": "CT-16B", "works_at_company": true}
+  ]
+}
