@@ -253,13 +253,14 @@ body {
 .chip.cite { cursor: default; font-family: var(--font-mono); }
 
 /* ═══ OUTPUT FIELDS — labeled, judgeable in under a minute ═══ */
-.field { display: grid; grid-template-columns: 160px 1fr; gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: var(--border-w) solid var(--line); }
+.field { display: grid; grid-template-columns: minmax(11.5rem, 13.5rem) minmax(0, 1fr); gap: var(--sp-4); padding: var(--sp-2) 0; border-bottom: var(--border-w) solid var(--line); align-items: start; }
 .field:last-child { border-bottom: 0; }
-.field .k { font-size: var(--fs-0); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); padding-top: 2px; }
-.field .v { color: var(--ink); }
+.field .k { font-size: var(--fs-0); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding-top: 2px; overflow-wrap: break-word; word-break: break-word; }
+.field .v { color: var(--ink); min-width: 0; }
 .field .v.why { color: var(--ink-2); font-style: italic; }
 .field .v a { color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .field .v a:hover { color: var(--ink); }
+.field .v .linkedin-via { color: var(--ink-3); font-size: var(--fs-0); margin-left: 4px; }
 
 /* ═══ STATUS BADGES ═══ */
 .badge {
@@ -684,7 +685,7 @@ body {
                 <strong>Data contract:</strong> The agent only sees the embedded candidate events, company profiles, ICP contacts, pre-qualified whitelist, and company status in this file’s exact shape. Live CRM, ATS, or free-form paste is not supported.
               </li>
               <li>
-                <strong>Lookups and send:</strong> No live Exa or Hunter calls (synthetic stand-ins only). Tables 1–3 show a LinkedIn link for the identified POC from Hunter linkedin_url or a people-search fallback; no LinkedIn scraping. Nothing leaves the console without human Approve, and approved sends route to sandbox only.
+                <strong>Lookups and send:</strong> Event research cites Exa.ai. Email and LinkedIn cite Hunter.io. This prototype uses pre-loaded Exa.ai and Hunter.io responses in the same shape as the live APIs (no LinkedIn scraping). Nothing leaves the console without human Approve, and approved sends route to sandbox only.
               </li>
               <li>
                 <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Preferred-vs-alternate email checks cover only contacts already listed in icp_contacts; people not in that file are invisible.
@@ -910,13 +911,13 @@ body {
       "icp-criteria.md": "Legaltech and Fintech; employees 50-350; revenue $15M-$50M; VC/PE backed; TA headcount 0-2. Whitelist exception: skip size/revenue/backing/TA No-go when on prequalified_whitelist.",
       "signal-taxonomy.md": "Qualifying: executive hire, funding, partnership, merger, acquisition, IPO. Disqualifying: bankruptcy, layoffs-as-primary, closure.",
       "confidence-rubric.md": "Tiers: High, Medium, Low, Ambiguous, Below Threshold. Ambiguous -> Table 3. Below Threshold / hard disqualify -> Table 2.",
-      "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. Whitelist: skip ICP re-score. Approved human CTAs only; no em dashes in drafts. Prefer Black Gavel templates. No LinkedIn scrape; LinkedIn field is console-only on Tables 1–3.",
-      "prequalified-whitelist.md": "Partner-vetted companies skip ICP re-qualification. Still require qualifying event, verified email, and hard stops. Cite whitelist in reason and citations.",
+      "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. Whitelist: skip ICP re-score. Approved human CTAs only; no em dashes in drafts. Prefer Black Gavel templates. Partner Why names Exa.ai for events and Hunter.io for email/LinkedIn; never say on file. LinkedIn field is console-only on Tables 1–3.",
+      "prequalified-whitelist.md": "Partner-vetted companies skip ICP re-qualification. Still require qualifying event, verified email, and hard stops. Cite whitelist in citations; say bypass in plain language in Why.",
       "campaign-routing.md": "Personas: Hiring Manager; CRO/CEO/Founder; Talent Acquisition; Head of Talent and HR.",
       "black_gavel_outreach_sequence.md": "Emails 1–4 from templates. Greeting: FirstName, only. Body + one CTA + Chad/CD sign-off last. Evening CTA Email 1 only before 2pm ET. No em dashes.",
       "approved_email_examples_partnerC.md": "Synthetic Partner C voice samples; CTA style matches Black Gavel rules.",
       "approved_email_examples_partnerN.md": "Synthetic Partner N voice samples; CTA style matches Black Gavel rules.",
-      "summary_table_example.md": "Tables 1–3 append LinkedIn last for the identified POC (View / Search / Not found) from Hunter stand-in linkedin_url or people-search fallback."
+      "summary_table_example.md": "Tables 1–3 append LinkedIn via Hunter.io. Table 2/3 Why names Exa.ai or Hunter.io in plain language with a clear partner action."
     };
 
     const SYSTEM_PROMPT = [
@@ -925,23 +926,28 @@ body {
       "",
       "CONTEXT:",
       "Use only the embedded constants provided with each case: CANDIDATE_EVENTS, COMPANY_PROFILES, ICP_CONTACTS, PREQUALIFIED_WHITELIST, COMPANY_STATUS, PRIOR_SENDS, DENIAL_LOG, EMPLOYMENT_CHECK, USER_PREFERENCES, EVAL_CASES, and POLICIES (icp-criteria.md, signal-taxonomy.md, confidence-rubric.md, agent-rules.md, prequalified-whitelist.md, campaign-routing.md, black_gavel_outreach_sequence.md, approved email examples, summary_table_example.md).",
+      "Case context also includes exa_ai (event research) and hunter_io (email and LinkedIn). Treat those as Exa.ai and Hunter.io results for this case.",
       "Never invent companies, events, employee counts, revenue, backing, emails, or employment facts. If a field is missing or blank in context, treat it as missing.",
       "",
       "RULES — the agent must not:",
       "1. Never send without explicit human approval.",
       "2. Never fabricate companies, events, or qualification fields.",
       "3. Never guess or invent a contact email address.",
-      "4. Maximum 2 Exa-style lookups per company in this prototype (pre-loaded data stands in for Exa).",
+      "4. Maximum 2 Exa.ai lookups per company (pre-loaded Exa.ai responses stand in for the live API in this prototype).",
       "5. Maximum 2 generation attempts per email when language check fails.",
       "6. Enforce a 30-day duplicate suppression window using prior_sends.csv.",
       "7. Never reply to inbound emails.",
       "8. Existing clients in company_status.csv: stop immediately, Table 2, no override, no draft.",
       "9. Name collisions and unconfirmed entities: Table 3, no draft before human verification.",
       "10. Approved sends in this capstone prototype route to sandbox only.",
-      "11. Pre-qualified whitelist: if prequalified_match is present in case context, skip ICP re-qualification (do not No-go for size/revenue/backing/TA alone). Still require a qualifying event, verified email, and all hard stops. State whitelist bypass in reason_or_ambiguity and cite prequalified-whitelist.md plus the whitelist company_id.",
+      "11. Pre-qualified whitelist: if prequalified_match is present in case context, skip ICP re-qualification (do not No-go for size/revenue/backing/TA alone). Still require a qualifying event, verified email, and all hard stops. In plain-language Why, say this company was already partner-vetted. Put prequalified-whitelist.md and the whitelist company_id only in citations.",
       "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1–4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Evening CTA only on Email 1 before 2pm Eastern. Emails 2–4 never use evening CTA.",
       "13. Never use em dashes (Unicode — or –) in draft subjects or bodies. Use commas, periods, or restructure. Templates beat freeform prose.",
-      "14. Do not invent LinkedIn URLs or scrape LinkedIn. The console adds a LinkedIn field for the identified POC on Table 1, Table 2, and Table 3 (Hunter linkedin_url when present, else people-search from name + company). Do not add a linkedin labeled field yourself.",
+      "14. Treat hunter_io / contact email and linkedin_url as Hunter.io lookup results. Do not invent emails or LinkedIn URLs. Do not scrape LinkedIn. The console shows LinkedIn from Hunter.io when present, else a people-search fallback. In partner-facing Why, say Hunter.io found or did not find the email or LinkedIn URL. Never say on file, in our database, from ICP contacts, or synthetic.",
+      "15. Partner-facing Why on Table 2 and Table 3: write why and reason_or_ambiguity in plain language a recruiting partner can understand and act on immediately. Never name internal files (agent-rules.md, confidence-rubric.md, icp-criteria.md, company_status.csv, etc.). Never cite rule numbers or table numbers. Never use unexplained jargon such as entity sourcing, confidence tier, or ambiguous tier. Put record IDs and policy file names only in citations. Name Exa.ai when the issue is event or article research. Name Hunter.io when the issue is email or LinkedIn. Always end Why with a clear next action.",
+      "",
+      "TOOL NAMING (partner-facing):",
+      "Exa.ai = event and news research. Hunter.io = email finder and LinkedIn URL. Speak as if these tools ran for this case. Pre-loaded responses in case context are the Exa.ai / Hunter.io results for this prototype.",
       "",
       "OUTPUT:",
       "Return exactly these labeled fields (one per line as Field: value):",
@@ -978,11 +984,17 @@ body {
       "persona_used:",
       "trigger_reference:",
       "citations: comma-separated tags naming exact record IDs and policy files/sections used (example: CE-01, CO-01, CT-01, company_status:ENARRESS, prequalified-whitelist.md, icp-criteria.md#company-size, agent-rules.md#8)",
-      "why: short reasons naming which data rows and which policy lines you used. Always include this field.",
+      "why: Always include this field. For Table 2 and Table 3, use 2-4 plain sentences that state what happened, why outreach is paused or blocked, and end with a clear partner action. Do not put file names, rule numbers, or table numbers in why. For Table 1, a short plain fit summary is fine; keep technical grounding in citations.",
+      "PLAIN WHY EXAMPLES (Table 2 / Table 3 style):",
+      "Good: Exa.ai found a news story that mentions this company but we could not confirm it is the right company. The article does not name their website, so we cannot be certain the event belongs to them and not another company with a similar name. Please verify on LinkedIn or the company website before approving any outreach.",
+      "Good: Hunter.io did not return a verified email address for this contact. Outreach cannot proceed without one. You can look them up manually on LinkedIn or their company website and add the email directly.",
+      "Bad: CE-05 event_summary states domain not named in source and company_profile.notes confirms Ambiguous entity sourcing. Agent-rules.md rule 9 requires Table 3 escalation for unconfirmed entities.",
+      "Bad: Email not on file in ICP contacts. Record flagged as undeliverable per agent-rules.md rule 3.",
+      "Never say on file, in our database, or from our contact list. Say Exa.ai or Hunter.io.",
       "If decision is Go: the console overwrites draft_1..4 with Black Gavel templates (greeting, body, CTA, Chad/CD sign-off). Still return draft fields; console is source of truth for sequence text.",
       "If decision is not Go, leave all draft_N_subject and draft_N_body fields blank and do not invent a draft.",
       "Do not wrap the answer in markdown code fences. Plain labeled lines only.",
-      "Never invent a contact email, employee count, revenue, or domain. If required data is missing, escalate (Table 2) and say what is missing.",
+      "Never invent a contact email, employee count, revenue, or domain. If required data is missing, escalate (Table 2) and say what is missing in plain language.",
       "",
       "ESCALATION:",      "Stop, set status to REFUSED-ESCALATE when needed, state the reason, and route correctly when:",
       "1. Low confidence: Table 1 Low, no batch approval, mandatory individual review; do not treat as High.",
@@ -1000,8 +1012,8 @@ body {
       "- decision MUST be Refused",
       "- override_available MUST be No",
       "- draft fields MUST be blank",
-      "- reason_or_ambiguity MUST say: Existing client. Outreach suppressed. No cold contact permitted.",
-      "- why MUST cite company_status.csv / agent-rules.md rule 8",
+      "- reason_or_ambiguity and why MUST be plain language, for example: This company is already a client. Cold outreach is not allowed. Do not contact them through this workflow; use the existing client relationship instead.",
+      "- Put company_status and agent-rules grounding only in citations (not in why).",
       "Do not score ICP fit for existing clients. Do not generate a draft. Strong signals do not override this rule. Whitelist does not override existing client."
     ].join("\n");
 
@@ -1031,6 +1043,7 @@ body {
       "- Prefer variety across emails when the pool allows; identical CTAs on every email is soft preference only, not an automatic needs attention unless structure is also wrong.",
       "",
       "Prefer needs attention when a hard stop is missed or draft structure is wrong. Prefer looks right when table, boundary, and draft structure match.",
+      "For Table 2 or Table 3: if why or reason_or_ambiguity names .md files, rule numbers, or unexplained jargon (entity sourcing, confidence tier), prefer needs attention and say the Why is too technical for partners.",
       "Do not wrap in markdown. Plain labeled lines only."
     ].join("\n");
 
@@ -1048,6 +1061,11 @@ body {
 
     function statusFor(companyName) {
       return COMPANY_STATUS.find(function (row) { return row.company_name === companyName; }) || null;
+    }
+
+    function formatFieldLabel(key) {
+      if (key === "why") return "WHY";
+      return String(key == null ? "" : key).replace(/_/g, " ");
     }
 
     function escapeHtml(text) {
@@ -1441,12 +1459,19 @@ body {
         company_status: status,
         prequalified_match: whitelist,
         prequalified_whitelist: PREQUALIFIED_WHITELIST,
-        // Synthetic Hunter.io response only. No live Hunter call. linkedin_url is whatever ICP_CONTACTS carries.
-        hunter_standin: contact ? {
+        // Pre-loaded Hunter.io response shape (same fields as live Email Finder). Not a live API call in this prototype.
+        hunter_io: contact ? {
           email: contact.email || null,
           linkedin_url: contact.linkedin_url || null,
-          source: "synthetic_eval_only"
+          source: "hunter.io",
+          status: contact.email ? "found" : "not_found"
         } : null,
+        exa_ai: {
+          source: "exa.ai",
+          event_summary: ev.event_summary,
+          event_source_url: ev.source_url,
+          note: "Pre-loaded Exa.ai research result for this candidate event."
+        },
         cta_session: ctaSession,
         prior_sends: PRIOR_SENDS,
         denial_log: DENIAL_LOG,
@@ -1524,7 +1549,7 @@ body {
       row.setAttribute("data-field", "linkedin");
       var k = document.createElement("div");
       k.className = "k";
-      k.textContent = "linkedin";
+      k.textContent = formatFieldLabel("linkedin");
       var v = document.createElement("div");
       v.className = "v field-value";
       if (action.kind === "view" || action.kind === "search") {
@@ -1534,8 +1559,12 @@ body {
         a.rel = "noopener noreferrer";
         a.textContent = action.label;
         v.appendChild(a);
+        var via = document.createElement("span");
+        via.className = "linkedin-via";
+        via.textContent = action.kind === "view" ? " via Hunter.io" : " (Hunter.io had no profile URL; people search)";
+        v.appendChild(via);
       } else {
-        v.textContent = action.label;
+        v.textContent = action.label + " Hunter.io returned no LinkedIn URL and name data was too thin to search.";
       }
       row.appendChild(k);
       row.appendChild(v);
@@ -1907,7 +1936,7 @@ body {
           row.setAttribute("data-field", key);
           var k = document.createElement("div");
           k.className = "k";
-          k.textContent = key === "why" ? "WHY" : key;
+          k.textContent = formatFieldLabel(key);
           var v = document.createElement("div");
           v.className = "v" + (key === "why" ? " why" : "");
           v.classList.add("field-value");
@@ -2242,22 +2271,24 @@ body {
       });
       var emailGuidance;
       if (!preferredMissingEmail) {
-        emailGuidance = "Preferred contact email is present in context; use only verified addresses from company_contacts. Never invent an email.";
+        emailGuidance = "Hunter.io returned a verified email for the preferred contact (see hunter_io / company_contacts). Use only that address. Never invent an email. In Why, you may say Hunter.io returned the email.";
       } else if (alternateEmails.length) {
         emailGuidance =
-          "PREFERRED POC email is blank, but at least one other company_contacts row has a verified email. " +
-          "In reason_or_ambiguity state: preferred contact_id/name/title missing email; list each alternate with contact_id, name, title, and verified email. " +
-          "Do NOT invent an email. Do NOT Table 1 draft to the preferred POC. " +
+          "Hunter.io did not return an email for the preferred POC, but returned a verified email for at least one alternate at this company. " +
+          "In plain-language why/reason_or_ambiguity: say Hunter.io missed the preferred person, name each alternate who has an email, and ask the partner to choose who to contact. " +
+          "Put contact_ids only in citations. Do NOT invent an email. Do NOT Table 1 draft to the preferred POC. " +
           "Table 2 or Table 3 for human persona choice before any draft to the alternate. Keep draft fields blank in this prototype.";
       } else if (companyContacts.length > 1) {
         emailGuidance =
-          "PREFERRED POC email is blank. company_contacts includes alternate POC(s), but NONE have a verified email either. " +
-          "In reason_or_ambiguity name the preferred and each alternate (contact_id, name, title) and state no verified email was found for any of them. " +
-          "This is a company-wide missing-email No-go: Table 2, decision No-go or Refused, draft fields blank. Do NOT invent an email.";
+          "Hunter.io did not return a verified email for the preferred POC or any alternate at this company. " +
+          "In plain-language why/reason_or_ambiguity name the preferred and each alternate (people names and titles) and say Hunter.io found no verified email. " +
+          "End with an action: look them up on LinkedIn or the company website and add an email if continuing. " +
+          "This is a company-wide missing-email No-go: Table 2, decision No-go or Refused, draft fields blank. Do NOT invent an email. Put contact_ids only in citations.";
       } else {
         emailGuidance =
-          "MISSING DATA: preferred POC email is blank and there is no alternate company_contacts row with a verified email. " +
-          "Do NOT invent an email. Table 2. decision No-go or Refused. reason must say no verified email for preferred POC or any alternate at this company. draft fields blank.";
+          "Hunter.io did not return a verified email for the preferred POC and there is no alternate with an email. " +
+          "Do NOT invent an email. Table 2. decision No-go or Refused. " +
+          "why/reason_or_ambiguity must be plain language naming Hunter.io: no verified email found; outreach cannot proceed; partner can look them up on LinkedIn or the company website and add an email. draft fields blank.";
       }
       var whitelistGuidance = payload.prequalified_match
         ? (
@@ -2268,18 +2299,20 @@ body {
           "). Skip ICP re-qualification. Do NOT No-go for employee count, revenue, backing, or TA alone. " +
           "Still require a qualifying event, verified email, and hard stops (client / collision / disqualifying event). " +
           "If event + email are clear: Table 1 Go with full 4-email sequence. " +
-          "In reason_or_ambiguity and citations state whitelist bypass and cite prequalified-whitelist.md and the whitelist company_id."
+          "In plain-language Why, say this company was already partner-vetted so classic size/revenue checks were skipped. " +
+          "Put prequalified-whitelist.md and the whitelist company_id only in citations."
         )
         : "This company is NOT on the pre-qualified whitelist; apply full ICP scoring from icp-criteria.md.";
       var userMessage = [
         "Evaluate this single outreach candidate case.",
         "Return ONLY the labeled OUTPUT fields from your instructions, one field per line.",
         "Always include why and citations fields.",
+        "For Table 2 and Table 3: why and reason_or_ambiguity must be plain language for a recruiting partner, end with a clear next action, and must NOT name .md files, rule numbers, or table numbers. Name Exa.ai for event research and Hunter.io for email/LinkedIn. Never say on file or in our database. Put grounding IDs and policy file names only in citations.",
         "citations must name real IDs from this JSON (case_id, company_id, contact_id) and real policy keys (e.g. icp-criteria.md, agent-rules.md, prequalified-whitelist.md).",
         "Set status to OK or REFUSED-ESCALATE.",
         "Do not use markdown code fences.",
         isClient
-          ? "HARD BOUNDARY: This company is an EXISTING CLIENT. You must REFUSED-ESCALATE. No draft. Table 2. override_available No. Whitelist does not override this."
+          ? "HARD BOUNDARY: This company is an EXISTING CLIENT. You must REFUSED-ESCALATE. No draft. Table 2. override_available No. Whitelist does not override this. Write plain-language why: already a client, cold outreach not allowed, use the existing relationship instead. Put policy grounding only in citations."
           : "If this is a normal in-ICP go case with confirmed entity and verified email, status should be OK (do not over-refuse).",
         emailGuidance,
         whitelistGuidance,
