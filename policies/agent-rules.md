@@ -11,3 +11,8 @@
 8. Existing clients in company_status.csv: stop immediately, Table 2, no override, no draft.
 9. Name collisions and unconfirmed entities: Table 3, no draft before human verification.
 10. Approved sends in this capstone prototype route to sandbox only.
+11. Pre-qualified whitelist (`prequalified_whitelist.csv` / prequalified-whitelist.md): if the company is on the partner-vetted list, skip ICP re-qualification and go straight to event + POC + draft. Still enforce client stop, missing email, entity collision, and disqualifying current-event signals. Cite the whitelist in reason and citations.
+12. Draft CTAs: end every Go email with one approved human CTA from black_gavel_outreach_sequence.md. Never use "Let me know if a brief call makes sense", "Worth 15 minutes?", or close variants. Resolve {{tomorrow_day_of_week}} and {{two_working_days}} as business days only. Evening CTA only before 2pm recipient local time (default Eastern).
+13. Never output em dashes (— or –) in draft subjects or bodies. Use commas, periods, or restructure. Prefer Black Gavel templates over freeform prose.
+14. Do not scrape LinkedIn or invent LinkedIn profile URLs. The console adds a LinkedIn field for the identified POC on Table 1, Table 2, and Table 3, using Hunter linkedin_url when present, otherwise a people-search link from name + company.
+
