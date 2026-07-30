@@ -16,4 +16,3 @@ Map company size and contact type to Black Gavel persona sheets.
 
 ## Sector notes
 - Legaltech: emphasize matter velocity, specialized hiring, and practice-aligned recruiting.
-- Fintech: emphasize regulated growth hiring, GTM scale, and finance ops leadership.
