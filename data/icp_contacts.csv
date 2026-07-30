@@ -1,19 +1,23 @@
-contact_id,company_id,first_name,last_name,title,email,employment_confirmed
-CT-01,CO-01,Jordan,Ellis,CRO,jordan.ellis@rapidaccounting.example,yes
-CT-02,CO-02,Samira,Okoye,VP Sales,samira.okoye@rubberboatlegal.example,yes
-CT-03,CO-03,Noah,Park,Head of Talent,noah.park@payitriverlegal.example,yes
-CT-04,CO-04,Maya,Chen,VP of Talent,maya.chen@riviing.example,yes
-CT-05,CO-05,Riley,Ng,CEO,riley.ng@paddletime.example,yes
-CT-06,CO-06,Casey,Brooks,Head of Sales,,yes
-CT-07,CO-07,Pat,Quinn,Founder,pat.quinn@thwart.example,yes
-CT-08,CO-08,Avery,Kim,CRO,,yes
-CT-08B,CO-08,Blair,Sato,Head of Talent,,yes
-CT-09,CO-09,Lee,Santos,CEO,,no
-CT-10,CO-10,Morgan,Diaz,COO,morgan.diaz@crouchtech.example,yes
-CT-11,CO-11,Taylor,Reed,VP Sales,taylor.reed@enarress.example,yes
-CT-12,CO-12,Jamie,Vogel,CRO,jamie.vogel@outlawlegal.example,yes
-CT-13,CO-13,Chris,Nguyen,CFO,chris.nguyen@duckee.example,yes
-CT-14,CO-14,Alex,Morales,Founder,alex.morales@champagnehq.example,yes
-CT-15,CO-15,Dana,Whit,Hiring Manager,,no
-CT-16,CO-16,Robin,Shaw,CEO,robin.shaw@payetteriver.example,yes
-CT-16B,CO-16B,Kim,Adler,Managing Partner,kim.adler@payetteriverholdings.example,yes
+contact_id,company_id,first_name,last_name,title,email,employment_confirmed,linkedin_url
+CT-01,CO-01,Jordan,Ellis,CRO,jordan.ellis@rapidaccounting.example,yes,https://linkedin.com/in/jordan-ellis
+CT-02,CO-02,Samira,Okoye,VP Sales,samira.okoye@rubberboatlegal.example,yes,https://linkedin.com/in/samira-okoye
+CT-03,CO-03,Noah,Park,Head of Talent,noah.park@payitriverlegal.example,yes,https://linkedin.com/in/noah-park
+CT-04,CO-04,Maya,Chen,VP of Talent,maya.chen@riviing.example,yes,https://linkedin.com/in/maya-chen
+CT-05,CO-05,Riley,Ng,CEO,riley.ng@paddletime.example,yes,https://linkedin.com/in/riley-ng
+CT-06,CO-06,Casey,Brooks,Head of Sales,,yes,https://linkedin.com/in/casey-brooks
+CT-07,CO-07,Pat,Quinn,Founder,pat.quinn@thwart.example,yes,https://linkedin.com/in/pat-quinn
+CT-08,CO-08,Avery,Kim,CRO,,yes,https://linkedin.com/in/avery-kim
+CT-08B,CO-08,Blair,Sato,Head of Talent,,yes,https://linkedin.com/in/blair-sato
+CT-09,CO-09,Lee,Santos,CEO,,no,https://linkedin.com/in/lee-santos
+CT-10,CO-10,Morgan,Diaz,COO,morgan.diaz@crouchtech.example,yes,https://linkedin.com/in/morgan-diaz
+CT-11,CO-11,Taylor,Reed,VP Sales,taylor.reed@enarress.example,yes,https://linkedin.com/in/taylor-reed
+CT-12,CO-12,Jamie,Vogel,CRO,jamie.vogel@outlawlegal.example,yes,https://linkedin.com/in/jamie-vogel
+CT-13,CO-13,Chris,Nguyen,CFO,chris.nguyen@duckee.example,yes,https://linkedin.com/in/chris-nguyen
+CT-14,CO-14,Alex,Morales,Founder,alex.morales@champagnehq.example,yes,https://linkedin.com/in/alex-morales
+CT-15,CO-15,Dana,Whit,Hiring Manager,,no,https://linkedin.com/in/dana-whit
+CT-16,CO-16,Robin,Shaw,CEO,robin.shaw@payetteriver.example,yes,https://linkedin.com/in/robin-shaw
+CT-16B,CO-16B,Kim,Adler,Managing Partner,kim.adler@payetteriverholdings.example,yes,https://linkedin.com/in/kim-adler
+CT-17,CO-17,Quinn,Hale,CRO,quinn.hale@floatinglegal.example,yes,https://linkedin.com/in/quinn-hale
+CT-18,CO-18,Sasha,Ortiz,CEO,sasha.ortiz@cataractlegal.example,yes,https://linkedin.com/in/sasha-ortiz
+CT-19,CO-19,Devon,Blake,Head of Talent,devon.blake@frameem.example,yes,https://linkedin.com/in/devon-blake
+CT-20,CO-20,Reese,Lang,VP Sales,reese.lang@plunge.example,yes,https://linkedin.com/in/reese-lang
