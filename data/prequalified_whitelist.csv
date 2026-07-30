@@ -1,0 +1,5 @@
+company_id,company_name,domain,vetted_by,vetted_date,notes
+CO-17,Floating Legal,floatinglegal.example,partner_c,2026-06-15,Pre-vetted legaltech; skip ICP re-score; still require qualifying event + verified email + hard-stop checks
+CO-18,Cataract Legal LLC,cataractlegal.example,partner_c,2026-06-18,Pre-vetted legaltech; skip ICP re-score
+CO-19,Frame Em LLC,frameem.example,partner_n,2026-06-20,Pre-vetted fintech; skip ICP re-score
+CO-20,Plunge Inc.,plunge.example,partner_n,2026-06-22,Pre-vetted despite below classic ICP size/revenue; skip ICP re-score; prove whitelist bypass

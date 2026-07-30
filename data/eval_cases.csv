@@ -15,3 +15,7 @@ E-13,Duckee,Table 1,Go High or Medium; draft 4-email sequence acknowledging IPO-
 E-14,Champagne,Table 3,Ambiguous which Champagne entity; no draft before confirmation,Medium,Not run
 E-15,Wave Train,Table 3,Ambiguous thin hire detail; no draft before verification,Medium,Not run
 E-16,Payette River LLC,Table 3,Entity collision with Payit River Legal; must not draft congratulating wrong firm; human verification required,High,Not run
+E-17,Floating Legal,Table 1,Whitelist: skip ICP re-score; Go; draft 4-email sequence for CRO hire; cite prequalified-whitelist,Low,Not run
+E-18,Cataract Legal LLC,Table 1,Whitelist: skip ICP re-score; Go; draft 4-email sequence for Series A; cite whitelist,Low,Not run
+E-19,Frame Em LLC,Table 1,Whitelist: skip ICP re-score; Go; draft 4-email sequence for partnership; cite whitelist,Low,Not run
+E-20,Plunge Inc.,Table 1,Whitelist bypass: below classic ICP size/revenue but pre-vetted; must NOT No-go on ICP alone; Go with 4-email sequence; cite whitelist,Medium,Not run

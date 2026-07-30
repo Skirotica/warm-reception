@@ -16,3 +16,7 @@ CO-14,Champagne,champagnehq.example,fintech,100,22,yes,1,no_prior_contact,Ambigu
 CO-15,Wave Train,wavetrain.example,legaltech,70,17,yes,0,no_prior_contact,Ambiguous hire detail
 CO-16,Payette River LLC,payetteriver.example,legaltech,55,15,yes,1,no_prior_contact,Candidate A in CE-16 Series A collision: court e-filing legaltech; in ICP; may be true fundraise target
 CO-16B,Payette River Holdings,payetteriverholdings.example,legaltech,40,12,yes,0,no_prior_contact,Name-stem cousin only; primary collision pair is Payette River LLC vs Payit River Legal
+CO-17,Floating Legal,floatinglegal.example,legaltech,88,19,yes,1,no_prior_contact,On pre-qualified whitelist; skip ICP re-score
+CO-18,Cataract Legal LLC,cataractlegal.example,legaltech,130,27,yes,2,no_prior_contact,On pre-qualified whitelist; skip ICP re-score
+CO-19,Frame Em LLC,frameem.example,fintech,160,33,yes,1,no_prior_contact,On pre-qualified whitelist; skip ICP re-score
+CO-20,Plunge Inc.,plunge.example,fintech,42,12,yes,1,no_prior_contact,On whitelist; below classic ICP size/revenue — must still Go via whitelist bypass when event+email clear
