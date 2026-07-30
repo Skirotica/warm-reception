@@ -2,7 +2,6 @@
 
 ## In scope sectors
 - Legaltech
-- Fintech
 
 ## Company size
 - Employees: 50 to 350 inclusive

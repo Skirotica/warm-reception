@@ -1,7 +1,7 @@
 # Summary table example
 
 ## Table 1 — Go
-Rapid Accounting | fintech | High | CRO hire | Jordan Ellis | CRO/CEO/Founder persona | draft pending approval | LinkedIn via Hunter.io: View on LinkedIn → https://linkedin.com/in/jordan-ellis
+Rapid Accounting | legaltech | High | CRO hire | Jordan Ellis | CRO/CEO/Founder persona | draft pending approval | LinkedIn via Hunter.io: View on LinkedIn → https://linkedin.com/in/jordan-ellis
 
 ## Table 2 — No-go
 ENARRESS | Existing client. We already work with this company, so cold outreach is not allowed. Do not contact them through this workflow; use the existing client relationship instead. | LinkedIn via Hunter.io → https://linkedin.com/in/taylor-reed

@@ -5,7 +5,7 @@ Voice samples only. Prefer black_gavel_outreach_sequence.md for live drafts. No 
 ## Example 1
 Hi Maya,
 
-Congrats on the VP Talent hire at Cascade Pay. When talent leadership lands, critical finance and product seats often open next. We support fintech teams in that window.
+Congrats on the VP Talent hire at Cascade Docket. When talent leadership lands, critical sales and delivery seats often open next. We support legaltech teams in that window.
 
 Can I call you tomorrow or Thursday?
 
