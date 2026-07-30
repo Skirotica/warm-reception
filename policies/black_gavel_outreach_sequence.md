@@ -34,7 +34,7 @@ Body:
 
 Congrats on {{CV1}} at {{company}}. {{CV2}}.
 
-If you are building out key seats behind that move, we help growth-stage legaltech teams hire revenue and leadership talent without the usual noise.
+If you are building out key seats behind that move, we help growth-stage legaltech teams like yours hire revenue and leadership talent without the usual noise.
 
 {{cta}}
 
