@@ -1658,8 +1658,11 @@ body {
       var type = String(ev && ev.event_type || "").toLowerCase();
       var summary = String(ev && ev.event_summary || "");
       if (type === "executive_hire") {
-        var role = summary.match(/\b(CRO|CEO|CFO|COO|VP(?: of)? [A-Za-z ]+|Head of [A-Za-z ]+|Founder)\b/i);
-        return role ? role[1].replace(/\s+/g, " ").trim() + " hire" : "executive hire";
+        // Stop at the role only (VP Sales), not "VP Sales after seed extension".
+        var rolePat = "(CRO|CEO|CFO|COO|Founder|VP(?:\\s+of)?\\s+[A-Za-z]+|Head of [A-Za-z]+)";
+        var asRole = summary.match(new RegExp("\\bas\\s+" + rolePat + "\\b", "i"));
+        var role = asRole || summary.match(new RegExp("\\b" + rolePat + "\\b", "i"));
+        return role ? String(role[1]).replace(/\s+/g, " ").trim() + " hire" : "executive hire";
       }
       if (type === "funding_round") {
         var round = summary.match(/Series\s+[A-Z]|seed|growth round|IPO/i);
@@ -1733,14 +1736,19 @@ body {
 
     function resolveBusinessDayTargets(now, timeZone) {
       var p = partsInTimeZone(now || new Date(), timeZone);
-      var tomorrow = addBusinessDays(p.year, p.month, p.day, 1);
+      var calendarTomorrow = addCalendarDays(p.year, p.month, p.day, 1);
+      var nextBiz = addBusinessDays(p.year, p.month, p.day, 1);
       var two = addBusinessDays(p.year, p.month, p.day, 2);
+      var calendarTomorrowIsBusiness = calendarTomorrow.weekday !== 0 && calendarTomorrow.weekday !== 6;
       return {
         timezone: timeZone || "America/New_York",
         local_hour: p.hour,
         local_minute: p.minute,
         today_weekday: WEEKDAY_NAMES[p.weekday],
-        tomorrow_day_of_week: WEEKDAY_NAMES[tomorrow.weekday],
+        // "tomorrow" in CTA copy only when the next calendar day is a weekday (policy: Fri → Mon/Tue).
+        tomorrow_is_business_day: calendarTomorrowIsBusiness,
+        tomorrow_day_of_week: WEEKDAY_NAMES[nextBiz.weekday],
+        next_working_day: WEEKDAY_NAMES[nextBiz.weekday],
         two_working_days: WEEKDAY_NAMES[two.weekday],
         evening_cta_eligible: p.hour < 14
       };
@@ -1763,10 +1771,17 @@ body {
 
     function buildCtaSession(now, timeZone) {
       var resolved = resolveBusinessDayTargets(now, timeZone);
-      var basePool = [
-        "Can I call you tomorrow or " + resolved.two_working_days + "?",
-        "Are you available tomorrow afternoon, " + resolved.tomorrow_day_of_week + "?"
-      ];
+      var nextDay = resolved.next_working_day || resolved.tomorrow_day_of_week;
+      var twoDay = resolved.two_working_days;
+      var basePool = resolved.tomorrow_is_business_day
+        ? [
+          "Can I call you tomorrow or " + twoDay + "?",
+          "Are you available tomorrow afternoon, " + nextDay + "?"
+        ]
+        : [
+          "Can I call you " + nextDay + " or " + twoDay + "?",
+          "Are you available " + nextDay + " afternoon?"
+        ];
       var evening = "Are you around this evening for 10 minutes?";
       // Email 1 only may use evening CTA, and only before 2pm Eastern.
       var pool1 = basePool.slice();
@@ -1792,7 +1807,9 @@ body {
         timezone_source: "default_eastern_when_unknown",
         local_hour: resolved.local_hour,
         evening_cta_eligible: resolved.evening_cta_eligible,
+        tomorrow_is_business_day: resolved.tomorrow_is_business_day,
         tomorrow_day_of_week: resolved.tomorrow_day_of_week,
+        next_working_day: resolved.next_working_day,
         two_working_days: resolved.two_working_days,
         eligible_pool_email_1: pool1,
         eligible_pool_followups: poolFollow,

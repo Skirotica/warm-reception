@@ -17,13 +17,19 @@ Console fills this file’s sentences; do not invent alternate openers. Subjects
 5. CTA appears once, immediately before the sign-off. Never after the sign-off.
 
 ## Approved CTAs
+When the next calendar day is a weekday:
 1. Can I call you tomorrow or {{two_working_days}}?
 2. Are you available tomorrow afternoon, {{tomorrow_day_of_week}}?
+
+When the next calendar day is Saturday or Sunday (do not say "tomorrow"):
+1. Can I call you {{next_working_day}} or {{two_working_days}}?
+2. Are you available {{next_working_day}} afternoon?
+
 3. Are you around this evening for 10 minutes?
 
 Evening CTA (option 3) is eligible only for Email 1, and only before 2:00pm recipient local time (default Eastern). Emails 2–4 never use the evening CTA.
 
-Business days only for tomorrow / two working days (skip Sat/Sun). Friday: Mon/Tue. Weekend: Mon/Tue. Thursday: Fri/Mon.
+Business days only (skip Sat/Sun). Friday: Monday or Tuesday (never "tomorrow"). Weekend: Monday or Tuesday. Thursday: Friday or Monday.
 
 ## Persona: CRO / CEO / Founder
 
