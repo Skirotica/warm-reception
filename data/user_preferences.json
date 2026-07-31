@@ -1,14 +1,14 @@
 ﻿{
   "partner_c": {
-    "display_name": "Partner C",
+    "display_name": "Chad",
     "active_campaign_focus": "legaltech_cro_and_talent",
-    "from_email": "partner.c@blackgavel.example",
+    "from_email": "chad@blackgavel.example",
     "voice_file": "approved_email_examples_partnerC.md"
   },
   "partner_n": {
-    "display_name": "Partner N",
+    "display_name": "Nick",
     "active_campaign_focus": "legaltech_sales_leadership",
-    "from_email": "partner.n@blackgavel.example",
+    "from_email": "nick@blackgavel.example",
     "voice_file": "approved_email_examples_partnerN.md"
   }
 }
