@@ -392,6 +392,32 @@ body {
 .improvement-card .bca-v { color: var(--ink-2); font-size: var(--fs-1); }
 .improvement-card .bca-v strong { color: var(--ink); font-weight: 600; }
 
+.voice-memory {
+  margin: var(--sp-5) 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: var(--border-w) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raise);
+}
+.voice-memory .card-title { margin: 0 0 var(--sp-2); }
+.voice-memory .card-meta { font-size: var(--fs-0); color: var(--ink-2); margin: 0 0 var(--sp-4); }
+.voice-memory .partner-tabs { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-3); flex-wrap: wrap; }
+.voice-memory .partner-tabs button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+}
+.voice-memory .mem-list { display: flex; flex-direction: column; gap: var(--sp-3); }
+.voice-memory .mem-item {
+  padding: var(--sp-3); border: var(--border-w) solid var(--line); border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.voice-memory .mem-rule { color: var(--ink); font-size: var(--fs-1); font-weight: 600; }
+.voice-memory .mem-meta { color: var(--ink-3); font-size: var(--fs-0); margin-top: 4px; }
+.voice-memory .mem-example {
+  margin-top: var(--sp-2); color: var(--ink-2); font-size: var(--fs-0); font-style: italic; white-space: pre-wrap;
+}
+.voice-memory .mem-actions { margin-top: var(--sp-3); display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.voice-memory .mem-empty { color: var(--ink-3); font-size: var(--fs-1); }
+
 .limits-panel {
   margin-top: var(--sp-5);
   padding: var(--sp-4) var(--sp-5);
@@ -640,6 +666,20 @@ body {
             <tbody id="evals-tbody"></tbody>
           </table>
 
+          <section class="voice-memory" id="voice-memory" aria-label="Partner voice memory">
+            <h3 class="card-title">Voice memory</h3>
+            <p class="card-meta">
+              When Chad or Nick edits a Go sequence, a coach agent learns short voice rules for that partner only.
+              Next Go drafts for their cases apply those rules. Not model retraining — visible preferences in this browser.
+            </p>
+            <div class="partner-tabs" id="voice-memory-tabs"></div>
+            <div id="voice-memory-body" class="mem-list"></div>
+            <div class="mem-actions">
+              <button type="button" class="btn" id="voice-memory-forget">Forget this partner</button>
+              <button type="button" class="btn danger" id="voice-memory-forget-all">Forget all</button>
+            </div>
+          </section>
+
           <section class="improvement-card" id="improvement-card" aria-label="Documented improvement">
             <h3 class="card-title">Improvement</h3>
             <p class="card-meta">Case E-08 · CE-08 Raft Financial · Missing email · Verdict flipped Needs work → Pass</p>
@@ -693,6 +733,9 @@ body {
               <li>
                 <strong>Review agent stretch:</strong> A second agent critiques the worker before the human gate (looks right / needs attention). It adds latency and token cost; the human still makes the final Approve / Edit / Escalate click.
               </li>
+              <li>
+                <strong>Voice memory:</strong> Chad (partner_c) and Nick (partner_n) each have separate edit-learned rules in this browser. Edits on a case train only that case’s partner. Memory is localStorage, not a shared production model.
+              </li>
             </ol>
           </section>
         </div>
@@ -711,11 +754,13 @@ body {
     const MODEL = "claude-sonnet-4-5";
     const API_KEY_STORAGE = "warm_reception_anthropic_api_key";
     const EVAL_RESULTS_STORAGE = "warm_reception_eval_results_v3";
+    const VOICE_MEMORY_STORAGE = "warm_reception_voice_memory_v1";
     var RUN_LOG = [];
     var CASE_UI = {};
     var EVAL_UI = {};
     var selectedCaseId = null;
     var activeView = "queue";
+    var activeVoicePartnerId = "partner_c";
 
     // Five Design PRD eval cases for the Evals view (Prompt 16). Expected text comes from EVAL_CASES.
     const NAMED_EVAL_RUNNER = [
@@ -867,8 +912,8 @@ body {
     };
 
     const USER_PREFERENCES = {
-      partner_c: { display_name: "Partner C", active_campaign_focus: "legaltech_cro_and_talent", from_email: "partner.c@blackgavel.example", voice_file: "approved_email_examples_partnerC.md" },
-      partner_n: { display_name: "Partner N", active_campaign_focus: "legaltech_sales_leadership", from_email: "partner.n@blackgavel.example", voice_file: "approved_email_examples_partnerN.md" }
+      partner_c: { display_name: "Chad", active_campaign_focus: "legaltech_cro_and_talent", from_email: "chad@blackgavel.example", voice_file: "approved_email_examples_partnerC.md" },
+      partner_n: { display_name: "Nick", active_campaign_focus: "legaltech_sales_leadership", from_email: "nick@blackgavel.example", voice_file: "approved_email_examples_partnerN.md" }
     };
 
     const EVAL_CASES = [
@@ -1086,32 +1131,414 @@ body {
       return null;
     }
 
+    function partnerDisplayName(partnerId) {
+      var pref = USER_PREFERENCES[partnerId];
+      return (pref && pref.display_name) || partnerId || "Partner";
+    }
+
+    function partnerIdForCase(ev) {
+      if (!ev) return "partner_c";
+      var status = statusFor(ev.company_name);
+      if (status && (status.partner_id === "partner_c" || status.partner_id === "partner_n")) {
+        return status.partner_id;
+      }
+      var wl = whitelistFor(ev.company_id, ev.company_name, ev.domain);
+      if (wl && (wl.vetted_by === "partner_c" || wl.vetted_by === "partner_n")) {
+        return wl.vetted_by;
+      }
+      return "partner_c";
+    }
+
+    function emptyVoiceMemoryStore() {
+      return {
+        partner_c: { notes: [], updatedAt: "" },
+        partner_n: { notes: [], updatedAt: "" }
+      };
+    }
+
+    function loadVoiceMemory() {
+      try {
+        var raw = localStorage.getItem(VOICE_MEMORY_STORAGE);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            var store = emptyVoiceMemoryStore();
+            ["partner_c", "partner_n"].forEach(function (id) {
+              if (parsed[id] && Array.isArray(parsed[id].notes)) {
+                store[id].notes = parsed[id].notes.slice(0, 12);
+                store[id].updatedAt = parsed[id].updatedAt || "";
+              }
+            });
+            return store;
+          }
+        }
+      } catch (e) { /* ignore */ }
+      return emptyVoiceMemoryStore();
+    }
+
+    function saveVoiceMemory(store) {
+      try {
+        localStorage.setItem(VOICE_MEMORY_STORAGE, JSON.stringify(store || emptyVoiceMemoryStore()));
+      } catch (e) { /* ignore */ }
+    }
+
+    function voiceNotesForPartner(partnerId) {
+      var store = loadVoiceMemory();
+      var bucket = store[partnerId] || store.partner_c;
+      return (bucket && bucket.notes) ? bucket.notes : [];
+    }
+
+    function appendVoiceNotes(partnerId, newNotes) {
+      if (!partnerId || !newNotes || !newNotes.length) return;
+      var store = loadVoiceMemory();
+      if (!store[partnerId]) store[partnerId] = { notes: [], updatedAt: "" };
+      var existing = store[partnerId].notes || [];
+      newNotes.forEach(function (note) {
+        if (!note || !note.rule) return;
+        existing.unshift({
+          rule: String(note.rule).trim().slice(0, 240),
+          example: String(note.example || "").trim().slice(0, 400),
+          case_id: String(note.case_id || ""),
+          at: note.at || new Date().toISOString()
+        });
+      });
+      store[partnerId].notes = existing.slice(0, 12);
+      store[partnerId].updatedAt = new Date().toISOString();
+      saveVoiceMemory(store);
+    }
+
+    function forgetVoicePartner(partnerId) {
+      var store = loadVoiceMemory();
+      if (store[partnerId]) {
+        store[partnerId] = { notes: [], updatedAt: new Date().toISOString() };
+        saveVoiceMemory(store);
+      }
+    }
+
+    function forgetAllVoiceMemory() {
+      saveVoiceMemory(emptyVoiceMemoryStore());
+    }
+
+    function renderVoiceMemoryPanel() {
+      var tabsEl = document.getElementById("voice-memory-tabs");
+      var bodyEl = document.getElementById("voice-memory-body");
+      if (!tabsEl || !bodyEl) return;
+      var store = loadVoiceMemory();
+      tabsEl.innerHTML = "";
+      ["partner_c", "partner_n"].forEach(function (id) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn";
+        btn.textContent = partnerDisplayName(id) + " (" + ((store[id] && store[id].notes) || []).length + ")";
+        btn.setAttribute("aria-pressed", id === activeVoicePartnerId ? "true" : "false");
+        btn.addEventListener("click", function () {
+          activeVoicePartnerId = id;
+          renderVoiceMemoryPanel();
+        });
+        tabsEl.appendChild(btn);
+      });
+      var notes = voiceNotesForPartner(activeVoicePartnerId);
+      bodyEl.innerHTML = "";
+      if (!notes.length) {
+        var empty = document.createElement("p");
+        empty.className = "mem-empty";
+        empty.textContent =
+          "No voice rules yet for " + partnerDisplayName(activeVoicePartnerId) +
+          ". Edit a Go sequence on one of their cases and Save edit to teach the coach.";
+        bodyEl.appendChild(empty);
+        return;
+      }
+      notes.forEach(function (note) {
+        var item = document.createElement("div");
+        item.className = "mem-item";
+        var rule = document.createElement("div");
+        rule.className = "mem-rule";
+        rule.textContent = note.rule || "";
+        item.appendChild(rule);
+        var meta = document.createElement("div");
+        meta.className = "mem-meta";
+        var when = note.at ? formatScoreboardDate(note.at) : "";
+        meta.textContent = (note.case_id ? note.case_id : "edit") + (when && when !== "—" ? " · " + when : "");
+        item.appendChild(meta);
+        if (note.example) {
+          var ex = document.createElement("div");
+          ex.className = "mem-example";
+          ex.textContent = note.example;
+          item.appendChild(ex);
+        }
+        bodyEl.appendChild(item);
+      });
+    }
+
+    function wireVoiceMemoryPanel() {
+      var forgetOne = document.getElementById("voice-memory-forget");
+      var forgetAll = document.getElementById("voice-memory-forget-all");
+      if (forgetOne) {
+        forgetOne.addEventListener("click", function () {
+          if (!window.confirm("Forget all voice rules for " + partnerDisplayName(activeVoicePartnerId) + "?")) return;
+          forgetVoicePartner(activeVoicePartnerId);
+          renderVoiceMemoryPanel();
+        });
+      }
+      if (forgetAll) {
+        forgetAll.addEventListener("click", function () {
+          if (!window.confirm("Forget voice rules for both Chad and Nick?")) return;
+          forgetAllVoiceMemory();
+          renderVoiceMemoryPanel();
+        });
+      }
+      renderVoiceMemoryPanel();
+    }
+
+    function snapshotSequenceDrafts(fields) {
+      var snap = {};
+      for (var n = 1; n <= 4; n++) {
+        snap["draft_" + n + "_subject"] = String((fields && fields["draft_" + n + "_subject"]) || "");
+        snap["draft_" + n + "_body"] = String((fields && fields["draft_" + n + "_body"]) || "");
+      }
+      return snap;
+    }
+
+    function parseCoachNotes(text, caseId) {
+      var notes = [];
+      var lines = String(text || "").split(/\r?\n/);
+      var current = null;
+      lines.forEach(function (line) {
+        var mRule = line.match(/^rule\s*:\s*(.+)$/i);
+        var mEx = line.match(/^example\s*:\s*(.*)$/i);
+        if (mRule) {
+          if (current && current.rule) notes.push(current);
+          current = { rule: mRule[1].trim(), example: "", case_id: caseId || "", at: new Date().toISOString() };
+        } else if (mEx && current) {
+          current.example = mEx[1].trim();
+        }
+      });
+      if (current && current.rule) notes.push(current);
+      return notes.slice(0, 3);
+    }
+
+    const VOICE_COACH_SYSTEM_PROMPT = [
+      "ROLE:",
+      "You are a voice coach for Black Gavel recruiting partners Chad (partner_c) and Nick (partner_n).",
+      "You compare BEFORE drafts to AFTER edits and extract short reusable voice rules for THAT partner only.",
+      "",
+      "OUTPUT:",
+      "Return 1 to 3 rule/example pairs as labeled lines only:",
+      "rule: <one concrete preference, under 20 words>",
+      "example: <optional short snippet from the AFTER text, or blank>",
+      "",
+      "RULES:",
+      "- Prefer durable voice preferences (tone, length, CTA wording, sign-off, what to avoid).",
+      "- Do not invent facts about companies or people.",
+      "- Do not mention other partners. Memory is partner-specific.",
+      "- No markdown fences. No commentary outside rule/example lines.",
+      "- Never use em dashes."
+    ].join("\n");
+
+    const VOICE_APPLY_SYSTEM_PROMPT = [
+      "ROLE:",
+      "You polish a Black Gavel 4-email sequence to match ONE partner's saved voice rules.",
+      "",
+      "OUTPUT:",
+      "Return ONLY these labeled fields (keep all 8):",
+      "draft_1_subject:",
+      "draft_1_body:",
+      "draft_2_subject:",
+      "draft_2_body:",
+      "draft_3_subject:",
+      "draft_3_body:",
+      "draft_4_subject:",
+      "draft_4_body:",
+      "",
+      "RULES:",
+      "- Apply the partner voice rules lightly. Keep greeting FirstName comma, one CTA before sign-off, sign-off last.",
+      "- Do not invent company facts or change the core event reason.",
+      "- Never use em dashes.",
+      "- No markdown fences."
+    ].join("\n");
+
+    async function coachVoiceFromEdit(partnerId, beforeSnap, afterSnap, ev) {
+      var key = localStorage.getItem(API_KEY_STORAGE) || "";
+      if (!key) {
+        return { ok: false, detail: "no_key", notes: [] };
+      }
+      var name = partnerDisplayName(partnerId);
+      var userMessage = [
+        "Partner: " + name + " (" + partnerId + ")",
+        "Case: " + ((ev && ev.case_id) || "") + " / " + ((ev && ev.company_name) || ""),
+        "Extract voice rules from this partner's edits. Only for this partner.",
+        "",
+        "BEFORE (JSON):",
+        JSON.stringify(beforeSnap, null, 2),
+        "",
+        "AFTER (JSON):",
+        JSON.stringify(afterSnap, null, 2)
+      ].join("\n");
+      try {
+        var response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true"
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            max_tokens: 500,
+            system: VOICE_COACH_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: userMessage }]
+          })
+        });
+        var rawText = await response.text();
+        var data = null;
+        try { data = JSON.parse(rawText); } catch (e) { data = null; }
+        if (!response.ok) {
+          var apiMsg = data && data.error && data.error.message ? data.error.message : rawText;
+          return { ok: false, detail: apiMsg, notes: [] };
+        }
+        var content = "";
+        if (data && data.content && data.content.length) {
+          content = data.content.map(function (part) { return part.text || ""; }).join("\n");
+        }
+        content = content || rawText || "";
+        var notes = parseCoachNotes(content, ev && ev.case_id);
+        if (!notes.length) {
+          notes = [{
+            rule: "Prefer the partner's edited wording when it differs from the template.",
+            example: String(afterSnap.draft_1_body || "").slice(0, 160),
+            case_id: (ev && ev.case_id) || "",
+            at: new Date().toISOString()
+          }];
+        }
+        appendVoiceNotes(partnerId, notes);
+        activeVoicePartnerId = partnerId;
+        renderVoiceMemoryPanel();
+        return { ok: true, detail: "learned " + notes.length, notes: notes };
+      } catch (err) {
+        return { ok: false, detail: err && err.message ? err.message : "exception", notes: [] };
+      }
+    }
+
+    function parseDraftOnlyFields(text) {
+      var cleaned = String(text || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/```[a-z]*\n?/gi, "")
+        .replace(/```/g, "")
+        .trim();
+      var lines = cleaned.split("\n");
+      var parsed = {};
+      var currentKey = null;
+      var draftKeys = [
+        "draft_1_subject", "draft_1_body",
+        "draft_2_subject", "draft_2_body",
+        "draft_3_subject", "draft_3_body",
+        "draft_4_subject", "draft_4_body"
+      ];
+      lines.forEach(function (line) {
+        var match = line.match(/^([A-Za-z0-9_]+)\s*:\s*(.*)$/);
+        if (match) {
+          var key = match[1].toLowerCase();
+          var value = match[2];
+          if (draftKeys.indexOf(key) !== -1) {
+            parsed[key] = value;
+            currentKey = key;
+            return;
+          }
+        }
+        if (currentKey && (currentKey.indexOf("_body") !== -1 || currentKey.indexOf("_subject") !== -1)) {
+          parsed[currentKey] = (parsed[currentKey] || "") + "\n" + line;
+        }
+      });
+      var filled = draftKeys.filter(function (k) {
+        return parsed[k] && String(parsed[k]).trim();
+      }).length;
+      return { ok: filled >= 4, fields: parsed };
+    }
+
+    async function applyVoiceMemoryToFields(fields, ev) {
+      if (!fields || !hasGoDecision(fields)) return fields;
+      var partnerId = partnerIdForCase(ev);
+      var notes = voiceNotesForPartner(partnerId);
+      if (!notes.length) return fields;
+      var key = localStorage.getItem(API_KEY_STORAGE) || "";
+      if (!key) return fields;
+      var userMessage = [
+        "Partner: " + partnerDisplayName(partnerId) + " (" + partnerId + ")",
+        "Apply ONLY this partner's voice rules to the drafts below.",
+        "",
+        "VOICE RULES (JSON):",
+        JSON.stringify(notes, null, 2),
+        "",
+        "CURRENT DRAFTS (JSON):",
+        JSON.stringify(snapshotSequenceDrafts(fields), null, 2)
+      ].join("\n");
+      try {
+        var response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true"
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            max_tokens: 2200,
+            system: VOICE_APPLY_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: userMessage }]
+          })
+        });
+        var rawText = await response.text();
+        var data = null;
+        try { data = JSON.parse(rawText); } catch (e) { data = null; }
+        if (!response.ok) return fields;
+        var content = "";
+        if (data && data.content && data.content.length) {
+          content = data.content.map(function (part) { return part.text || ""; }).join("\n");
+        }
+        var parsed = parseDraftOnlyFields(content || rawText || "");
+        if (!parsed.ok || !parsed.fields) return fields;
+        for (var n = 1; n <= 4; n++) {
+          var sk = "draft_" + n + "_subject";
+          var bk = "draft_" + n + "_body";
+          if (parsed.fields[sk]) fields[sk] = stripEmDashes(parsed.fields[sk]);
+          if (parsed.fields[bk]) fields[bk] = stripEmDashes(parsed.fields[bk]);
+        }
+        fields.voice_memory_applied = partnerId + ":" + partnerDisplayName(partnerId);
+        return fields;
+      } catch (err) {
+        return fields;
+      }
+    }
+
     var WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
     // Structured Black Gavel sequence (source of truth for Go drafts). Prefer this over agent prose.
+    // Subjects may say "CRO hire"; body copy addresses the recipient as the hire when they are the person who moved.
     const BLACK_GAVEL_TEMPLATES = {
       "CRO / CEO / Founder": [
         {
-          subject: "Congrats on {{CV1}}, quick note from Black Gavel",
+          subject: "Congrats on the {{CV1}}, quick note from Black Gavel",
           signoff: "Chad",
           paragraphs: [
-            "Congrats on {{CV1}} at {{company}}. {{CV2}}.",
+            "Congrats on your recent move to {{company}}.",
             "If you are building out key seats behind that move, we help growth-stage legaltech teams like yours hire revenue and leadership talent without the usual noise."
           ]
         },
         {
-          subject: "{{company}}, how peers fill seats after {{CV1}}",
+          subject: "{{company}}, how peers fill seats after the {{CV1}}",
           signoff: "Chad",
           paragraphs: [
-            "Following up on {{CV1}} at {{company}}. Teams in your stage often need one or two critical hires within 60-90 days of a move like that.",
+            "Following up on your move to {{company}}. Teams in your stage often need one or two critical hires within 60-90 days of a move like that.",
             "We run scoped searches so you stay focused on the business, not inbox noise."
           ]
         },
         {
-          subject: "Quick bump, {{company}} hiring after {{CV1}}",
+          subject: "Quick bump, {{company}} hiring after the {{CV1}}",
           signoff: "CD",
           paragraphs: [
-            "Short bump in case the timing was off. Happy to share a one-pager on how we staff revenue and leadership roles after events like {{CV1}}.",
+            "Short bump in case the timing was off. Happy to share a one-pager on how we staff revenue and leadership roles after your move.",
             "No pitch deck required. Just a short conversation if useful."
           ]
         },
@@ -1119,31 +1546,31 @@ body {
           subject: "Closing the loop on {{company}}",
           signoff: "CD",
           paragraphs: [
-            "I will close the loop on outreach about {{CV1}} at {{company}}. If hiring becomes urgent later, we are easy to reopen."
+            "I will close the loop on outreach about your move to {{company}}. If hiring becomes urgent later, we are easy to reopen."
           ]
         }
       ],
       "Head of Talent and HR": [
         {
-          subject: "{{CV1}} at {{company}}",
+          subject: "The {{CV1}} at {{company}}",
           signoff: "Chad",
           paragraphs: [
-            "Saw {{CV1}} at {{company}}. {{CV2}}.",
+            "Saw the {{CV1}} at {{company}}. {{CV2}}",
             "We partner with talent leaders at 50-350 person companies to fill critical roles quickly when the business just shifted."
           ]
         },
         {
-          subject: "Capacity after {{CV1}} at {{company}}",
+          subject: "Capacity after the {{CV1}} at {{company}}",
           signoff: "Chad",
           paragraphs: [
-            "After {{CV1}}, TA bandwidth often gets pulled into urgent reqs. We can take a scoped search so your team stays on core priorities."
+            "After the {{CV1}}, TA bandwidth often gets pulled into urgent reqs. We can take a scoped search so your team stays on core priorities."
           ]
         },
         {
           subject: "Bump, support for {{company}} hiring",
           signoff: "CD",
           paragraphs: [
-            "Quick bump on help after {{CV1}}. If you already have coverage, all good. Otherwise I can send a short approach note."
+            "Quick bump on help after the {{CV1}}. If you already have coverage, all good. Otherwise I can send a short approach note."
           ]
         },
         {
@@ -1156,10 +1583,10 @@ body {
       ],
       "Talent Acquisition": [
         {
-          subject: "Support for {{company}} after {{CV1}}",
+          subject: "Support for {{company}} after the {{CV1}}",
           signoff: "Chad",
           paragraphs: [
-            "Noting {{CV1}} at {{company}}. {{CV2}}.",
+            "Noting the {{CV1}} at {{company}}. {{CV2}}",
             "If bandwidth is tight, we can take a scoped search so your team stays focused on core reqs."
           ]
         },
@@ -1167,14 +1594,14 @@ body {
           subject: "Scoped search option for {{company}}",
           signoff: "Chad",
           paragraphs: [
-            "Following up on {{CV1}}. A common pattern is one hard-to-fill role plus overflow from the event. We can own that seat end to end."
+            "Following up on the {{CV1}}. A common pattern is one hard-to-fill role plus overflow from the event. We can own that seat end to end."
           ]
         },
         {
           subject: "Bump, {{company}} TA support",
           signoff: "CD",
           paragraphs: [
-            "Short bump in case req load spiked after {{CV1}}. I can send a one-page intake if useful."
+            "Short bump in case req load spiked after the {{CV1}}. I can send a one-page intake if useful."
           ]
         },
         {
@@ -1187,22 +1614,22 @@ body {
       ],
       "Hiring Manager": [
         {
-          subject: "{{company}}, {{CV1}}",
+          subject: "{{company}}, the {{CV1}}",
           signoff: "Chad",
           paragraphs: [
-            "Congrats on the recent {{CV1}} news at {{company}}. {{CV2}}.",
+            "Congrats on the recent {{CV1}} news at {{company}}. {{CV2}}",
             "If hiring is on your plate because of it, we can help quietly and quickly."
           ]
         },
         {
-          subject: "Roles opening after {{CV1}} at {{company}}",
+          subject: "Roles opening after the {{CV1}} at {{company}}",
           signoff: "Chad",
           paragraphs: [
-            "Often one announcement like {{CV1}} creates two or three downstream seats. We can help you fill without a loud process."
+            "Often one announcement like the {{CV1}} creates two or three downstream seats. We can help you fill without a loud process."
           ]
         },
         {
-          subject: "Bump, hiring after {{CV1}}",
+          subject: "Bump, hiring after the {{CV1}}",
           signoff: "CD",
           paragraphs: [
             "Quick bump. If timing is better now for {{company}}, I am happy to share how we run a quiet search."
@@ -1212,7 +1639,7 @@ body {
           subject: "Closing the loop, {{company}}",
           signoff: "CD",
           paragraphs: [
-            "Closing the loop on {{CV1}} outreach. Ping anytime if a hire becomes urgent."
+            "Closing the loop on the {{CV1}} outreach. Ping anytime if a hire becomes urgent."
           ]
         }
       ]
@@ -1231,8 +1658,11 @@ body {
       var type = String(ev && ev.event_type || "").toLowerCase();
       var summary = String(ev && ev.event_summary || "");
       if (type === "executive_hire") {
-        var role = summary.match(/\b(CRO|CEO|CFO|COO|VP(?: of)? [A-Za-z ]+|Head of [A-Za-z ]+|Founder)\b/i);
-        return role ? role[1].replace(/\s+/g, " ").trim() + " hire" : "executive hire";
+        // Stop at the role only (VP Sales), not "VP Sales after seed extension".
+        var rolePat = "(CRO|CEO|CFO|COO|Founder|VP(?:\\s+of)?\\s+[A-Za-z]+|Head of [A-Za-z]+)";
+        var asRole = summary.match(new RegExp("\\bas\\s+" + rolePat + "\\b", "i"));
+        var role = asRole || summary.match(new RegExp("\\b" + rolePat + "\\b", "i"));
+        return role ? String(role[1]).replace(/\s+/g, " ").trim() + " hire" : "executive hire";
       }
       if (type === "funding_round") {
         var round = summary.match(/Series\s+[A-Z]|seed|growth round|IPO/i);
@@ -1245,14 +1675,15 @@ body {
     }
 
     function cv2FromEventDate(eventDate) {
-      if (!eventDate) return "Recently";
+      // Full sentence for templates that end "... at {{company}}. {{CV2}}"
+      if (!eventDate) return "This is recent news.";
       var d = new Date(String(eventDate) + "T12:00:00");
-      if (isNaN(d.getTime())) return "Recently";
+      if (isNaN(d.getTime())) return "This is recent news.";
       var days = Math.round((Date.now() - d.getTime()) / 86400000);
-      if (days <= 3) return "Just this week";
-      if (days <= 7) return "Last week";
-      if (days <= 21) return "Recently";
-      return "In the last few weeks";
+      if (days <= 3) return "This just landed this week.";
+      if (days <= 7) return "This came through last week.";
+      if (days <= 21) return "This is recent news.";
+      return "This landed in the last few weeks.";
     }
 
     function fillTokens(text, tokens) {
@@ -1305,14 +1736,19 @@ body {
 
     function resolveBusinessDayTargets(now, timeZone) {
       var p = partsInTimeZone(now || new Date(), timeZone);
-      var tomorrow = addBusinessDays(p.year, p.month, p.day, 1);
+      var calendarTomorrow = addCalendarDays(p.year, p.month, p.day, 1);
+      var nextBiz = addBusinessDays(p.year, p.month, p.day, 1);
       var two = addBusinessDays(p.year, p.month, p.day, 2);
+      var calendarTomorrowIsBusiness = calendarTomorrow.weekday !== 0 && calendarTomorrow.weekday !== 6;
       return {
         timezone: timeZone || "America/New_York",
         local_hour: p.hour,
         local_minute: p.minute,
         today_weekday: WEEKDAY_NAMES[p.weekday],
-        tomorrow_day_of_week: WEEKDAY_NAMES[tomorrow.weekday],
+        // "tomorrow" in CTA copy only when the next calendar day is a weekday (policy: Fri → Mon/Tue).
+        tomorrow_is_business_day: calendarTomorrowIsBusiness,
+        tomorrow_day_of_week: WEEKDAY_NAMES[nextBiz.weekday],
+        next_working_day: WEEKDAY_NAMES[nextBiz.weekday],
         two_working_days: WEEKDAY_NAMES[two.weekday],
         evening_cta_eligible: p.hour < 14
       };
@@ -1335,10 +1771,17 @@ body {
 
     function buildCtaSession(now, timeZone) {
       var resolved = resolveBusinessDayTargets(now, timeZone);
-      var basePool = [
-        "Can I call you tomorrow or " + resolved.two_working_days + "?",
-        "Are you available tomorrow afternoon, " + resolved.tomorrow_day_of_week + "?"
-      ];
+      var nextDay = resolved.next_working_day || resolved.tomorrow_day_of_week;
+      var twoDay = resolved.two_working_days;
+      var basePool = resolved.tomorrow_is_business_day
+        ? [
+          "Can I call you tomorrow or " + twoDay + "?",
+          "Are you available tomorrow afternoon, " + nextDay + "?"
+        ]
+        : [
+          "Can I call you " + nextDay + " or " + twoDay + "?",
+          "Are you available " + nextDay + " afternoon?"
+        ];
       var evening = "Are you around this evening for 10 minutes?";
       // Email 1 only may use evening CTA, and only before 2pm Eastern.
       var pool1 = basePool.slice();
@@ -1364,7 +1807,9 @@ body {
         timezone_source: "default_eastern_when_unknown",
         local_hour: resolved.local_hour,
         evening_cta_eligible: resolved.evening_cta_eligible,
+        tomorrow_is_business_day: resolved.tomorrow_is_business_day,
         tomorrow_day_of_week: resolved.tomorrow_day_of_week,
+        next_working_day: resolved.next_working_day,
         two_working_days: resolved.two_working_days,
         eligible_pool_email_1: pool1,
         eligible_pool_followups: poolFollow,
@@ -1423,13 +1868,25 @@ body {
       if (decision !== "go") return fields;
       var contact = {
         first_name: String(fields.poc_name || "").trim().split(/\s+/)[0] || "",
+        last_name: String(fields.poc_name || "").trim().split(/\s+/).slice(1).join(" ") || "",
         title: fields.poc_title || fields.persona_assigned || ""
       };
-      if ((!contact.first_name || !contact.title) && ev) {
+      if (ev) {
         var rows = contactsForCompany(ev.company_id);
-        if (rows[0]) {
-          if (!contact.first_name) contact.first_name = rows[0].first_name;
-          if (!contact.title) contact.title = rows[0].title;
+        var match = null;
+        var poc = String(fields.poc_name || "").trim().toLowerCase();
+        for (var i = 0; i < rows.length; i++) {
+          var full = (rows[i].first_name + " " + rows[i].last_name).trim().toLowerCase();
+          if (poc && full === poc) {
+            match = rows[i];
+            break;
+          }
+        }
+        if (!match && rows[0]) match = rows[0];
+        if (match) {
+          if (!contact.first_name) contact.first_name = match.first_name;
+          if (!contact.last_name) contact.last_name = match.last_name;
+          if (!contact.title) contact.title = match.title;
         }
       }
       var built = buildBlackGavelSequence(ev, contact, ctaSession || buildCtaSession(new Date(), "America/New_York"));
@@ -1457,6 +1914,8 @@ body {
         preferred_contact: contact,
         company_contacts: companyContacts,
         company_status: status,
+        partner_id: partnerIdForCase(ev),
+        partner_display_name: partnerDisplayName(partnerIdForCase(ev)),
         prequalified_match: whitelist,
         prequalified_whitelist: PREQUALIFIED_WHITELIST,
         // Pre-loaded Hunter.io response shape (same fields as live Email Finder). Not a live API call in this prototype.
@@ -2221,17 +2680,27 @@ body {
         stateEl.textContent = "Human action: editing sequence… save to complete";
       });
 
-      gate.querySelector(".btn-save-edit").addEventListener("click", function () {
+      gate.querySelector(".btn-save-edit").addEventListener("click", async function () {
+        var beforeSnap = snapshotSequenceDrafts(fields);
         for (var n = 1; n <= 4; n++) {
           var s = gate.querySelector(".edit-subject-" + n);
           var b = gate.querySelector(".edit-body-" + n);
           fields["draft_" + n + "_subject"] = s ? stripEmDashes(s.value) : "";
           fields["draft_" + n + "_body"] = b ? stripEmDashes(b.value) : "";
         }
+        var afterSnap = snapshotSequenceDrafts(fields);
         fields.approval_status = "Edited";
         resultEl._lastFields = fields;
         renderSequenceDrafts(resultEl, fields);
-        markComplete("Edit", "sequence edited; full 4-email sandbox route authorized (no live send)");
+        var partnerId = partnerIdForCase(ev);
+        var saveBtn = gate.querySelector(".btn-save-edit");
+        if (saveBtn) saveBtn.disabled = true;
+        stateEl.textContent = "Human action: saving edit and learning " + partnerDisplayName(partnerId) + "'s voice…";
+        var coach = await coachVoiceFromEdit(partnerId, beforeSnap, afterSnap, ev);
+        var learnDetail = coach.ok
+          ? ("voice memory updated for " + partnerDisplayName(partnerId) + " (" + (coach.notes || []).length + " rule(s))")
+          : ("voice coach skipped: " + (coach.detail || "unavailable"));
+        markComplete("Edit", "sequence edited; " + learnDetail + "; sandbox route authorized (no live send)");
       });
 
       gate.querySelector(".btn-escalate").addEventListener("click", function () {
@@ -2357,6 +2826,21 @@ body {
         }
         content = content || rawText || "";
         renderParsedResult(resultEl, content, ev);
+        if (resultEl._lastFields && hasGoDecision(resultEl._lastFields) && voiceNotesForPartner(partnerIdForCase(ev)).length) {
+          var voiceNote = document.createElement("p");
+          voiceNote.className = "card-meta";
+          voiceNote.textContent = "Applying " + partnerDisplayName(partnerIdForCase(ev)) + "'s voice memory…";
+          resultEl.appendChild(voiceNote);
+          await applyVoiceMemoryToFields(resultEl._lastFields, ev);
+          renderSequenceDrafts(resultEl, resultEl._lastFields);
+          if (voiceNote.parentNode) voiceNote.remove();
+          var applied = document.createElement("p");
+          applied.className = "card-meta";
+          applied.textContent = "Voice memory applied for " + partnerDisplayName(partnerIdForCase(ev)) + " only.";
+          var seqWrap = resultEl.querySelector(".sequence-wrap");
+          if (seqWrap && seqWrap.parentNode) seqWrap.parentNode.insertBefore(applied, seqWrap);
+          else resultEl.appendChild(applied);
+        }
         updateRowSummary(ev.case_id, resultEl._lastFields);
         await runReviewerAgent(ev, resultEl, null);
         wireHumanGate(resultEl, ev);
@@ -3105,6 +3589,7 @@ body {
 
     refreshKeyStatus();
     renderRunLog();
+    wireVoiceMemoryPanel();
 
     if (CANDIDATE_EVENTS.length) toggleRow(CANDIDATE_EVENTS[0].case_id);
 </script>
