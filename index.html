@@ -725,7 +725,7 @@ body {
                 <strong>Data contract:</strong> The agent only sees the embedded candidate events, company profiles, ICP contacts, pre-qualified whitelist, and company status in this file’s exact shape. Live CRM, ATS, or free-form paste is not supported.
               </li>
               <li>
-                <strong>Lookups and send:</strong> Event research cites Exa.ai. Email and LinkedIn cite Hunter.io. This prototype uses pre-loaded Exa.ai and Hunter.io responses in the same shape as the live APIs (no LinkedIn scraping). Nothing leaves the console without human Approve, and approved sends route to sandbox only.
+                <strong>Lookups and send:</strong> Event research cites Exa.ai. Email and LinkedIn cite Hunter.io. Capstone eval cases use pre-loaded stand-ins. Pilot cases CE-L01–CE-L04 are live Exa public news loaded into the queue; Hunter email is not wired yet (blank email expected). Nothing leaves without human Approve; approved sends route to sandbox only.
               </li>
               <li>
                 <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Preferred-vs-alternate email checks cover only contacts already listed in icp_contacts; people not in that file are invisible.
@@ -804,7 +804,12 @@ body {
       { case_id: "CE-17", company_id: "CO-17", company_name: "Floating Legal", domain: "floatinglegal.example", event_type: "executive_hire", event_summary: "Hired new CRO Quinn Hale to expand mid-market legal software sales", event_date: "2026-07-21", source_url: "https://news.example/floating-legal-cro", sector: "legaltech", employee_count: 88, revenue_estimate_mm: 19, vc_pe_backed: "yes", ta_headcount: 1, entity_note: "prequalified whitelist" },
       { case_id: "CE-18", company_id: "CO-18", company_name: "Cataract Legal LLC", domain: "cataractlegal.example", event_type: "funding_round", event_summary: "Closed Series A of $18M to scale e-discovery workflows", event_date: "2026-07-20", source_url: "https://news.example/cataract-legal-series-a", sector: "legaltech", employee_count: 130, revenue_estimate_mm: 27, vc_pe_backed: "yes", ta_headcount: 2, entity_note: "prequalified whitelist" },
       { case_id: "CE-19", company_id: "CO-19", company_name: "Frame Em LLC", domain: "frameem.example", event_type: "strategic_partnership", event_summary: "Announced partnership with Harbor Docket for e-filing onboarding", event_date: "2026-07-19", source_url: "https://news.example/frame-em-partnership", sector: "legaltech", employee_count: 160, revenue_estimate_mm: 33, vc_pe_backed: "yes", ta_headcount: 1, entity_note: "prequalified whitelist" },
-      { case_id: "CE-20", company_id: "CO-20", company_name: "Plunge Inc.", domain: "plunge.example", event_type: "executive_hire", event_summary: "Appointed Reese Lang as VP Sales after seed extension", event_date: "2026-07-18", source_url: "https://news.example/plunge-vp-sales", sector: "legaltech", employee_count: 42, revenue_estimate_mm: 12, vc_pe_backed: "yes", ta_headcount: 1, entity_note: "prequalified whitelist; below classic ICP size/revenue" }
+      { case_id: "CE-20", company_id: "CO-20", company_name: "Plunge Inc.", domain: "plunge.example", event_type: "executive_hire", event_summary: "Appointed Reese Lang as VP Sales after seed extension", event_date: "2026-07-18", source_url: "https://news.example/plunge-vp-sales", sector: "legaltech", employee_count: 42, revenue_estimate_mm: 12, vc_pe_backed: "yes", ta_headcount: 1, entity_note: "prequalified whitelist; below classic ICP size/revenue" },
+      // Live Exa pilot batch (2026-08-04). Real public events. Emails blank until Hunter is wired.
+      { case_id: "CE-L01", company_id: "CO-L01", company_name: "Discern", domain: "discern.com", event_type: "funding_round", event_summary: "Closed $10M Series A led by Walkabout Ventures and Bungalow Capital to expand legal entity management and registered agent automation; plans to hire across engineering and operations", event_date: "2026-07-29", source_url: "https://www.law.com/legaltechnews/2026/07/29/legal-entity-management-platform-discern-announces-10m-in-series-a-funding/", sector: "legaltech", employee_count: 85, revenue_estimate_mm: null, vc_pe_backed: "yes", ta_headcount: 1, entity_note: "live_exa_pilot; headcount estimated from Series A growth stage; Hunter email not wired yet", live_exa: true },
+      { case_id: "CE-L02", company_id: "CO-L02", company_name: "Wordsmith AI", domain: "wordsmith.ai", event_type: "funding_round", event_summary: "Raised $70M Series B (total funding about $100M) to scale the in-house legal operations platform; hiring across US, UK, and EMEA; CRO Tim Dorris active on the announcement", event_date: "2026-06-03", source_url: "https://www.wordsmith.ai/blog/wordsmith-ai-raises-70-million-series-b", sector: "legaltech", employee_count: 95, revenue_estimate_mm: null, vc_pe_backed: "yes", ta_headcount: 1, entity_note: "live_exa_pilot; headcount from public signals (~90-100, scaling toward 300); Hunter email not wired yet", live_exa: true },
+      { case_id: "CE-L03", company_id: "CO-L03", company_name: "Jusfy", domain: "jusfy.com.br", event_type: "funding_round", event_summary: "Closed $15M Series A led by Quona Capital with Thomson Reuters Ventures and The LegalTech Fund; AI-native legal OS for Brazilian lawyers; ~86 employees", event_date: "2026-07-23", source_url: "https://www.law.com/legaltechnews/2026/07/23/brazilian-legal-tech-startup-jusfy-announces-15m-series-a-backed-by-thomson-reuters-and-the-legaltech-fund-/", sector: "legaltech", employee_count: 86, revenue_estimate_mm: null, vc_pe_backed: "yes", ta_headcount: 1, entity_note: "live_exa_pilot; Brazil HQ; Hunter email not wired yet", live_exa: true },
+      { case_id: "CE-L04", company_id: "CO-L04", company_name: "Entegrata", domain: "entegrata.com", event_type: "executive_hire", event_summary: "Appointed Andrew Baker as Chief AI and Data Strategy Officer (from Simpson Thacher) to lead AI enablement for law-firm data lakehouse customers", event_date: "2026-07-23", source_url: "https://www.prnewswire.com/news-releases/entegrata-names-andrew-baker-chief-ai--data-strategy-officer-to-guide-law-firms-through-the-ai-era-302832570.html", sector: "legaltech", employee_count: 70, revenue_estimate_mm: null, vc_pe_backed: "yes", ta_headcount: 1, entity_note: "live_exa_pilot; headcount estimated; Hunter email not wired yet", live_exa: true }
     ];
 
     const COMPANY_PROFILES = [
@@ -828,7 +833,11 @@ body {
       { company_id: "CO-17", company_name: "Floating Legal", domain: "floatinglegal.example", sector: "legaltech", employee_count: 88, revenue_estimate_mm: 19, vc_pe_backed: "yes", ta_headcount: 1, status: "no_prior_contact", notes: "On pre-qualified whitelist; skip ICP re-score" },
       { company_id: "CO-18", company_name: "Cataract Legal LLC", domain: "cataractlegal.example", sector: "legaltech", employee_count: 130, revenue_estimate_mm: 27, vc_pe_backed: "yes", ta_headcount: 2, status: "no_prior_contact", notes: "On pre-qualified whitelist; skip ICP re-score" },
       { company_id: "CO-19", company_name: "Frame Em LLC", domain: "frameem.example", sector: "legaltech", employee_count: 160, revenue_estimate_mm: 33, vc_pe_backed: "yes", ta_headcount: 1, status: "no_prior_contact", notes: "On pre-qualified whitelist; skip ICP re-score" },
-      { company_id: "CO-20", company_name: "Plunge Inc.", domain: "plunge.example", sector: "legaltech", employee_count: 42, revenue_estimate_mm: 12, vc_pe_backed: "yes", ta_headcount: 1, status: "no_prior_contact", notes: "On whitelist; below classic ICP size/revenue — must still Go via whitelist bypass when event+email clear" }
+      { company_id: "CO-20", company_name: "Plunge Inc.", domain: "plunge.example", sector: "legaltech", employee_count: 42, revenue_estimate_mm: 12, vc_pe_backed: "yes", ta_headcount: 1, status: "no_prior_contact", notes: "On whitelist; below classic ICP size/revenue — must still Go via whitelist bypass when event+email clear" },
+      { company_id: "CO-L01", company_name: "Discern", domain: "discern.com", sector: "legaltech", employee_count: 85, revenue_estimate_mm: null, vc_pe_backed: "yes", ta_headcount: 1, status: "no_prior_contact", notes: "Live Exa pilot; Series A July 2026; email pending Hunter" },
+      { company_id: "CO-L02", company_name: "Wordsmith AI", domain: "wordsmith.ai", sector: "legaltech", employee_count: 95, revenue_estimate_mm: null, vc_pe_backed: "yes", ta_headcount: 1, status: "no_prior_contact", notes: "Live Exa pilot; Series B June 2026; email pending Hunter" },
+      { company_id: "CO-L03", company_name: "Jusfy", domain: "jusfy.com.br", sector: "legaltech", employee_count: 86, revenue_estimate_mm: null, vc_pe_backed: "yes", ta_headcount: 1, status: "no_prior_contact", notes: "Live Exa pilot; Series A July 2026; email pending Hunter" },
+      { company_id: "CO-L04", company_name: "Entegrata", domain: "entegrata.com", sector: "legaltech", employee_count: 70, revenue_estimate_mm: null, vc_pe_backed: "yes", ta_headcount: 1, status: "no_prior_contact", notes: "Live Exa pilot; executive hire July 2026; email pending Hunter" }
     ];
 
     const PREQUALIFIED_WHITELIST = [
@@ -860,7 +869,11 @@ body {
       { contact_id: "CT-17", company_id: "CO-17", first_name: "Quinn", last_name: "Hale", title: "CRO", email: "quinn.hale@floatinglegal.example", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/quinn-hale" },
       { contact_id: "CT-18", company_id: "CO-18", first_name: "Sasha", last_name: "Ortiz", title: "CEO", email: "sasha.ortiz@cataractlegal.example", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/sasha-ortiz" },
       { contact_id: "CT-19", company_id: "CO-19", first_name: "Devon", last_name: "Blake", title: "Head of Talent", email: "devon.blake@frameem.example", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/devon-blake" },
-      { contact_id: "CT-20", company_id: "CO-20", first_name: "Reese", last_name: "Lang", title: "VP Sales", email: "reese.lang@plunge.example", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/reese-lang" }
+      { contact_id: "CT-20", company_id: "CO-20", first_name: "Reese", last_name: "Lang", title: "VP Sales", email: "reese.lang@plunge.example", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/reese-lang" },
+      { contact_id: "CT-L01", company_id: "CO-L01", first_name: "Raj", last_name: "Patel", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/raj-patel-discern" },
+      { contact_id: "CT-L02", company_id: "CO-L02", first_name: "Tim", last_name: "Dorris", title: "CRO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/timdorris" },
+      { contact_id: "CT-L03", company_id: "CO-L03", first_name: "Rafael", last_name: "Bagolin", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/rafael-saccol-bagolin" },
+      { contact_id: "CT-L04", company_id: "CO-L04", first_name: "Andrew", last_name: "Baker", title: "Chief AI and Data Strategy Officer", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/andrew-baker" }
     ];
 
     const COMPANY_STATUS = [
@@ -872,7 +885,11 @@ body {
       { company_name: "Floating Legal", domain: "floatinglegal.example", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_c", notes: "Pre-qualified whitelist" },
       { company_name: "Cataract Legal LLC", domain: "cataractlegal.example", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_c", notes: "Pre-qualified whitelist" },
       { company_name: "Frame Em LLC", domain: "frameem.example", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_n", notes: "Pre-qualified whitelist" },
-      { company_name: "Plunge Inc.", domain: "plunge.example", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_n", notes: "Pre-qualified whitelist" }
+      { company_name: "Plunge Inc.", domain: "plunge.example", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_n", notes: "Pre-qualified whitelist" },
+      { company_name: "Discern", domain: "discern.com", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_c", notes: "Live Exa pilot" },
+      { company_name: "Wordsmith AI", domain: "wordsmith.ai", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_n", notes: "Live Exa pilot" },
+      { company_name: "Jusfy", domain: "jusfy.com.br", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_c", notes: "Live Exa pilot" },
+      { company_name: "Entegrata", domain: "entegrata.com", status: "no_prior_contact", last_interaction_date: "", partner_id: "partner_n", notes: "Live Exa pilot" }
     ];
 
     const PRIOR_SENDS = [
@@ -907,7 +924,11 @@ body {
         { company_id: "CO-17", contact_id: "CT-17", works_at_company: true },
         { company_id: "CO-18", contact_id: "CT-18", works_at_company: true },
         { company_id: "CO-19", contact_id: "CT-19", works_at_company: true },
-        { company_id: "CO-20", contact_id: "CT-20", works_at_company: true }
+        { company_id: "CO-20", contact_id: "CT-20", works_at_company: true },
+        { company_id: "CO-L01", contact_id: "CT-L01", works_at_company: true },
+        { company_id: "CO-L02", contact_id: "CT-L02", works_at_company: true },
+        { company_id: "CO-L03", contact_id: "CT-L03", works_at_company: true },
+        { company_id: "CO-L04", contact_id: "CT-L04", works_at_company: true }
       ]
     };
 
@@ -1929,7 +1950,10 @@ body {
           source: "exa.ai",
           event_summary: ev.event_summary,
           event_source_url: ev.source_url,
-          note: "Pre-loaded Exa.ai research result for this candidate event."
+          live_exa: !!ev.live_exa,
+          note: ev.live_exa
+            ? "Live Exa.ai pilot result loaded into the queue (public news). Hunter.io email lookup not wired yet; blank email is expected."
+            : "Pre-loaded Exa.ai research result for this candidate event."
         },
         cta_session: ctaSession,
         prior_sends: PRIOR_SENDS,
@@ -3057,7 +3081,8 @@ body {
       companyEl.className = "q-company";
       companyEl.innerHTML =
         '<span class="q-case">' + escapeHtml(ev.case_id) + "</span>" +
-        escapeHtml(ev.company_name);
+        escapeHtml(ev.company_name) +
+        (ev.live_exa ? ' <span class="badge warn">Live Exa</span>' : "");
       var pocEl = document.createElement("div");
       pocEl.className = "q-poc";
       pocEl.textContent = initialPocName(ev);
@@ -3132,7 +3157,11 @@ body {
       { case_id: "CE-20", label: "Whitelist bypass" },
       { case_id: "CE-17", label: "Whitelist · Floating Legal" },
       { case_id: "CE-18", label: "Whitelist · Cataract Legal" },
-      { case_id: "CE-19", label: "Whitelist · Frame Em" }
+      { case_id: "CE-19", label: "Whitelist · Frame Em" },
+      { case_id: "CE-L01", label: "Live Exa · Discern" },
+      { case_id: "CE-L02", label: "Live Exa · Wordsmith" },
+      { case_id: "CE-L03", label: "Live Exa · Jusfy" },
+      { case_id: "CE-L04", label: "Live Exa · Entegrata" }
     ];
 
     (function buildDemoChips() {
