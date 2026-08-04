@@ -1,0 +1,9 @@
+name = "warm-reception-hunter"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+# After deploy:
+#   npx wrangler secret put HUNTER_API_KEY
+#   (paste your Hunter Email Finder key when prompted)
+# Then put the worker URL into Warm Reception Settings → Hunter proxy URL
+# Example: https://warm-reception-hunter.<your-subdomain>.workers.dev

@@ -458,7 +458,8 @@ body {
 
 /* Prompt 10 console chrome — token vars only */
 .topbar .settings { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.topbar input[type="password"] {
+.topbar input[type="password"],
+.topbar input[type="url"] {
   background: var(--bg-inset); color: var(--ink);
   border: var(--border-w) solid var(--line); border-radius: var(--radius-sm);
   padding: 6px 10px; font-family: var(--font-body); font-size: var(--fs-0); width: 11rem;
@@ -547,10 +548,16 @@ body {
     <button type="button" class="btn primary" id="run-all-btn">Run All</button>
     <span class="meta" id="run-all-progress"></span>
     <div class="settings">
-      <input id="api-key" type="password" autocomplete="off" aria-label="API key" />
+      <input id="api-key" type="password" autocomplete="off" aria-label="Anthropic API key" placeholder="Anthropic API key" />
       <button type="button" class="btn" id="save-key">Save</button>
       <button type="button" class="btn" id="clear-key">Clear</button>
-      <span class="key-status" id="key-status">No key saved</span>
+      <span class="key-status" id="key-status">No Anthropic key</span>
+      <input id="hunter-key" type="password" autocomplete="off" aria-label="Hunter Email Finder API key" placeholder="Hunter Email Finder key" />
+      <button type="button" class="btn" id="save-hunter-key">Save Hunter</button>
+      <button type="button" class="btn" id="clear-hunter-key">Clear Hunter</button>
+      <span class="key-status" id="hunter-key-status">No Hunter key</span>
+      <input id="hunter-proxy-url" type="url" autocomplete="off" aria-label="Hunter proxy URL" placeholder="Hunter proxy URL (required on Pages)" />
+      <button type="button" class="btn" id="save-hunter-proxy">Save proxy</button>
     </div>
   </header>
 
@@ -725,7 +732,7 @@ body {
                 <strong>Data contract:</strong> The agent only sees the embedded candidate events, company profiles, ICP contacts, pre-qualified whitelist, and company status in this file’s exact shape. Live CRM, ATS, or free-form paste is not supported.
               </li>
               <li>
-                <strong>Lookups and send:</strong> Event research cites Exa.ai. Email and LinkedIn cite Hunter.io. Capstone eval cases use pre-loaded stand-ins. Pilot cases CE-L01–CE-L04 are live Exa public news loaded into the queue; Hunter email is not wired yet (blank email expected). Nothing leaves without human Approve; approved sends route to sandbox only.
+                <strong>Lookups and send:</strong> Event research cites Exa.ai. Email lookup uses Hunter.io Email Finder when a contact email is blank. GitHub Pages cannot call Hunter directly (CORS); save a Hunter proxy URL in Settings (see hunter-proxy/) or enrich offline. Capstone eval cases still use embedded stand-ins. Nothing leaves without human Approve; approved sends route to sandbox only.
               </li>
               <li>
                 <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Preferred-vs-alternate email checks cover only contacts already listed in icp_contacts; people not in that file are invisible.
@@ -753,6 +760,8 @@ body {
   <script>
     const MODEL = "claude-sonnet-4-5";
     const API_KEY_STORAGE = "warm_reception_anthropic_api_key";
+    const HUNTER_KEY_STORAGE = "warm_reception_hunter_email_finder_key";
+    const HUNTER_PROXY_STORAGE = "warm_reception_hunter_proxy_url";
     const EVAL_RESULTS_STORAGE = "warm_reception_eval_results_v3";
     const VOICE_MEMORY_STORAGE = "warm_reception_voice_memory_v1";
     var RUN_LOG = [];
@@ -1150,6 +1159,100 @@ body {
         if (domain && row.domain === domain) return row;
       }
       return null;
+    }
+
+    /**
+     * Hunter Email Finder. Pages cannot call api.hunter.io directly (CORS).
+     * Prefer a proxy URL (Cloudflare Worker) that holds the server-side key.
+     * Direct browser calls with a local key are attempted only as a fallback (usually fail on GitHub Pages).
+     */
+    async function enrichContactEmailWithHunter(contact, domain) {
+      if (!contact) return { ok: false, detail: "no_contact", contact: contact };
+      if (String(contact.email || "").trim()) {
+        return { ok: true, detail: "already_had_email", contact: contact, skipped: true };
+      }
+      var first = String(contact.first_name || "").trim();
+      var last = String(contact.last_name || "").trim();
+      var dom = String(domain || "").trim();
+      if (!dom || (!first && !last && !contact.linkedin_url)) {
+        return { ok: false, detail: "missing_name_or_domain", contact: contact };
+      }
+
+      var proxyBase = (localStorage.getItem(HUNTER_PROXY_STORAGE) || "").trim().replace(/\/$/, "");
+      var hunterKey = (localStorage.getItem(HUNTER_KEY_STORAGE) || "").trim();
+      var url;
+      var headers = { "accept": "application/json" };
+
+      if (proxyBase) {
+        var q = new URLSearchParams();
+        if (dom) q.set("domain", dom);
+        if (first) q.set("first_name", first);
+        if (last) q.set("last_name", last);
+        if (contact.linkedin_url) q.set("linkedin_handle", String(contact.linkedin_url).replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//i, "").replace(/\/$/, ""));
+        url = proxyBase + "/email-finder?" + q.toString();
+      } else if (hunterKey) {
+        var q2 = new URLSearchParams();
+        q2.set("api_key", hunterKey);
+        if (dom) q2.set("domain", dom);
+        if (first) q2.set("first_name", first);
+        if (last) q2.set("last_name", last);
+        url = "https://api.hunter.io/v2/email-finder?" + q2.toString();
+      } else {
+        return { ok: false, detail: "no_hunter_key_or_proxy", contact: contact };
+      }
+
+      try {
+        var response = await fetch(url, { method: "GET", headers: headers });
+        var rawText = await response.text();
+        var data = null;
+        try { data = JSON.parse(rawText); } catch (e) { data = null; }
+        if (!response.ok) {
+          var msg = data && data.errors ? JSON.stringify(data.errors) : rawText.slice(0, 160);
+          return { ok: false, detail: "hunter_http_" + response.status + ": " + msg, contact: contact };
+        }
+        var email = data && data.data && data.data.email ? String(data.data.email).trim() : "";
+        var score = data && data.data && data.data.score != null ? data.data.score : null;
+        if (!email) {
+          return {
+            ok: true,
+            detail: "not_found",
+            contact: contact,
+            hunter: { status: "not_found", score: score, source: proxyBase ? "hunter_proxy" : "hunter.io" }
+          };
+        }
+        contact.email = email;
+        if (data.data.linkedin_url && !contact.linkedin_url) contact.linkedin_url = data.data.linkedin_url;
+        // Persist into the in-memory ICP list so later payload builds see it.
+        for (var i = 0; i < ICP_CONTACTS.length; i++) {
+          if (ICP_CONTACTS[i].contact_id === contact.contact_id) {
+            ICP_CONTACTS[i].email = email;
+            if (contact.linkedin_url) ICP_CONTACTS[i].linkedin_url = contact.linkedin_url;
+            break;
+          }
+        }
+        return {
+          ok: true,
+          detail: "found",
+          contact: contact,
+          hunter: {
+            status: "found",
+            email: email,
+            score: score,
+            source: proxyBase ? "hunter_proxy" : "hunter.io",
+            live: true
+          }
+        };
+      } catch (err) {
+        var errMsg = err && err.message ? err.message : "exception";
+        if (/Failed to fetch|NetworkError|CORS/i.test(errMsg)) {
+          return {
+            ok: false,
+            detail: "cors_or_network: Hunter cannot be called from this page without a proxy URL. Save a Hunter proxy URL in Settings, or enrich contacts offline.",
+            contact: contact
+          };
+        }
+        return { ok: false, detail: errMsg, contact: contact };
+      }
     }
 
     function partnerDisplayName(partnerId) {
@@ -1915,7 +2018,7 @@ body {
       return fields;
     }
 
-    function buildCasePayload(ev) {
+    function buildCasePayload(ev, hunterLive) {
       var profile = byCompanyId(COMPANY_PROFILES, ev.company_id);
       var companyContacts = contactsForCompany(ev.company_id);
       var contact = companyContacts[0] || null;
@@ -1927,6 +2030,19 @@ body {
           (ev.company_name.indexOf("Payette") !== -1 && p.company_name.indexOf("Payit River") !== -1) ||
           (ev.company_name.indexOf("Payette") !== -1 && p.company_id === "CO-16B");
       });
+      var hunterBlock = contact ? {
+        email: contact.email || null,
+        linkedin_url: contact.linkedin_url || null,
+        source: "hunter.io",
+        status: contact.email ? "found" : "not_found"
+      } : null;
+      if (hunterLive && hunterBlock) {
+        hunterBlock.live = !!hunterLive.live;
+        hunterBlock.score = hunterLive.score != null ? hunterLive.score : hunterBlock.score;
+        if (hunterLive.status) hunterBlock.status = hunterLive.status;
+        if (hunterLive.source) hunterBlock.source = hunterLive.source;
+        if (hunterLive.detail) hunterBlock.lookup_detail = hunterLive.detail;
+      }
       return {
         candidate_event: ev,
         company_profile: profile,
@@ -1939,20 +2055,15 @@ body {
         partner_display_name: partnerDisplayName(partnerIdForCase(ev)),
         prequalified_match: whitelist,
         prequalified_whitelist: PREQUALIFIED_WHITELIST,
-        // Pre-loaded Hunter.io response shape (same fields as live Email Finder). Not a live API call in this prototype.
-        hunter_io: contact ? {
-          email: contact.email || null,
-          linkedin_url: contact.linkedin_url || null,
-          source: "hunter.io",
-          status: contact.email ? "found" : "not_found"
-        } : null,
+        // Hunter.io Email Finder shape. Live when Settings proxy/key succeeds; otherwise embedded/blank.
+        hunter_io: hunterBlock,
         exa_ai: {
           source: "exa.ai",
           event_summary: ev.event_summary,
           event_source_url: ev.source_url,
           live_exa: !!ev.live_exa,
           note: ev.live_exa
-            ? "Live Exa.ai pilot result loaded into the queue (public news). Hunter.io email lookup not wired yet; blank email is expected."
+            ? "Live Exa.ai pilot result loaded into the queue (public news)."
             : "Pre-loaded Exa.ai research result for this candidate event."
         },
         cta_session: ctaSession,
@@ -2742,14 +2853,40 @@ body {
     async function runAgentForCase(ev, resultEl, buttonEl) {
       var key = localStorage.getItem(API_KEY_STORAGE) || "";
       if (!key) {
-        resultEl.innerHTML = '<div class="error-note">No API key saved. Paste your key in the top bar and click Save first.</div>';
+        resultEl.innerHTML = '<div class="error-note">No Anthropic API key saved. Paste your key in the top bar and click Save first.</div>';
         return { kind: "error", detail: "no_key" };
       }
       buttonEl.disabled = true;
       resultEl.innerHTML = '<span class="thinking">Running…</span>';
       var metaEl = document.getElementById("topbar-meta");
       if (metaEl) metaEl.textContent = "Running " + ev.case_id;
-      var payload = buildCasePayload(ev);
+
+      var hunterLive = null;
+      var seedContact = contactsForCompany(ev.company_id)[0] || null;
+      if (seedContact && !String(seedContact.email || "").trim()) {
+        if (metaEl) metaEl.textContent = "Hunter lookup " + ev.case_id;
+        resultEl.innerHTML = '<span class="thinking">Hunter Email Finder…</span>';
+        var enrich = await enrichContactEmailWithHunter(seedContact, ev.domain);
+        hunterLive = {
+          live: true,
+          status: enrich.hunter && enrich.hunter.status ? enrich.hunter.status : (enrich.ok && enrich.detail === "found" ? "found" : "not_found"),
+          score: enrich.hunter && enrich.hunter.score != null ? enrich.hunter.score : null,
+          source: enrich.hunter && enrich.hunter.source ? enrich.hunter.source : "hunter.io",
+          detail: enrich.detail || ""
+        };
+        if (!enrich.ok && enrich.detail && /cors_or_network|no_hunter_key_or_proxy/.test(enrich.detail)) {
+          // Continue the agent loop with blank email; surface the Hunter note in payload.
+          hunterLive.status = "not_found";
+          hunterLive.detail = enrich.detail;
+        }
+        resultEl.innerHTML = '<span class="thinking">Running…</span>';
+        if (metaEl) metaEl.textContent = "Running " + ev.case_id;
+        if (CASE_UI[ev.case_id] && CASE_UI[ev.case_id].summaryPocEl) {
+          CASE_UI[ev.case_id].summaryPocEl.textContent = initialPocName(ev);
+        }
+      }
+
+      var payload = buildCasePayload(ev, hunterLive);
       resultEl._ctaSession = payload.cta_session;
       if (CASE_UI[ev.case_id]) CASE_UI[ev.case_id]._ctaSession = payload.cta_session;
       var profile = payload.company_profile;
@@ -3590,13 +3727,33 @@ body {
     function refreshKeyStatus() {
       var saved = localStorage.getItem(API_KEY_STORAGE) || "";
       if (saved) {
-        keyStatus.textContent = "Key saved";
+        keyStatus.textContent = "Anthropic saved";
         keyInput.value = "";
-        keyInput.placeholder = "•••••••• (saved — paste to replace)";
+        keyInput.placeholder = "Anthropic ••••••••";
       } else {
-        keyStatus.textContent = "No key saved";
-        keyInput.placeholder = "Paste API key here";
+        keyStatus.textContent = "No Anthropic key";
+        keyInput.placeholder = "Anthropic API key";
       }
+    }
+
+    function refreshHunterKeyStatus() {
+      var hunterStatus = document.getElementById("hunter-key-status");
+      var hunterInput = document.getElementById("hunter-key");
+      var proxyInput = document.getElementById("hunter-proxy-url");
+      var saved = localStorage.getItem(HUNTER_KEY_STORAGE) || "";
+      var proxy = localStorage.getItem(HUNTER_PROXY_STORAGE) || "";
+      if (hunterStatus) {
+        if (proxy) hunterStatus.textContent = saved ? "Hunter + proxy saved" : "Hunter proxy saved";
+        else if (saved) hunterStatus.textContent = "Hunter key saved (needs proxy on Pages)";
+        else hunterStatus.textContent = "No Hunter key";
+      }
+      if (hunterInput && saved) {
+        hunterInput.value = "";
+        hunterInput.placeholder = "Hunter ••••••••";
+      } else if (hunterInput) {
+        hunterInput.placeholder = "Hunter Email Finder key";
+      }
+      if (proxyInput && proxy) proxyInput.value = proxy;
     }
 
     document.getElementById("save-key").addEventListener("click", function () {
@@ -3616,7 +3773,39 @@ body {
       refreshKeyStatus();
     });
 
+    document.getElementById("save-hunter-key").addEventListener("click", function () {
+      var hunterInput = document.getElementById("hunter-key");
+      var value = (hunterInput && hunterInput.value || "").trim();
+      if (!value) {
+        var st = document.getElementById("hunter-key-status");
+        if (st) st.textContent = "Paste Hunter Email Finder key first";
+        return;
+      }
+      localStorage.setItem(HUNTER_KEY_STORAGE, value);
+      if (hunterInput) hunterInput.value = "";
+      refreshHunterKeyStatus();
+    });
+
+    document.getElementById("clear-hunter-key").addEventListener("click", function () {
+      localStorage.removeItem(HUNTER_KEY_STORAGE);
+      var hunterInput = document.getElementById("hunter-key");
+      if (hunterInput) hunterInput.value = "";
+      refreshHunterKeyStatus();
+    });
+
+    document.getElementById("save-hunter-proxy").addEventListener("click", function () {
+      var proxyInput = document.getElementById("hunter-proxy-url");
+      var value = (proxyInput && proxyInput.value || "").trim().replace(/\/$/, "");
+      if (!value) {
+        localStorage.removeItem(HUNTER_PROXY_STORAGE);
+      } else {
+        localStorage.setItem(HUNTER_PROXY_STORAGE, value);
+      }
+      refreshHunterKeyStatus();
+    });
+
     refreshKeyStatus();
+    refreshHunterKeyStatus();
     renderRunLog();
     wireVoiceMemoryPanel();
 
