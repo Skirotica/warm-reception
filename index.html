@@ -1108,11 +1108,12 @@ body.is-demo .live-only { display: none !important; }
       "persona_used:",
       "trigger_reference:",
       "citations: comma-separated tags naming exact record IDs and policy files/sections used (example: CE-01, CO-01, CT-01, company_status:ENARRESS, prequalified-whitelist.md, icp-criteria.md#company-size, agent-rules.md#8)",
-      "why: Always include this field. For Table 2 and Table 3, use 2-4 plain sentences that state what happened, why outreach is paused or blocked, and end with a clear partner action. When the only hard stop is missing email, say so, and also say whether the company would be a Go if email were secured (mirror fit_if_email_secured). Do not put file names, rule numbers, or table numbers in why. For Table 1, a short plain fit summary is fine; keep technical grounding in citations.",
+      "why: Always include this field. For Table 2 and Table 3, use 2-4 plain sentences. Lead with the primary block reason in this priority order: (1) existing client / bankruptcy / other hard stop, (2) out of ICP or below threshold when not whitelisted, (3) entity collision / ambiguous entity, (4) missing or unqualified POC email. Do not lead with Hunter.io email miss when the company is already out of ICP. When the only hard stop is missing email, say so and whether the company would be a Go if email were secured (mirror fit_if_email_secured). End with a clear partner action. Do not put file names, rule numbers, or table numbers in why. For Table 1, a short plain fit summary is fine; keep technical grounding in citations.",
       "PLAIN WHY EXAMPLES (Table 2 / Table 3 style):",
+      "Good: This company has only 9 employees, below the 50–350 size range, and it is not on the partner whitelist. Even with a POC email, it stays out of scope. Do not chase email for this case.",
       "Good: Exa.ai found a news story that mentions this company but we could not confirm it is the right company. The article does not name their website, so we cannot be certain the event belongs to them and not another company with a similar name. Please verify on LinkedIn or the company website before approving any outreach.",
       "Good: Hunter.io did not return a verified email for the preferred contact. The company and event otherwise look like a Go if we secure email. Look them up on LinkedIn or the company website and add an email to continue.",
-      "Good: Hunter.io did not return a verified email. Even with email, this would stay blocked because the company is already a client / out of ICP / bankruptcy signal.",
+      "Bad: Leading with Hunter.io email miss when the company is already below ICP size or an existing client.",
       "Bad: CE-05 event_summary states domain not named in source and company_profile.notes confirms Ambiguous entity sourcing. Agent-rules.md rule 9 requires Table 3 escalation for unconfirmed entities.",
       "Bad: Email not on file in ICP contacts. Record flagged as undeliverable per agent-rules.md rule 3.",
       "Never say on file, in our database, or from our contact list. Say Exa.ai or Hunter.io.",
@@ -1870,6 +1871,19 @@ body.is-demo .live-only { display: none !important; }
         };
       }
       return summary;
+    }
+
+    function companyClearlyOutOfIcpSize(ev) {
+      if (whitelistFor(ev.company_id, ev.company_name, ev.domain)) return false;
+      var emp = ev.employee_count;
+      if (emp == null || emp === "") {
+        var profile = byCompanyId(COMPANY_PROFILES, ev.company_id);
+        emp = profile ? profile.employee_count : null;
+      }
+      if (emp == null || emp === "") return false;
+      var n = Number(emp);
+      if (!isFinite(n)) return false;
+      return n < 50 || n > 350;
     }
 
     function partnerDisplayName(partnerId) {
@@ -3640,8 +3654,18 @@ body.is-demo .live-only { display: none !important; }
 
       var hunterLive = null;
       var seedContact = contactsForCompany(ev.company_id)[0] || null;
-      var shouldEnrichHunter = (IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim());
-      if (shouldEnrichHunter) {
+      var skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
+      var shouldEnrichHunter =
+        !skipHunterForIcp &&
+        ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
+      if (skipHunterForIcp) {
+        hunterLive = {
+          live: false,
+          status: "skipped_out_of_icp_size",
+          detail: "Hunter skipped: company employee_count outside 50–350 and not on whitelist",
+          domain_search: { ran: false, skipped_reason: "out_of_icp_size" }
+        };
+      } else if (shouldEnrichHunter) {
         if (metaEl) metaEl.textContent = "Hunter lookup " + ev.case_id;
         resultEl.innerHTML = (IS_LIVE || ev.live_exa)
           ? '<span class="thinking">Hunter Domain Search (company roster)…</span>'
@@ -3705,8 +3729,17 @@ body.is-demo .live-only { display: none !important; }
       var contactsWithEmail = companyContacts.filter(function (row) {
         return !!String(row.email || "").trim();
       });
+      var whyPriorityGuidance =
+        "WHY PRIORITY: Lead Why with the primary block. Order: hard stop (client/bankruptcy) → out of ICP / below threshold (unless whitelisted) → entity ambiguity → missing/unqualified POC email. " +
+        "If company is out of ICP size or revenue and not whitelisted, say that first. Set fit_if_email_secured to Still-blocked. Do not lead with Hunter.io email miss. Do not ask the partner to chase email.";
       var emailGuidance;
-      if (contactsWithEmail.length) {
+      if (skipHunterForIcp || companyClearlyOutOfIcpSize(ev)) {
+        emailGuidance =
+          "This company fails classic ICP size (employees must be 50–350) and is not on the pre-qualified whitelist. " +
+          "Table 2 No-go / Below Threshold. decision No-go or Below Threshold. fit_if_email_secured: Still-blocked. " +
+          "fit_if_email_note: out of ICP size even if a POC email existed. " +
+          "Why must lead with headcount / ICP size, mention whitelist does not apply, and say do not pursue email. Draft fields blank. Hunter may have been skipped.";
+      } else if (contactsWithEmail.length) {
         emailGuidance =
           "POC SELECTION (Response B): company_contacts lists people Hunter.io found at this company (with emails). " +
           "Review every contact with an email and their title. Pick the best ICP-qualified POC for this outreach (CRO, CEO, Founder, VP Sales, Head of Talent, finance leadership for finance/accounting hires, etc.). " +
@@ -3744,6 +3777,7 @@ body.is-demo .live-only { display: none !important; }
         isClient
           ? "HARD BOUNDARY: This company is an EXISTING CLIENT. You must REFUSED-ESCALATE. No draft. Table 2. override_available No. Whitelist does not override this. Write plain-language why: already a client, cold outreach not allowed, use the existing relationship instead. Put policy grounding only in citations."
           : "If this is a normal in-ICP go case with confirmed entity and verified email, status should be OK (do not over-refuse).",
+        whyPriorityGuidance,
         emailGuidance,
         whitelistGuidance,
         "CTA SESSION: Prefer black_gavel_outreach_sequence.md. For Go drafts, end email 1–4 bodies with the resolved CTA strings in cta_session.picks_by_email (draft_1..draft_4). Do not invent other CTAs. Never use em dashes in subjects or bodies.",
