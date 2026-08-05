@@ -1082,6 +1082,8 @@ body.is-demo .live-only { display: none !important; }
       "poc_name:",
       "poc_title:",
       "poc_email:",
+      "fit_if_email_secured: Would-go or Still-blocked or Ambiguous — always set this. Score company + event as if a verified email already existed. Would-go means ICP/event/hard-stops would allow outreach once email is secured. Still-blocked means another hard reason remains (client, out of ICP, bankruptcy, collision, thin event, etc.). Ambiguous means entity or signal is still unclear even with email.",
+      "fit_if_email_note: one plain sentence explaining fit_if_email_secured",
       "sector:",
       "employee_count:",
       "revenue_estimate:",
@@ -1106,10 +1108,11 @@ body.is-demo .live-only { display: none !important; }
       "persona_used:",
       "trigger_reference:",
       "citations: comma-separated tags naming exact record IDs and policy files/sections used (example: CE-01, CO-01, CT-01, company_status:ENARRESS, prequalified-whitelist.md, icp-criteria.md#company-size, agent-rules.md#8)",
-      "why: Always include this field. For Table 2 and Table 3, use 2-4 plain sentences that state what happened, why outreach is paused or blocked, and end with a clear partner action. Do not put file names, rule numbers, or table numbers in why. For Table 1, a short plain fit summary is fine; keep technical grounding in citations.",
+      "why: Always include this field. For Table 2 and Table 3, use 2-4 plain sentences that state what happened, why outreach is paused or blocked, and end with a clear partner action. When the only hard stop is missing email, say so, and also say whether the company would be a Go if email were secured (mirror fit_if_email_secured). Do not put file names, rule numbers, or table numbers in why. For Table 1, a short plain fit summary is fine; keep technical grounding in citations.",
       "PLAIN WHY EXAMPLES (Table 2 / Table 3 style):",
       "Good: Exa.ai found a news story that mentions this company but we could not confirm it is the right company. The article does not name their website, so we cannot be certain the event belongs to them and not another company with a similar name. Please verify on LinkedIn or the company website before approving any outreach.",
-      "Good: Hunter.io did not return a verified email address for this contact. Outreach cannot proceed without one. You can look them up manually on LinkedIn or their company website and add the email directly.",
+      "Good: Hunter.io did not return a verified email for the preferred contact. The company and event otherwise look like a Go if we secure email. Look them up on LinkedIn or the company website and add an email to continue.",
+      "Good: Hunter.io did not return a verified email. Even with email, this would stay blocked because the company is already a client / out of ICP / bankruptcy signal.",
       "Bad: CE-05 event_summary states domain not named in source and company_profile.notes confirms Ambiguous entity sourcing. Agent-rules.md rule 9 requires Table 3 escalation for unconfirmed entities.",
       "Bad: Email not on file in ICP contacts. Record flagged as undeliverable per agent-rules.md rule 3.",
       "Never say on file, in our database, or from our contact list. Say Exa.ai or Hunter.io.",
@@ -1120,7 +1123,7 @@ body.is-demo .live-only { display: none !important; }
       "",
       "ESCALATION:",      "Stop, set status to REFUSED-ESCALATE when needed, state the reason, and route correctly when:",
       "1. Low confidence: Table 1 Low, no batch approval, mandatory individual review; do not treat as High.",
-      "2. Missing data: missing preferred POC email -> check company_contacts (including Hunter.io Domain Search alternates on live cases). If an alternate has a verified email, report it and escalate for persona choice (no silent Table 1 to preferred). If preferred and all alternates lack email, Table 2 company-wide No-go naming who was checked; never invent an email.",
+      "2. Missing data: missing preferred POC email -> check company_contacts (including Hunter.io Domain Search alternates on live cases). If an alternate has a verified email, report it and escalate for persona choice (no silent Table 1 to preferred). If preferred and all alternates lack email, Table 2 company-wide No-go naming who was checked; never invent an email. Still set fit_if_email_secured to Would-go, Still-blocked, or Ambiguous so the partner knows whether chasing email is worth it.",
       "3. Risky or inappropriate language: do not queue unsafe draft language; prefer Table 2 with evaluator reason after retry limit.",
       "4. Out-of-policy or disqualified: fails icp-criteria.md (unless prequalified_match), bankruptcy/opposite signal, or non-qualifying event type -> Table 2.",
       "5. High stakes: name collision / entity ambiguity -> Table 3 with override for verification; existing client, duplicate send within 30 days, or prior opt-out -> Table 2 with no override.",
@@ -2819,6 +2822,8 @@ body.is-demo .live-only { display: none !important; }
       "poc_name",
       "poc_title",
       "poc_email",
+      "fit_if_email_secured",
+      "fit_if_email_note",
       "sector",
       "employee_count",
       "revenue_estimate",
@@ -3545,24 +3550,29 @@ body.is-demo .live-only { display: none !important; }
       });
       var emailGuidance;
       if (!preferredMissingEmail) {
-        emailGuidance = "Hunter.io returned a verified email for the preferred contact (see hunter_io / company_contacts). Use only that address. Never invent an email. In Why, you may say Hunter.io returned the email.";
+        emailGuidance =
+          "Hunter.io returned a verified email for the preferred contact (see hunter_io / company_contacts). Use only that address. Never invent an email. In Why, you may say Hunter.io returned the email. " +
+          "Still set fit_if_email_secured to Would-go when this is a normal Go case, or Still-blocked/Ambiguous when email exists but another issue blocks outreach.";
       } else if (alternateEmails.length) {
         emailGuidance =
           "Hunter.io did not return an email for the preferred POC, but company_contacts includes at least one alternate with a verified email (Email Finder and/or Domain Search on live cases; embedded alternates on capstone CE-08-style cases). " +
           "In plain-language why/reason_or_ambiguity: say Hunter.io missed the preferred person, name each alternate who has an email and their title, and ask the partner to choose who to contact. " +
+          "Also set fit_if_email_secured (Would-go / Still-blocked / Ambiguous) and fit_if_email_note for the company+event as if email were already solved. " +
           "Put contact_ids only in citations. Do NOT invent an email. Do NOT Table 1 draft to the preferred POC. " +
           "Table 2 or Table 3 for human persona choice before any draft to the alternate. Keep draft fields blank in this prototype.";
       } else if (companyContacts.length > 1) {
         emailGuidance =
           "Hunter.io did not return a verified email for the preferred POC or any alternate at this company. " +
           "In plain-language why/reason_or_ambiguity name the preferred and each alternate (people names and titles) and say Hunter.io found no verified email. " +
+          "Also set fit_if_email_secured: Would-go if company+event+hard-stops would allow outreach once email is secured; Still-blocked if another reason remains; Ambiguous if entity/signal is still unclear. Include fit_if_email_note. " +
           "End with an action: look them up on LinkedIn or the company website and add an email if continuing. " +
           "This is a company-wide missing-email No-go: Table 2, decision No-go or Refused, draft fields blank. Do NOT invent an email. Put contact_ids only in citations.";
       } else {
         emailGuidance =
           "Hunter.io did not return a verified email for the preferred POC and there is no alternate with an email. " +
           "Do NOT invent an email. Table 2. decision No-go or Refused. " +
-          "why/reason_or_ambiguity must be plain language naming Hunter.io: no verified email found; outreach cannot proceed; partner can look them up on LinkedIn or the company website and add an email. draft fields blank.";
+          "Set fit_if_email_secured to Would-go, Still-blocked, or Ambiguous (score company+event as if email existed) and fit_if_email_note in one plain sentence. " +
+          "why/reason_or_ambiguity must be plain language naming Hunter.io: no verified email found; outreach cannot proceed; say whether chasing email is worth it; partner can look them up on LinkedIn or the company website and add an email. draft fields blank.";
       }
       var whitelistGuidance = payload.prequalified_match
         ? (
