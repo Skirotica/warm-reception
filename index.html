@@ -762,7 +762,7 @@ body.is-demo .live-only { display: none !important; }
                 <strong>Data contract:</strong> The agent only sees the embedded candidate events, company profiles, ICP contacts, pre-qualified whitelist, and company status in this file’s exact shape. Live CRM, ATS, or free-form paste is not supported.
               </li>
               <li>
-                <strong>Lookups and send:</strong> Event research cites Exa.ai. On live cases, blank preferred email runs Hunter.io Email Finder, then Domain Search for ICP-title alternates (CRO, CEO, VP Sales, Head of Talent, etc.). Capstone CE-08 / E-08 uses the same preferred-vs-alternate decision rules with embedded contacts (both blank = company-wide No-go). GitHub Pages needs a Hunter proxy URL (see hunter-proxy/). Nothing leaves without human Approve; approved sends route to sandbox only.
+                <strong>Lookups and send:</strong> Event research cites Exa.ai. On live cases, Hunter.io Domain Search loads the company email roster into company_contacts; the agent picks a qualified POC or No-gos with a plain reason (e.g. found an IT specialist, not a fit). Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 still demos embedded missing-email rules. GitHub Pages needs a Hunter proxy URL. Nothing leaves without human Approve.
               </li>
               <li>
                 <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Capstone demo checks embedded company_contacts (CE-08). Live path also discovers ICP-title alternates via Hunter Domain Search when preferred email is blank.
@@ -1054,7 +1054,7 @@ body.is-demo .live-only { display: none !important; }
       "RULES — the agent must not:",
       "1. Never send without explicit human approval.",
       "2. Never fabricate companies, events, or qualification fields.",
-      "3. Never guess or invent a contact email address. If preferred POC email is blank after Hunter.io Email Finder, check company_contacts. On live cases the console also runs Hunter.io Domain Search for ICP-title alternates (CRO, CEO, VP Sales, Head of Talent, etc.). If an alternate has a verified email, escalate for human persona choice (no silent Table 1 to preferred). If preferred and all alternates lack email, Table 2 company-wide No-go naming who was checked.",
+      "3. Never guess or invent a contact email address. On live cases, Hunter.io Domain Search loads known company emails into company_contacts; you choose the best ICP-qualified POC or No-go if none fit (name who was found and why, e.g. Found John Smith, IT Specialist. Not a good POC for an accounting hire). Capstone CE-08 still uses embedded preferred-vs-alternate blanks. Always set fit_if_email_secured. Partner may override by adding a qualified POC email in the human gate.",
       "4. Maximum 2 Exa.ai lookups per company (pre-loaded Exa.ai responses stand in for the live API in this prototype).",
       "5. Maximum 2 generation attempts per email when language check fails.",
       "6. Enforce a 30-day duplicate suppression window using prior_sends.csv.",
@@ -1754,16 +1754,16 @@ body.is-demo .live-only { display: none !important; }
     }
 
     /**
-     * After preferred Email Finder miss on live cases: Hunter Domain Search for ICP-title people.
-     * Domain Search rows often already include email; we do not invent addresses.
+     * Response B (live): Hunter Domain Search pulls known emails at the company domain.
+     * We keep people with emails (not only ICP titles). The agent decides who is a qualified POC.
      */
-    async function discoverAlternatePocsViaHunterDomainSearch(ev, preferred) {
+    async function discoverCompanyContactsViaHunterDomainSearch(ev, preferred) {
       var domain = String(ev.domain || "").trim();
-      if (!domain) return { ok: false, detail: "missing_domain", added: [], updatedPreferred: false };
+      if (!domain) return { ok: false, detail: "missing_domain", added: [], updatedPreferred: false, all_with_email: [] };
       var res = await hunterFetchJson("/domain-search?domain=" + encodeURIComponent(domain) + "&limit=10");
-      if (!res.ok) return { ok: false, detail: res.detail, added: [], updatedPreferred: false };
+      if (!res.ok) return { ok: false, detail: res.detail, added: [], updatedPreferred: false, all_with_email: [] };
       var emails = (res.data && res.data.data && res.data.data.emails) || [];
-      var ranked = emails
+      var rows = emails
         .map(function (row) {
           return {
             email: String(row.value || row.email || "").trim(),
@@ -1775,58 +1775,65 @@ body.is-demo .live-only { display: none !important; }
           };
         })
         .filter(function (row) {
-          return row.first_name && row.last_name && isIcpAlternateTitle(row.title);
+          return row.email && (row.first_name || row.last_name);
         })
         .sort(function (a, b) {
+          var aIcp = isIcpAlternateTitle(a.title) ? 0 : 1;
+          var bIcp = isIcpAlternateTitle(b.title) ? 0 : 1;
+          if (aIcp !== bIcp) return aIcp - bIcp;
           return icpTitleRank(a.title) - icpTitleRank(b.title);
         });
 
       var added = [];
       var updatedPreferred = false;
-      var prefFirst = preferred ? String(preferred.first_name || "").trim() : "";
-      var prefLast = preferred ? String(preferred.last_name || "").trim() : "";
+      var allWithEmail = [];
 
-      for (var i = 0; i < ranked.length && added.length < 5; i++) {
-        var row = ranked[i];
+      for (var i = 0; i < rows.length && allWithEmail.length < 10; i++) {
+        var row = rows[i];
         if (preferred && namesMatchContact(preferred, row.first_name, row.last_name)) {
           if (row.email && !String(preferred.email || "").trim()) {
             preferred.email = row.email;
+            if (row.title && !preferred.title) preferred.title = row.title;
             if (row.linkedin_url && !preferred.linkedin_url) preferred.linkedin_url = row.linkedin_url;
+            preferred.discovered_via = "hunter_domain_search";
             upsertDiscoveredContact(preferred);
             updatedPreferred = true;
           }
+          allWithEmail.push(preferred);
           continue;
         }
         var contactId = "CT-H-" + String(ev.company_id || "CO").replace(/[^A-Za-z0-9]/g, "") + "-" + (added.length + 1);
         var contact = {
           contact_id: contactId,
           company_id: ev.company_id,
-          first_name: row.first_name,
-          last_name: row.last_name,
-          title: row.title || "Executive",
-          email: row.email || "",
+          first_name: row.first_name || "Unknown",
+          last_name: row.last_name || "Contact",
+          title: row.title || "Unknown title",
+          email: row.email,
           employment_confirmed: "yes",
           linkedin_url: row.linkedin_url || "",
           discovered_via: "hunter_domain_search"
         };
-        // If Domain Search listed the person without email, try Email Finder once.
-        if (!contact.email) {
-          var ef = await enrichContactEmailWithHunter(contact, domain, ev.company_name);
-          if (!(ef.ok && ef.detail === "found")) {
-            // Keep blank-email ICP alternate only if we already have room and title is strong; skip blanks to save noise.
-            continue;
-          }
-        }
         upsertDiscoveredContact(contact);
         added.push(contact);
+        allWithEmail.push(contact);
       }
 
       return {
         ok: true,
-        detail: updatedPreferred || added.length ? "domain_search_merged" : "domain_search_no_icp_emails",
+        detail: allWithEmail.length ? "domain_search_company_roster" : "domain_search_no_emails",
         added: added,
         updatedPreferred: updatedPreferred,
-        scanned: ranked.length,
+        scanned: rows.length,
+        all_with_email: allWithEmail.map(function (c) {
+          return {
+            contact_id: c.contact_id,
+            name: (c.first_name + " " + c.last_name).trim(),
+            title: c.title,
+            email: c.email || null,
+            icp_title_hint: isIcpAlternateTitle(c.title)
+          };
+        }),
         source: res.via || "hunter.io"
       };
     }
@@ -1838,33 +1845,29 @@ body.is-demo .live-only { display: none !important; }
         domain_search: null,
         live_discovery: false
       };
-      if (!preferred) return summary;
-      if (String(preferred.email || "").trim()) {
-        summary.preferred = { ok: true, detail: "already_had_email", skipped: true };
+      var allowDiscovery = IS_LIVE || !!ev.live_exa;
+      if (!allowDiscovery) {
+        if (preferred && !String(preferred.email || "").trim()) {
+          summary.preferred = await enrichContactEmailWithHunter(preferred, ev.domain, ev.company_name);
+        } else if (preferred && String(preferred.email || "").trim()) {
+          summary.preferred = { ok: true, detail: "already_had_email", skipped: true };
+        }
         return summary;
       }
-      summary.preferred = await enrichContactEmailWithHunter(preferred, ev.domain, ev.company_name);
-      var preferredStillBlank = !String(preferred.email || "").trim();
-      var allowDiscovery = preferredStillBlank && (IS_LIVE || !!ev.live_exa);
-      if (allowDiscovery) {
-        summary.live_discovery = true;
-        summary.domain_search = await discoverAlternatePocsViaHunterDomainSearch(ev, preferred);
-        // Re-run Email Finder on preferred if Domain Search still left them blank (name variants already handled).
-        if (!String(preferred.email || "").trim() && summary.domain_search && summary.domain_search.updatedPreferred) {
-          summary.preferred = {
-            ok: true,
-            detail: "found",
-            contact: preferred,
-            hunter: { status: "found", source: "hunter_domain_search", live: true }
-          };
-        } else if (String(preferred.email || "").trim() && summary.preferred && summary.preferred.detail === "not_found") {
-          summary.preferred = {
-            ok: true,
-            detail: "found",
-            contact: preferred,
-            hunter: { status: "found", source: "hunter_domain_search", live: true, email: preferred.email }
-          };
-        }
+
+      // Response B: company Domain Search first, then Email Finder on preferred if still blank.
+      summary.live_discovery = true;
+      summary.domain_search = await discoverCompanyContactsViaHunterDomainSearch(ev, preferred);
+      preferred = contactsForCompany(ev.company_id)[0] || preferred;
+      if (preferred && !String(preferred.email || "").trim()) {
+        summary.preferred = await enrichContactEmailWithHunter(preferred, ev.domain, ev.company_name);
+      } else if (preferred && String(preferred.email || "").trim()) {
+        summary.preferred = {
+          ok: true,
+          detail: summary.domain_search && summary.domain_search.updatedPreferred ? "found_via_domain_search" : "already_had_email",
+          contact: preferred,
+          hunter: { status: "found", source: "hunter.io", live: true, email: preferred.email }
+        };
       }
       return summary;
     }
@@ -3309,6 +3312,114 @@ body.is-demo .live-only { display: none !important; }
       }
     }
 
+    function promoteCaseToGoWithManualPoc(ev, resultEl, poc) {
+      var first = String(poc.first_name || "").trim();
+      var last = String(poc.last_name || "").trim();
+      var title = String(poc.title || "").trim() || "Executive";
+      var email = String(poc.email || "").trim();
+      if (!email || email.indexOf("@") === -1) {
+        return { ok: false, detail: "Enter a valid email address." };
+      }
+      if (!first && !last) {
+        return { ok: false, detail: "Enter at least a first or last name." };
+      }
+      var contactId = "CT-OVERRIDE-" + String(ev.company_id || "CO").replace(/[^A-Za-z0-9]/g, "");
+      var contact = {
+        contact_id: contactId,
+        company_id: ev.company_id,
+        first_name: first || "Partner",
+        last_name: last || "Contact",
+        title: title,
+        email: email,
+        employment_confirmed: "yes",
+        linkedin_url: String(poc.linkedin_url || "").trim(),
+        discovered_via: "human_override"
+      };
+      // Prefer updating preferred contact email if names match or preferred had no email.
+      var preferred = contactsForCompany(ev.company_id)[0] || null;
+      if (preferred && (namesMatchContact(preferred, contact.first_name, contact.last_name) || !String(preferred.email || "").trim())) {
+        preferred.first_name = contact.first_name;
+        preferred.last_name = contact.last_name;
+        preferred.title = contact.title;
+        preferred.email = contact.email;
+        if (contact.linkedin_url) preferred.linkedin_url = contact.linkedin_url;
+        preferred.discovered_via = "human_override";
+        upsertDiscoveredContact(preferred);
+        contact = preferred;
+      } else {
+        upsertDiscoveredContact(contact);
+      }
+
+      var fields = resultEl._lastFields || {};
+      var ctaSession = resultEl._ctaSession || buildCtaSession(new Date(), "America/New_York");
+      fields.status = "OK";
+      fields.table = "Table 1";
+      fields.decision = "Go";
+      fields.confidence_rating = fields.confidence_rating || "Medium";
+      fields.company_name = ev.company_name;
+      fields.domain = ev.domain;
+      fields.poc_name = (contact.first_name + " " + contact.last_name).trim();
+      fields.poc_title = contact.title;
+      fields.poc_email = contact.email;
+      fields.override_available = "Yes";
+      fields.fit_if_email_secured = "Would-go";
+      fields.fit_if_email_note = "Human supplied a qualified POC email and promoted this case to Go.";
+      fields.reason_or_ambiguity = "Partner overrode missing/unqualified POC by adding " + fields.poc_name + " (" + contact.title + ").";
+      fields.why =
+        "You added a qualified POC email for " + fields.poc_name + ". The Black Gavel sequence is ready for Approve or Edit. Nothing is sent until you Approve.";
+      fields = applyBlackGavelSequence(fields, ev, ctaSession);
+      fields.draft_to = contact.email;
+      fields.draft_from = (USER_PREFERENCES[partnerIdForCase(ev)] && USER_PREFERENCES[partnerIdForCase(ev)].from_email) || "";
+      resultEl._ctaSession = ctaSession;
+      if (CASE_UI[ev.case_id]) CASE_UI[ev.case_id]._ctaSession = ctaSession;
+      var labeled = [
+        "status: " + fields.status,
+        "table: " + fields.table,
+        "decision: " + fields.decision,
+        "confidence_rating: " + (fields.confidence_rating || "Medium"),
+        "company_name: " + fields.company_name,
+        "domain: " + fields.domain,
+        "poc_name: " + fields.poc_name,
+        "poc_title: " + fields.poc_title,
+        "poc_email: " + fields.poc_email,
+        "fit_if_email_secured: " + fields.fit_if_email_secured,
+        "fit_if_email_note: " + fields.fit_if_email_note,
+        "reason_or_ambiguity: " + fields.reason_or_ambiguity,
+        "override_available: Yes",
+        "draft_to: " + fields.draft_to,
+        "draft_from: " + fields.draft_from,
+        "persona_assigned: " + (fields.persona_assigned || ""),
+        "persona_used: " + (fields.persona_used || ""),
+        "citations: " + ev.case_id + ", " + ev.company_id + ", " + contact.contact_id + ", human_override",
+        "why: " + fields.why,
+        "draft_1_subject: " + (fields.draft_1_subject || ""),
+        "draft_1_body: " + (fields.draft_1_body || ""),
+        "draft_2_subject: " + (fields.draft_2_subject || ""),
+        "draft_2_body: " + (fields.draft_2_body || ""),
+        "draft_3_subject: " + (fields.draft_3_subject || ""),
+        "draft_3_body: " + (fields.draft_3_body || ""),
+        "draft_4_subject: " + (fields.draft_4_subject || ""),
+        "draft_4_body: " + (fields.draft_4_body || "")
+      ].join("\n");
+      renderParsedResult(resultEl, labeled, ev);
+      if (CASE_UI[ev.case_id]) {
+        CASE_UI[ev.case_id].humanComplete = false;
+        CASE_UI[ev.case_id].humanStateText = "";
+        CASE_UI[ev.case_id].humanOutcome = "";
+        CASE_UI[ev.case_id].lastFields = resultEl._lastFields;
+      }
+      updateRowSummary(ev.case_id, resultEl._lastFields);
+      wireHumanGate(resultEl, ev);
+      persistCaseResult(ev, resultEl);
+      if (CASE_UI[ev.case_id] && CASE_UI[ev.case_id].summaryPocEl) {
+        CASE_UI[ev.case_id].summaryPocEl.textContent = fields.poc_name;
+      }
+      if (CASE_UI[ev.case_id] && CASE_UI[ev.case_id].runActionsEl) {
+        CASE_UI[ev.case_id].runActionsEl.style.display = "";
+      }
+      return { ok: true, detail: "promoted", fields: resultEl._lastFields };
+    }
+
     function wireHumanGate(resultEl, ev) {
       var existing = resultEl.querySelector(".human-gate");
       if (existing) existing.remove();
@@ -3319,6 +3430,7 @@ body.is-demo .live-only { display: none !important; }
       var hasSequence = SEQUENCE_DRAFT_KEYS.some(function (key) {
         return String(fields[key] || "").trim();
       });
+      var fitHint = String(fields.fit_if_email_secured || "").trim();
 
       var gate = document.createElement("div");
       gate.className = "human-gate";
@@ -3331,11 +3443,23 @@ body.is-demo .live-only { display: none !important; }
           '<label>Body<br><textarea class="edit-body-' + n + '" rows="5"></textarea></label>' +
           "</div>";
       }
+      var overrideHtml =
+        '<div class="override-panel" style="margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:var(--border-w) solid var(--line)">' +
+        "<p><strong>Move to Go</strong> — if the company is worth outreach and you have a qualified POC email, enter it here. We generate the Black Gavel sequence; then Approve or Edit as usual.</p>" +
+        (fitHint ? '<p class="card-meta">Agent fit if email secured: ' + escapeHtml(fitHint) + (fields.fit_if_email_note ? " — " + escapeHtml(fields.fit_if_email_note) : "") + "</p>" : "") +
+        '<label>First name<br><input class="override-first" /></label><br><br>' +
+        '<label>Last name<br><input class="override-last" /></label><br><br>' +
+        '<label>Title<br><input class="override-title" placeholder="CRO, CEO, VP Sales…" /></label><br><br>' +
+        '<label>Email<br><input class="override-email" type="email" placeholder="name@company.com" /></label><br><br>' +
+        '<button type="button" class="btn primary btn-promote-go">Save POC email &amp; generate sequence</button>' +
+        '<p class="override-status card-meta"></p>' +
+        "</div>";
+
       gate.innerHTML =
         '<div class="stage" data-n="4">Human review</div>' +
         (isGo && hasSequence
           ? "<p><strong>Human gate</strong> — Approve the full 4-email sequence, or Edit any/all emails in one block, then Save edit. Escalate is case-level.</p>"
-          : "<p><strong>Human gate</strong> — no sequence on this decision. Escalate if needed.</p>") +
+          : "<p><strong>Human gate</strong> — agent did not produce a Go sequence. Escalate, or add a qualified POC email below to move this case to Go.</p>") +
         "<p>" +
         '<button type="button" class="btn primary btn-approve"' + (isGo && hasSequence ? "" : " disabled") + ">Approve</button> " +
         '<button type="button" class="btn btn-edit"' + (isGo && hasSequence ? "" : " disabled") + ">Edit</button> " +
@@ -3345,6 +3469,7 @@ body.is-demo .live-only { display: none !important; }
         editHtml +
         '<button type="button" class="btn primary btn-save-edit">Save edit</button>' +
         "</div>" +
+        (!isGo || !hasSequence ? overrideHtml : "") +
         '<p class="human-state">Human action: pending</p>' +
         '<p class="boundary-note">Nothing is sent without human approval. Approved sequence routes to sandbox only.</p>';
 
@@ -3386,10 +3511,12 @@ body.is-demo .live-only { display: none !important; }
         var editBtn = gate.querySelector(".btn-edit");
         var escBtn = gate.querySelector(".btn-escalate");
         var saveBtn = gate.querySelector(".btn-save-edit");
+        var promoteBtn = gate.querySelector(".btn-promote-go");
         if (approveBtn) approveBtn.disabled = true;
         if (editBtn) editBtn.disabled = true;
         if (escBtn) escBtn.disabled = true;
         if (saveBtn) saveBtn.disabled = true;
+        if (promoteBtn) promoteBtn.disabled = true;
       }
 
       function markComplete(action, detail) {
@@ -3418,34 +3545,40 @@ body.is-demo .live-only { display: none !important; }
       }
 
       gate.querySelector(".btn-approve").addEventListener("click", function () {
-        if (!isGo || !hasSequence) return;
+        if (!hasGoDecision(resultEl._lastFields || fields) || !SEQUENCE_DRAFT_KEYS.some(function (key) {
+          return String((resultEl._lastFields || fields)[key] || "").trim();
+        })) return;
         markComplete("Approve", "full 4-email sequence sandbox route authorized (no live send)");
       });
 
       gate.querySelector(".btn-edit").addEventListener("click", function () {
-        if (!isGo || !hasSequence) return;
+        var liveFields = resultEl._lastFields || fields;
+        if (!hasGoDecision(liveFields) || !SEQUENCE_DRAFT_KEYS.some(function (key) {
+          return String(liveFields[key] || "").trim();
+        })) return;
         editPanel.style.display = "block";
         for (var n = 1; n <= 4; n++) {
           var s = gate.querySelector(".edit-subject-" + n);
           var b = gate.querySelector(".edit-body-" + n);
-          if (s) s.value = fields["draft_" + n + "_subject"] || "";
-          if (b) b.value = fields["draft_" + n + "_body"] || "";
+          if (s) s.value = liveFields["draft_" + n + "_subject"] || "";
+          if (b) b.value = liveFields["draft_" + n + "_body"] || "";
         }
         stateEl.textContent = "Human action: editing sequence… save to complete";
       });
 
       gate.querySelector(".btn-save-edit").addEventListener("click", async function () {
-        var beforeSnap = snapshotSequenceDrafts(fields);
+        var liveFields = resultEl._lastFields || fields;
+        var beforeSnap = snapshotSequenceDrafts(liveFields);
         for (var n = 1; n <= 4; n++) {
           var s = gate.querySelector(".edit-subject-" + n);
           var b = gate.querySelector(".edit-body-" + n);
-          fields["draft_" + n + "_subject"] = s ? stripEmDashes(s.value) : "";
-          fields["draft_" + n + "_body"] = b ? stripEmDashes(b.value) : "";
+          liveFields["draft_" + n + "_subject"] = s ? stripEmDashes(s.value) : "";
+          liveFields["draft_" + n + "_body"] = b ? stripEmDashes(b.value) : "";
         }
-        var afterSnap = snapshotSequenceDrafts(fields);
-        fields.approval_status = "Edited";
-        resultEl._lastFields = fields;
-        renderSequenceDrafts(resultEl, fields);
+        var afterSnap = snapshotSequenceDrafts(liveFields);
+        liveFields.approval_status = "Edited";
+        resultEl._lastFields = liveFields;
+        renderSequenceDrafts(resultEl, liveFields);
         var partnerId = partnerIdForCase(ev);
         var saveBtn = gate.querySelector(".btn-save-edit");
         if (saveBtn) saveBtn.disabled = true;
@@ -3467,6 +3600,31 @@ body.is-demo .live-only { display: none !important; }
         }
         markComplete("Escalate", reason);
       });
+
+      var promoteBtn = gate.querySelector(".btn-promote-go");
+      if (promoteBtn) {
+        promoteBtn.addEventListener("click", function () {
+          var status = gate.querySelector(".override-status");
+          var out = promoteCaseToGoWithManualPoc(ev, resultEl, {
+            first_name: (gate.querySelector(".override-first") || {}).value,
+            last_name: (gate.querySelector(".override-last") || {}).value,
+            title: (gate.querySelector(".override-title") || {}).value,
+            email: (gate.querySelector(".override-email") || {}).value
+          });
+          if (!out.ok) {
+            if (status) status.textContent = out.detail;
+            return;
+          }
+          appendRunLog({
+            time: new Date().toLocaleTimeString(),
+            case_id: ev.case_id,
+            company_name: ev.company_name,
+            agent_decision: "human_override/Go",
+            human_action: "promote_to_go",
+            detail: "POC email supplied; Black Gavel sequence generated"
+          });
+        });
+      }
     }
 
     async function runAgentForCase(ev, resultEl, buttonEl) {
@@ -3482,25 +3640,26 @@ body.is-demo .live-only { display: none !important; }
 
       var hunterLive = null;
       var seedContact = contactsForCompany(ev.company_id)[0] || null;
-      if (seedContact && !String(seedContact.email || "").trim()) {
+      var shouldEnrichHunter = (IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim());
+      if (shouldEnrichHunter) {
         if (metaEl) metaEl.textContent = "Hunter lookup " + ev.case_id;
-        resultEl.innerHTML = '<span class="thinking">Hunter Email Finder…</span>';
+        resultEl.innerHTML = (IS_LIVE || ev.live_exa)
+          ? '<span class="thinking">Hunter Domain Search (company roster)…</span>'
+          : '<span class="thinking">Hunter Email Finder…</span>';
         var enrichBundle = await enrichCaseContactsForRun(ev);
-        var enrich = enrichBundle.preferred || { ok: false, detail: "no_preferred" };
-        if (enrichBundle.live_discovery) {
-          resultEl.innerHTML = '<span class="thinking">Hunter Domain Search for alternate POCs…</span>';
-        }
+        var enrich = enrichBundle.preferred || { ok: true, detail: "roster_only" };
         var ds = enrichBundle.domain_search;
         hunterLive = {
           live: true,
-          status: enrich.hunter && enrich.hunter.status ? enrich.hunter.status : (enrich.ok && enrich.detail === "found" ? "found" : "not_found"),
+          status: "roster",
           score: enrich.hunter && enrich.hunter.score != null ? enrich.hunter.score : null,
           source: enrich.hunter && enrich.hunter.source ? enrich.hunter.source : "hunter.io",
-          detail: enrich.detail || "",
+          detail: enrich.detail || (ds && ds.detail) || "",
           domain_search: ds
             ? {
                 ran: true,
                 detail: ds.detail,
+                company_roster: ds.all_with_email || [],
                 alternates_added: (ds.added || []).map(function (c) {
                   return {
                     contact_id: c.contact_id,
@@ -3510,16 +3669,16 @@ body.is-demo .live-only { display: none !important; }
                   };
                 }),
                 updated_preferred: !!ds.updatedPreferred,
-                scanned_icp_titles: ds.scanned || 0
+                scanned: ds.scanned || 0
               }
             : { ran: false }
         };
-        if (String(seedContact.email || "").trim()) {
+        if (seedContact && String(seedContact.email || "").trim()) {
           hunterLive.status = "found";
-          hunterLive.detail = enrich.detail === "found" ? "found" : "found_via_domain_search";
-        } else if (ds && ds.added && ds.added.some(function (c) { return !!String(c.email || "").trim(); })) {
-          hunterLive.status = "preferred_miss_alternate_found";
-          hunterLive.detail = "preferred_not_found_domain_search_alternates";
+        } else if (ds && ds.all_with_email && ds.all_with_email.length) {
+          hunterLive.status = "company_roster_found";
+        } else if (enrich.detail === "not_found") {
+          hunterLive.status = "not_found";
         }
         if (!enrich.ok && enrich.detail && /cors_or_network|no_hunter_key_or_proxy/.test(enrich.detail)) {
           hunterLive.status = "not_found";
@@ -3543,36 +3702,23 @@ body.is-demo .live-only { display: none !important; }
       var isClient = (profile && profile.status === "client") || (statusRow && statusRow.status === "client");
       var contact = payload.preferred_contact || payload.contact;
       var companyContacts = payload.company_contacts || [];
-      var preferredMissingEmail = !contact || !String(contact.email || "").trim();
-      var alternateEmails = companyContacts.filter(function (row) {
-        if (contact && row.contact_id === contact.contact_id) return false;
+      var contactsWithEmail = companyContacts.filter(function (row) {
         return !!String(row.email || "").trim();
       });
       var emailGuidance;
-      if (!preferredMissingEmail) {
+      if (contactsWithEmail.length) {
         emailGuidance =
-          "Hunter.io returned a verified email for the preferred contact (see hunter_io / company_contacts). Use only that address. Never invent an email. In Why, you may say Hunter.io returned the email. " +
-          "Still set fit_if_email_secured to Would-go when this is a normal Go case, or Still-blocked/Ambiguous when email exists but another issue blocks outreach.";
-      } else if (alternateEmails.length) {
-        emailGuidance =
-          "Hunter.io did not return an email for the preferred POC, but company_contacts includes at least one alternate with a verified email (Email Finder and/or Domain Search on live cases; embedded alternates on capstone CE-08-style cases). " +
-          "In plain-language why/reason_or_ambiguity: say Hunter.io missed the preferred person, name each alternate who has an email and their title, and ask the partner to choose who to contact. " +
-          "Also set fit_if_email_secured (Would-go / Still-blocked / Ambiguous) and fit_if_email_note for the company+event as if email were already solved. " +
-          "Put contact_ids only in citations. Do NOT invent an email. Do NOT Table 1 draft to the preferred POC. " +
-          "Table 2 or Table 3 for human persona choice before any draft to the alternate. Keep draft fields blank in this prototype.";
-      } else if (companyContacts.length > 1) {
-        emailGuidance =
-          "Hunter.io did not return a verified email for the preferred POC or any alternate at this company. " +
-          "In plain-language why/reason_or_ambiguity name the preferred and each alternate (people names and titles) and say Hunter.io found no verified email. " +
-          "Also set fit_if_email_secured: Would-go if company+event+hard-stops would allow outreach once email is secured; Still-blocked if another reason remains; Ambiguous if entity/signal is still unclear. Include fit_if_email_note. " +
-          "End with an action: look them up on LinkedIn or the company website and add an email if continuing. " +
-          "This is a company-wide missing-email No-go: Table 2, decision No-go or Refused, draft fields blank. Do NOT invent an email. Put contact_ids only in citations.";
+          "POC SELECTION (Response B): company_contacts lists people Hunter.io found at this company (with emails). " +
+          "Review every contact with an email and their title. Pick the best ICP-qualified POC for this outreach (CRO, CEO, Founder, VP Sales, Head of Talent, finance leadership for finance/accounting hires, etc.). " +
+          "If at least one verified email belongs to a qualified POC and company+event clear: Table 1 Go using that person (set poc_name, poc_title, poc_email from that contact only). Never invent an email. " +
+          "If emails exist but NONE belong to a qualified POC: Table 2 decision No-go. In why name who was found and why they are not a fit, for example: Found John Smith, IT Specialist. Not a good POC for an accounting hire. Ask the partner to find a better POC or override. " +
+          "Set fit_if_email_secured to Would-go when the company+event are fine and only POC quality/email is the issue, Still-blocked when another hard stop remains, Ambiguous when entity/signal is unclear. Include fit_if_email_note.";
       } else {
         emailGuidance =
-          "Hunter.io did not return a verified email for the preferred POC and there is no alternate with an email. " +
+          "Hunter.io did not return a verified email for anyone at this company in company_contacts. " +
           "Do NOT invent an email. Table 2. decision No-go or Refused. " +
-          "Set fit_if_email_secured to Would-go, Still-blocked, or Ambiguous (score company+event as if email existed) and fit_if_email_note in one plain sentence. " +
-          "why/reason_or_ambiguity must be plain language naming Hunter.io: no verified email found; outreach cannot proceed; say whether chasing email is worth it; partner can look them up on LinkedIn or the company website and add an email. draft fields blank.";
+          "Set fit_if_email_secured to Would-go, Still-blocked, or Ambiguous (score company+event as if a qualified POC email existed) and fit_if_email_note. " +
+          "why must say no verified email found, whether chasing a POC email is worth it, and that the partner can add a qualified POC email to move this to Go. draft fields blank.";
       }
       var whitelistGuidance = payload.prequalified_match
         ? (
