@@ -927,7 +927,7 @@ body.is-demo .live-only { display: none !important; }
       { contact_id: "CT-L02", company_id: "CO-L02", first_name: "Tim", last_name: "Dorris", title: "CRO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/timdorris" },
       { contact_id: "CT-L03", company_id: "CO-L03", first_name: "Rafael", last_name: "Bagolin", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/rafael-saccol-bagolin" },
       { contact_id: "CT-L04", company_id: "CO-L04", first_name: "Andrew", last_name: "Baker", title: "Chief AI and Data Strategy Officer", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/andrew-baker" },
-      { contact_id: "CT-L05", company_id: "CO-L05", first_name: "Hanna", last_name: "Roos", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/hanna-roos" }
+      { contact_id: "CT-L05", company_id: "CO-L05", first_name: "Hanna", last_name: "Roos", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/hannaroos" }
     ];
 
     const COMPANY_STATUS = [
@@ -1586,7 +1586,7 @@ body.is-demo .live-only { display: none !important; }
       }
     }
 
-    async function enrichContactEmailWithHunter(contact, domain) {
+    async function enrichContactEmailWithHunter(contact, domain, companyName) {
       if (!contact) return { ok: false, detail: "no_contact", contact: contact };
       if (String(contact.email || "").trim()) {
         return { ok: true, detail: "already_had_email", contact: contact, skipped: true };
@@ -1594,51 +1594,81 @@ body.is-demo .live-only { display: none !important; }
       var first = String(contact.first_name || "").trim();
       var last = String(contact.last_name || "").trim();
       var dom = String(domain || "").trim();
-      if (!dom || (!first && !last && !contact.linkedin_url)) {
+      var company = String(companyName || "").trim();
+      var linkedinHandle = "";
+      if (contact.linkedin_url) {
+        linkedinHandle = String(contact.linkedin_url)
+          .replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//i, "")
+          .replace(/\/$/, "")
+          .trim();
+      }
+      if (!dom && !company && !linkedinHandle) {
         return { ok: false, detail: "missing_name_or_domain", contact: contact };
       }
-      var q = new URLSearchParams();
-      if (dom) q.set("domain", dom);
-      if (first) q.set("first_name", first);
-      if (last) q.set("last_name", last);
-      if (contact.linkedin_url) {
-        q.set(
-          "linkedin_handle",
-          String(contact.linkedin_url).replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//i, "").replace(/\/$/, "")
-        );
+      if (!first && !last && !linkedinHandle) {
+        return { ok: false, detail: "missing_name_or_domain", contact: contact };
       }
-      var res = await hunterFetchJson("/email-finder?" + q.toString());
-      if (!res.ok) return { ok: false, detail: res.detail, contact: contact };
-      var email = res.data && res.data.data && res.data.data.email ? String(res.data.data.email).trim() : "";
-      var score = res.data && res.data.data && res.data.data.score != null ? res.data.data.score : null;
-      if (!email) {
+
+      // Try name+domain first. Do NOT send a guessed LinkedIn slug on the first pass —
+      // a wrong handle (e.g. hanna-roos vs hannaroos) can make Hunter miss a real email.
+      var attempts = [];
+      if (dom && first && last) {
+        attempts.push({ domain: dom, first_name: first, last_name: last });
+      }
+      if (company && first && last) {
+        attempts.push({ company: company, first_name: first, last_name: last });
+      }
+      if (linkedinHandle) {
+        attempts.push({ linkedin_handle: linkedinHandle });
+        if (dom) attempts.push({ domain: dom, linkedin_handle: linkedinHandle });
+      }
+      if (!attempts.length) {
+        return { ok: false, detail: "missing_name_or_domain", contact: contact };
+      }
+
+      var lastRes = null;
+      var lastScore = null;
+      for (var a = 0; a < attempts.length; a++) {
+        var q = new URLSearchParams();
+        Object.keys(attempts[a]).forEach(function (k) {
+          if (attempts[a][k]) q.set(k, attempts[a][k]);
+        });
+        var res = await hunterFetchJson("/email-finder?" + q.toString());
+        lastRes = res;
+        if (!res.ok) continue;
+        var email = res.data && res.data.data && res.data.data.email ? String(res.data.data.email).trim() : "";
+        lastScore = res.data && res.data.data && res.data.data.score != null ? res.data.data.score : null;
+        if (!email) continue;
+        contact.email = email;
+        if (res.data.data.linkedin_url && !contact.linkedin_url) contact.linkedin_url = res.data.data.linkedin_url;
+        for (var i = 0; i < ICP_CONTACTS.length; i++) {
+          if (ICP_CONTACTS[i].contact_id === contact.contact_id) {
+            ICP_CONTACTS[i].email = email;
+            if (contact.linkedin_url) ICP_CONTACTS[i].linkedin_url = contact.linkedin_url;
+            break;
+          }
+        }
         return {
           ok: true,
-          detail: "not_found",
+          detail: "found",
           contact: contact,
-          hunter: { status: "not_found", score: score, source: res.via || "hunter.io" }
+          hunter: {
+            status: "found",
+            email: email,
+            score: lastScore,
+            source: res.via || "hunter.io",
+            live: true,
+            attempt: attempts[a]
+          }
         };
       }
-      contact.email = email;
-      if (res.data.data.linkedin_url && !contact.linkedin_url) contact.linkedin_url = res.data.data.linkedin_url;
-      for (var i = 0; i < ICP_CONTACTS.length; i++) {
-        if (ICP_CONTACTS[i].contact_id === contact.contact_id) {
-          ICP_CONTACTS[i].email = email;
-          if (contact.linkedin_url) ICP_CONTACTS[i].linkedin_url = contact.linkedin_url;
-          break;
-        }
-      }
+
+      if (lastRes && !lastRes.ok) return { ok: false, detail: lastRes.detail, contact: contact };
       return {
         ok: true,
-        detail: "found",
+        detail: "not_found",
         contact: contact,
-        hunter: {
-          status: "found",
-          email: email,
-          score: score,
-          source: res.via || "hunter.io",
-          live: true
-        }
+        hunter: { status: "not_found", score: lastScore, source: (lastRes && lastRes.via) || "hunter.io" }
       };
     }
 
@@ -1658,10 +1688,26 @@ body.is-demo .live-only { display: none !important; }
       return 8;
     }
 
+    function normalizePersonName(text) {
+      return String(text || "")
+        .toLowerCase()
+        .replace(/[^a-z]/g, "")
+        .replace(/annah$/, "anna") // Hannah -> Hanna for match against Hanna
+        .replace(/^(hanna)$/, "hanna");
+    }
+
     function namesMatchContact(row, first, last) {
-      var a = (String(row.first_name || "").trim() + " " + String(row.last_name || "").trim()).toLowerCase();
-      var b = (String(first || "").trim() + " " + String(last || "").trim()).toLowerCase();
-      return a && b && a === b;
+      var aFirst = normalizePersonName(row.first_name);
+      var aLast = normalizePersonName(row.last_name);
+      var bFirst = normalizePersonName(first);
+      var bLast = normalizePersonName(last);
+      if (!aFirst || !aLast || !bFirst || !bLast) return false;
+      if (aFirst === bFirst && aLast === bLast) return true;
+      // Soft match: Hanna/Hannah + same last name
+      if (aLast === bLast && (aFirst === bFirst || aFirst.indexOf(bFirst) === 0 || bFirst.indexOf(aFirst) === 0)) {
+        return Math.abs(aFirst.length - bFirst.length) <= 2;
+      }
+      return false;
     }
 
     function upsertDiscoveredContact(contact) {
@@ -1747,7 +1793,7 @@ body.is-demo .live-only { display: none !important; }
         };
         // If Domain Search listed the person without email, try Email Finder once.
         if (!contact.email) {
-          var ef = await enrichContactEmailWithHunter(contact, domain);
+          var ef = await enrichContactEmailWithHunter(contact, domain, ev.company_name);
           if (!(ef.ok && ef.detail === "found")) {
             // Keep blank-email ICP alternate only if we already have room and title is strong; skip blanks to save noise.
             continue;
@@ -1779,7 +1825,7 @@ body.is-demo .live-only { display: none !important; }
         summary.preferred = { ok: true, detail: "already_had_email", skipped: true };
         return summary;
       }
-      summary.preferred = await enrichContactEmailWithHunter(preferred, ev.domain);
+      summary.preferred = await enrichContactEmailWithHunter(preferred, ev.domain, ev.company_name);
       var preferredStillBlank = !String(preferred.email || "").trim();
       var allowDiscovery = preferredStillBlank && (IS_LIVE || !!ev.live_exa);
       if (allowDiscovery) {
