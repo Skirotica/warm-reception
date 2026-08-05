@@ -925,7 +925,7 @@ body.is-demo .live-only { display: none !important; }
       { contact_id: "CT-20", company_id: "CO-20", first_name: "Reese", last_name: "Lang", title: "VP Sales", email: "reese.lang@plunge.example", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/reese-lang" },
       { contact_id: "CT-L01", company_id: "CO-L01", first_name: "Raj", last_name: "Patel", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/raj-patel-discern" },
       { contact_id: "CT-L02", company_id: "CO-L02", first_name: "Tim", last_name: "Dorris", title: "CRO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/timdorris" },
-      { contact_id: "CT-L03", company_id: "CO-L03", first_name: "Rafael", last_name: "Bagolin", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/rafael-saccol-bagolin" },
+      { contact_id: "CT-L03", company_id: "CO-L03", first_name: "Rafael", last_name: "Bagolin", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/rafaelbagolin", full_name: "Rafael Saccol Bagolin" },
       { contact_id: "CT-L04", company_id: "CO-L04", first_name: "Andrew", last_name: "Baker", title: "Chief AI and Data Strategy Officer", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/andrew-baker" },
       { contact_id: "CT-L05", company_id: "CO-L05", first_name: "Hanna", last_name: "Roos", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/hannaroos" }
     ];
@@ -1611,12 +1611,19 @@ body.is-demo .live-only { display: none !important; }
 
       // Try name+domain first. Do NOT send a guessed LinkedIn slug on the first pass —
       // a wrong handle (e.g. hanna-roos vs hannaroos) can make Hunter miss a real email.
+      var fullName = String(contact.full_name || (first + " " + last)).trim();
       var attempts = [];
       if (dom && first && last) {
         attempts.push({ domain: dom, first_name: first, last_name: last });
       }
+      if (dom && fullName) {
+        attempts.push({ domain: dom, full_name: fullName });
+      }
       if (company && first && last) {
         attempts.push({ company: company, first_name: first, last_name: last });
+      }
+      if (company && fullName) {
+        attempts.push({ company: company, full_name: fullName });
       }
       if (linkedinHandle) {
         attempts.push({ linkedin_handle: linkedinHandle });
@@ -1692,8 +1699,7 @@ body.is-demo .live-only { display: none !important; }
       return String(text || "")
         .toLowerCase()
         .replace(/[^a-z]/g, "")
-        .replace(/annah$/, "anna") // Hannah -> Hanna for match against Hanna
-        .replace(/^(hanna)$/, "hanna");
+        .replace(/annah$/, "anna"); // Hannah -> Hanna
     }
 
     function namesMatchContact(row, first, last) {
@@ -1701,11 +1707,20 @@ body.is-demo .live-only { display: none !important; }
       var aLast = normalizePersonName(row.last_name);
       var bFirst = normalizePersonName(first);
       var bLast = normalizePersonName(last);
-      if (!aFirst || !aLast || !bFirst || !bLast) return false;
-      if (aFirst === bFirst && aLast === bLast) return true;
-      // Soft match: Hanna/Hannah + same last name
-      if (aLast === bLast && (aFirst === bFirst || aFirst.indexOf(bFirst) === 0 || bFirst.indexOf(aFirst) === 0)) {
-        return Math.abs(aFirst.length - bFirst.length) <= 2;
+      if (!aFirst || !bFirst) return false;
+      var firstClose =
+        aFirst === bFirst ||
+        aFirst.indexOf(bFirst) === 0 ||
+        bFirst.indexOf(aFirst) === 0;
+      if (!firstClose) return false;
+      if (!aLast || !bLast) return firstClose; // first-only when last missing
+      if (aLast === bLast) return true;
+      // "Rafael B." vs "Rafael Bagolin": single-letter last matches longer last prefix
+      if (aLast.length === 1 && bLast.charAt(0) === aLast) return true;
+      if (bLast.length === 1 && aLast.charAt(0) === bLast) return true;
+      // One last name is a prefix of the other (Bagolin / SaccolBagolin fragments)
+      if (aLast.indexOf(bLast) === 0 || bLast.indexOf(aLast) === 0) {
+        return Math.min(aLast.length, bLast.length) >= 4;
       }
       return false;
     }
