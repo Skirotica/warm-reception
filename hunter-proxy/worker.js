@@ -1,10 +1,12 @@
 /**
- * Tiny Hunter Email Finder proxy for Warm Reception (GitHub Pages).
- * Deploy on Cloudflare Workers. Set secret HUNTER_API_KEY to your Email Finder key.
+ * Hunter proxy for Warm Reception (GitHub Pages).
+ * Deploy on Cloudflare Workers. Set secret HUNTER_API_KEY to your Email Finder /
+ * Domain Search capable API key.
  *
- * Expected request:
- *   GET /email-finder?domain=example.com&first_name=Ada&last_name=Lovelace
- * Response: Hunter's JSON passthrough (+ CORS for the Pages origin).
+ * Routes:
+ *   GET /email-finder?domain=&first_name=&last_name=&linkedin_handle=
+ *   GET /domain-search?domain=&limit=10
+ * Response: Hunter JSON passthrough (+ CORS for the Pages origin).
  */
 export default {
   async fetch(request, env) {
@@ -13,7 +15,7 @@ export default {
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "GET,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Accept",
-      "Vary": "Origin"
+      Vary: "Origin"
     };
 
     if (request.method === "OPTIONS") {
@@ -21,12 +23,7 @@ export default {
     }
 
     const url = new URL(request.url);
-    if (url.pathname !== "/email-finder" && url.pathname !== "/") {
-      return new Response(JSON.stringify({ errors: [{ details: "Not found. Use /email-finder" }] }), {
-        status: 404,
-        headers: { ...cors, "Content-Type": "application/json" }
-      });
-    }
+    const path = url.pathname.replace(/\/$/, "") || "/";
 
     if (!env.HUNTER_API_KEY) {
       return new Response(JSON.stringify({ errors: [{ details: "HUNTER_API_KEY secret not set on worker" }] }), {
@@ -35,17 +32,38 @@ export default {
       });
     }
 
-    const domain = url.searchParams.get("domain") || "";
-    const first = url.searchParams.get("first_name") || "";
-    const last = url.searchParams.get("last_name") || "";
-    const linkedin = url.searchParams.get("linkedin_handle") || "";
-
-    const hunterUrl = new URL("https://api.hunter.io/v2/email-finder");
-    hunterUrl.searchParams.set("api_key", env.HUNTER_API_KEY);
-    if (domain) hunterUrl.searchParams.set("domain", domain);
-    if (first) hunterUrl.searchParams.set("first_name", first);
-    if (last) hunterUrl.searchParams.set("last_name", last);
-    if (linkedin) hunterUrl.searchParams.set("linkedin_handle", linkedin);
+    let hunterUrl;
+    if (path === "/email-finder" || path === "/") {
+      hunterUrl = new URL("https://api.hunter.io/v2/email-finder");
+      hunterUrl.searchParams.set("api_key", env.HUNTER_API_KEY);
+      const domain = url.searchParams.get("domain") || "";
+      const first = url.searchParams.get("first_name") || "";
+      const last = url.searchParams.get("last_name") || "";
+      const linkedin = url.searchParams.get("linkedin_handle") || "";
+      if (domain) hunterUrl.searchParams.set("domain", domain);
+      if (first) hunterUrl.searchParams.set("first_name", first);
+      if (last) hunterUrl.searchParams.set("last_name", last);
+      if (linkedin) hunterUrl.searchParams.set("linkedin_handle", linkedin);
+      // Health ping on "/" with no params
+      if (path === "/" && !domain && !first && !last && !linkedin) {
+        return new Response(JSON.stringify({ ok: true, routes: ["/email-finder", "/domain-search"] }), {
+          status: 200,
+          headers: { ...cors, "Content-Type": "application/json" }
+        });
+      }
+    } else if (path === "/domain-search") {
+      hunterUrl = new URL("https://api.hunter.io/v2/domain-search");
+      hunterUrl.searchParams.set("api_key", env.HUNTER_API_KEY);
+      const domain = url.searchParams.get("domain") || "";
+      const limit = url.searchParams.get("limit") || "10";
+      if (domain) hunterUrl.searchParams.set("domain", domain);
+      hunterUrl.searchParams.set("limit", limit);
+    } else {
+      return new Response(JSON.stringify({ errors: [{ details: "Not found. Use /email-finder or /domain-search" }] }), {
+        status: 404,
+        headers: { ...cors, "Content-Type": "application/json" }
+      });
+    }
 
     const upstream = await fetch(hunterUrl.toString(), {
       method: "GET",

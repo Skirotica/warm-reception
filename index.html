@@ -762,10 +762,10 @@ body.is-demo .live-only { display: none !important; }
                 <strong>Data contract:</strong> The agent only sees the embedded candidate events, company profiles, ICP contacts, pre-qualified whitelist, and company status in this file’s exact shape. Live CRM, ATS, or free-form paste is not supported.
               </li>
               <li>
-                <strong>Lookups and send:</strong> Event research cites Exa.ai. Email lookup uses Hunter.io Email Finder when a contact email is blank. GitHub Pages cannot call Hunter directly (CORS); save a Hunter proxy URL in Settings (see hunter-proxy/) or enrich offline. Capstone eval cases still use embedded stand-ins. Nothing leaves without human Approve; approved sends route to sandbox only.
+                <strong>Lookups and send:</strong> Event research cites Exa.ai. On live cases, blank preferred email runs Hunter.io Email Finder, then Domain Search for ICP-title alternates (CRO, CEO, VP Sales, Head of Talent, etc.). Capstone CE-08 / E-08 uses the same preferred-vs-alternate decision rules with embedded contacts (both blank = company-wide No-go). GitHub Pages needs a Hunter proxy URL (see hunter-proxy/). Nothing leaves without human Approve; approved sends route to sandbox only.
               </li>
               <li>
-                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Preferred-vs-alternate email checks cover only contacts already listed in icp_contacts; people not in that file are invisible.
+                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Capstone demo checks embedded company_contacts (CE-08). Live path also discovers ICP-title alternates via Hunter Domain Search when preferred email is blank.
               </li>
               <li>
                 <strong>Review agent stretch:</strong> A second agent critiques the worker before the human gate (looks right / needs attention). It adds latency and token cost; the human still makes the final Approve / Edit / Escalate click.
@@ -1033,7 +1033,7 @@ body.is-demo .live-only { display: none !important; }
       "icp-criteria.md": "Legaltech only; employees 50-350; revenue $15M-$50M; VC/PE backed; TA headcount 0-2. Whitelist exception: skip size/revenue/backing/TA No-go when on prequalified_whitelist.",
       "signal-taxonomy.md": "Qualifying: executive hire, funding, partnership, merger, acquisition, IPO. Disqualifying: bankruptcy, layoffs-as-primary, closure.",
       "confidence-rubric.md": "Tiers: High, Medium, Low, Ambiguous, Below Threshold. Ambiguous -> Table 3. Below Threshold / hard disqualify -> Table 2.",
-      "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. Whitelist: skip ICP re-score. Approved human CTAs only; no em dashes in drafts. Prefer Black Gavel templates. Partner Why names Exa.ai for events and Hunter.io for email/LinkedIn; never say on file. LinkedIn field is console-only on Tables 1–3.",
+      "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. Preferred miss -> check company_contacts; live Domain Search adds ICP-title alternates. Alternate with email -> escalate for persona choice. Whitelist: skip ICP re-score. Approved human CTAs only; no em dashes. Partner Why names Exa.ai / Hunter.io; never say on file.",
       "prequalified-whitelist.md": "Partner-vetted companies skip ICP re-qualification. Still require qualifying event, verified email, and hard stops. Cite whitelist in citations; say bypass in plain language in Why.",
       "campaign-routing.md": "Personas: Hiring Manager; CRO/CEO/Founder; Talent Acquisition; Head of Talent and HR. Legaltech sector notes only.",
       "black_gavel_outreach_sequence.md": "Emails 1–4 from templates. Greeting: FirstName, only. Body + one CTA + Chad/CD sign-off last. Evening CTA Email 1 only before 2pm ET. No em dashes.",
@@ -1054,7 +1054,7 @@ body.is-demo .live-only { display: none !important; }
       "RULES — the agent must not:",
       "1. Never send without explicit human approval.",
       "2. Never fabricate companies, events, or qualification fields.",
-      "3. Never guess or invent a contact email address.",
+      "3. Never guess or invent a contact email address. If preferred POC email is blank after Hunter.io Email Finder, check company_contacts. On live cases the console also runs Hunter.io Domain Search for ICP-title alternates (CRO, CEO, VP Sales, Head of Talent, etc.). If an alternate has a verified email, escalate for human persona choice (no silent Table 1 to preferred). If preferred and all alternates lack email, Table 2 company-wide No-go naming who was checked.",
       "4. Maximum 2 Exa.ai lookups per company (pre-loaded Exa.ai responses stand in for the live API in this prototype).",
       "5. Maximum 2 generation attempts per email when language check fails.",
       "6. Enforce a 30-day duplicate suppression window using prior_sends.csv.",
@@ -1069,7 +1069,7 @@ body.is-demo .live-only { display: none !important; }
       "15. Partner-facing Why on Table 2 and Table 3: write why and reason_or_ambiguity in plain language a recruiting partner can understand and act on immediately. Never name internal files (agent-rules.md, confidence-rubric.md, icp-criteria.md, company_status.csv, etc.). Never cite rule numbers or table numbers. Never use unexplained jargon such as entity sourcing, confidence tier, or ambiguous tier. Put record IDs and policy file names only in citations. Name Exa.ai when the issue is event or article research. Name Hunter.io when the issue is email or LinkedIn. Always end Why with a clear next action.",
       "",
       "TOOL NAMING (partner-facing):",
-      "Exa.ai = event and news research. Hunter.io = email finder and LinkedIn URL. Speak as if these tools ran for this case. Pre-loaded responses in case context are the Exa.ai / Hunter.io results for this prototype.",
+      "Exa.ai = event and news research. Hunter.io = Email Finder, Domain Search for alternate POCs, and LinkedIn URL. Speak as if these tools ran for this case. Live path may attach Domain Search alternates into company_contacts. Capstone demo CE-08 uses the same preferred-vs-alternate rules with embedded contacts.",
       "",
       "OUTPUT:",
       "Return exactly these labeled fields (one per line as Field: value):",
@@ -1120,7 +1120,7 @@ body.is-demo .live-only { display: none !important; }
       "",
       "ESCALATION:",      "Stop, set status to REFUSED-ESCALATE when needed, state the reason, and route correctly when:",
       "1. Low confidence: Table 1 Low, no batch approval, mandatory individual review; do not treat as High.",
-      "2. Missing data: missing preferred POC email -> check company_contacts; if an alternate has a verified email, report it and escalate for persona choice (no silent Table 1 to preferred); if preferred and all alternates lack email, Table 2 company-wide No-go naming who was checked; never invent an email.",
+      "2. Missing data: missing preferred POC email -> check company_contacts (including Hunter.io Domain Search alternates on live cases). If an alternate has a verified email, report it and escalate for persona choice (no silent Table 1 to preferred). If preferred and all alternates lack email, Table 2 company-wide No-go naming who was checked; never invent an email.",
       "3. Risky or inappropriate language: do not queue unsafe draft language; prefer Table 2 with evaluator reason after retry limit.",
       "4. Out-of-policy or disqualified: fails icp-criteria.md (unless prequalified_match), bankruptcy/opposite signal, or non-qualifying event type -> Table 2.",
       "5. High stakes: name collision / entity ambiguity -> Table 3 with override for verification; existing client, duplicate send within 30 days, or prior opt-out -> Table 2 with no override.",
@@ -1537,10 +1537,55 @@ body.is-demo .live-only { display: none !important; }
     }
 
     /**
-     * Hunter Email Finder. Pages cannot call api.hunter.io directly (CORS).
+     * Hunter Email Finder + Domain Search. Pages cannot call api.hunter.io directly (CORS).
      * Prefer a proxy URL (Cloudflare Worker) that holds the server-side key.
-     * Direct browser calls with a local key are attempted only as a fallback (usually fail on GitHub Pages).
+     * Live path: preferred Email Finder miss -> Domain Search for ICP-title alternates.
+     * Capstone demo CE-08 uses the same company_contacts preferred-vs-alternate rules with embedded contacts.
      */
+    function hunterProxyBase() {
+      return (localStorage.getItem(HUNTER_PROXY_STORAGE) || "").trim().replace(/\/$/, "");
+    }
+
+    function hunterKeySaved() {
+      return (localStorage.getItem(HUNTER_KEY_STORAGE) || "").trim();
+    }
+
+    async function hunterFetchJson(pathAndQuery) {
+      var proxyBase = hunterProxyBase();
+      var hunterKey = hunterKeySaved();
+      var url;
+      if (proxyBase) {
+        url = proxyBase + pathAndQuery;
+      } else if (hunterKey) {
+        var joiner = pathAndQuery.indexOf("?") >= 0 ? "&" : "?";
+        url = "https://api.hunter.io/v2" + pathAndQuery + joiner + "api_key=" + encodeURIComponent(hunterKey);
+      } else {
+        return { ok: false, detail: "no_hunter_key_or_proxy", data: null, status: 0 };
+      }
+      try {
+        var response = await fetch(url, { method: "GET", headers: { accept: "application/json" } });
+        var rawText = await response.text();
+        var data = null;
+        try { data = JSON.parse(rawText); } catch (e) { data = null; }
+        if (!response.ok) {
+          var msg = data && data.errors ? JSON.stringify(data.errors) : rawText.slice(0, 160);
+          return { ok: false, detail: "hunter_http_" + response.status + ": " + msg, data: data, status: response.status };
+        }
+        return { ok: true, detail: "ok", data: data, status: response.status, via: proxyBase ? "hunter_proxy" : "hunter.io" };
+      } catch (err) {
+        var errMsg = err && err.message ? err.message : "exception";
+        if (/Failed to fetch|NetworkError|CORS/i.test(errMsg)) {
+          return {
+            ok: false,
+            detail: "cors_or_network: Hunter cannot be called from this page without a proxy URL. Save a Hunter proxy URL in Settings, or enrich contacts offline.",
+            data: null,
+            status: 0
+          };
+        }
+        return { ok: false, detail: errMsg, data: null, status: 0 };
+      }
+    }
+
     async function enrichContactEmailWithHunter(contact, domain) {
       if (!contact) return { ok: false, detail: "no_contact", contact: contact };
       if (String(contact.email || "").trim()) {
@@ -1552,82 +1597,212 @@ body.is-demo .live-only { display: none !important; }
       if (!dom || (!first && !last && !contact.linkedin_url)) {
         return { ok: false, detail: "missing_name_or_domain", contact: contact };
       }
-
-      var proxyBase = (localStorage.getItem(HUNTER_PROXY_STORAGE) || "").trim().replace(/\/$/, "");
-      var hunterKey = (localStorage.getItem(HUNTER_KEY_STORAGE) || "").trim();
-      var url;
-      var headers = { "accept": "application/json" };
-
-      if (proxyBase) {
-        var q = new URLSearchParams();
-        if (dom) q.set("domain", dom);
-        if (first) q.set("first_name", first);
-        if (last) q.set("last_name", last);
-        if (contact.linkedin_url) q.set("linkedin_handle", String(contact.linkedin_url).replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//i, "").replace(/\/$/, ""));
-        url = proxyBase + "/email-finder?" + q.toString();
-      } else if (hunterKey) {
-        var q2 = new URLSearchParams();
-        q2.set("api_key", hunterKey);
-        if (dom) q2.set("domain", dom);
-        if (first) q2.set("first_name", first);
-        if (last) q2.set("last_name", last);
-        url = "https://api.hunter.io/v2/email-finder?" + q2.toString();
-      } else {
-        return { ok: false, detail: "no_hunter_key_or_proxy", contact: contact };
+      var q = new URLSearchParams();
+      if (dom) q.set("domain", dom);
+      if (first) q.set("first_name", first);
+      if (last) q.set("last_name", last);
+      if (contact.linkedin_url) {
+        q.set(
+          "linkedin_handle",
+          String(contact.linkedin_url).replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//i, "").replace(/\/$/, "")
+        );
       }
-
-      try {
-        var response = await fetch(url, { method: "GET", headers: headers });
-        var rawText = await response.text();
-        var data = null;
-        try { data = JSON.parse(rawText); } catch (e) { data = null; }
-        if (!response.ok) {
-          var msg = data && data.errors ? JSON.stringify(data.errors) : rawText.slice(0, 160);
-          return { ok: false, detail: "hunter_http_" + response.status + ": " + msg, contact: contact };
-        }
-        var email = data && data.data && data.data.email ? String(data.data.email).trim() : "";
-        var score = data && data.data && data.data.score != null ? data.data.score : null;
-        if (!email) {
-          return {
-            ok: true,
-            detail: "not_found",
-            contact: contact,
-            hunter: { status: "not_found", score: score, source: proxyBase ? "hunter_proxy" : "hunter.io" }
-          };
-        }
-        contact.email = email;
-        if (data.data.linkedin_url && !contact.linkedin_url) contact.linkedin_url = data.data.linkedin_url;
-        // Persist into the in-memory ICP list so later payload builds see it.
-        for (var i = 0; i < ICP_CONTACTS.length; i++) {
-          if (ICP_CONTACTS[i].contact_id === contact.contact_id) {
-            ICP_CONTACTS[i].email = email;
-            if (contact.linkedin_url) ICP_CONTACTS[i].linkedin_url = contact.linkedin_url;
-            break;
-          }
-        }
+      var res = await hunterFetchJson("/email-finder?" + q.toString());
+      if (!res.ok) return { ok: false, detail: res.detail, contact: contact };
+      var email = res.data && res.data.data && res.data.data.email ? String(res.data.data.email).trim() : "";
+      var score = res.data && res.data.data && res.data.data.score != null ? res.data.data.score : null;
+      if (!email) {
         return {
           ok: true,
-          detail: "found",
+          detail: "not_found",
           contact: contact,
-          hunter: {
-            status: "found",
-            email: email,
-            score: score,
-            source: proxyBase ? "hunter_proxy" : "hunter.io",
-            live: true
-          }
+          hunter: { status: "not_found", score: score, source: res.via || "hunter.io" }
         };
-      } catch (err) {
-        var errMsg = err && err.message ? err.message : "exception";
-        if (/Failed to fetch|NetworkError|CORS/i.test(errMsg)) {
+      }
+      contact.email = email;
+      if (res.data.data.linkedin_url && !contact.linkedin_url) contact.linkedin_url = res.data.data.linkedin_url;
+      for (var i = 0; i < ICP_CONTACTS.length; i++) {
+        if (ICP_CONTACTS[i].contact_id === contact.contact_id) {
+          ICP_CONTACTS[i].email = email;
+          if (contact.linkedin_url) ICP_CONTACTS[i].linkedin_url = contact.linkedin_url;
+          break;
+        }
+      }
+      return {
+        ok: true,
+        detail: "found",
+        contact: contact,
+        hunter: {
+          status: "found",
+          email: email,
+          score: score,
+          source: res.via || "hunter.io",
+          live: true
+        }
+      };
+    }
+
+    function isIcpAlternateTitle(position) {
+      var p = String(position || "").toLowerCase();
+      if (!p) return false;
+      return /\b(cro|ceo|cfo|coo|founder|co-founder|chief revenue|chief executive|chief financial|chief operating|chief people|chief talent|chief ai|chief data|vp[, ]?\s*sales|vice president.*sales|head of sales|head of talent|vp[, ]?\s*talent|chro|general counsel|managing director|president)\b/.test(p);
+    }
+
+    function icpTitleRank(position) {
+      var p = String(position || "").toLowerCase();
+      if (/\bcro\b|chief revenue/.test(p)) return 1;
+      if (/\bceo\b|chief executive|founder/.test(p)) return 2;
+      if (/vp.*sales|head of sales|vice president.*sales/.test(p)) return 3;
+      if (/head of talent|vp.*talent|chief people|chro/.test(p)) return 4;
+      if (/\bcfo\b|chief financial/.test(p)) return 5;
+      return 8;
+    }
+
+    function namesMatchContact(row, first, last) {
+      var a = (String(row.first_name || "").trim() + " " + String(row.last_name || "").trim()).toLowerCase();
+      var b = (String(first || "").trim() + " " + String(last || "").trim()).toLowerCase();
+      return a && b && a === b;
+    }
+
+    function upsertDiscoveredContact(contact) {
+      for (var i = 0; i < ICP_CONTACTS.length; i++) {
+        if (ICP_CONTACTS[i].contact_id === contact.contact_id) {
+          ICP_CONTACTS[i] = contact;
+          return contact;
+        }
+        if (
+          ICP_CONTACTS[i].company_id === contact.company_id &&
+          namesMatchContact(ICP_CONTACTS[i], contact.first_name, contact.last_name)
+        ) {
+          if (contact.email && !ICP_CONTACTS[i].email) ICP_CONTACTS[i].email = contact.email;
+          if (contact.title && !ICP_CONTACTS[i].title) ICP_CONTACTS[i].title = contact.title;
+          if (contact.linkedin_url && !ICP_CONTACTS[i].linkedin_url) ICP_CONTACTS[i].linkedin_url = contact.linkedin_url;
+          return ICP_CONTACTS[i];
+        }
+      }
+      ICP_CONTACTS.push(contact);
+      EMPLOYMENT_CHECK.checks.push({
+        company_id: contact.company_id,
+        contact_id: contact.contact_id,
+        works_at_company: true
+      });
+      return contact;
+    }
+
+    /**
+     * After preferred Email Finder miss on live cases: Hunter Domain Search for ICP-title people.
+     * Domain Search rows often already include email; we do not invent addresses.
+     */
+    async function discoverAlternatePocsViaHunterDomainSearch(ev, preferred) {
+      var domain = String(ev.domain || "").trim();
+      if (!domain) return { ok: false, detail: "missing_domain", added: [], updatedPreferred: false };
+      var res = await hunterFetchJson("/domain-search?domain=" + encodeURIComponent(domain) + "&limit=10");
+      if (!res.ok) return { ok: false, detail: res.detail, added: [], updatedPreferred: false };
+      var emails = (res.data && res.data.data && res.data.data.emails) || [];
+      var ranked = emails
+        .map(function (row) {
           return {
-            ok: false,
-            detail: "cors_or_network: Hunter cannot be called from this page without a proxy URL. Save a Hunter proxy URL in Settings, or enrich contacts offline.",
-            contact: contact
+            email: String(row.value || row.email || "").trim(),
+            first_name: String(row.first_name || "").trim(),
+            last_name: String(row.last_name || "").trim(),
+            title: String(row.position || row.position_raw || "").trim(),
+            linkedin_url: row.linkedin ? String(row.linkedin).trim() : "",
+            confidence: row.confidence != null ? row.confidence : null
+          };
+        })
+        .filter(function (row) {
+          return row.first_name && row.last_name && isIcpAlternateTitle(row.title);
+        })
+        .sort(function (a, b) {
+          return icpTitleRank(a.title) - icpTitleRank(b.title);
+        });
+
+      var added = [];
+      var updatedPreferred = false;
+      var prefFirst = preferred ? String(preferred.first_name || "").trim() : "";
+      var prefLast = preferred ? String(preferred.last_name || "").trim() : "";
+
+      for (var i = 0; i < ranked.length && added.length < 5; i++) {
+        var row = ranked[i];
+        if (preferred && namesMatchContact(preferred, row.first_name, row.last_name)) {
+          if (row.email && !String(preferred.email || "").trim()) {
+            preferred.email = row.email;
+            if (row.linkedin_url && !preferred.linkedin_url) preferred.linkedin_url = row.linkedin_url;
+            upsertDiscoveredContact(preferred);
+            updatedPreferred = true;
+          }
+          continue;
+        }
+        var contactId = "CT-H-" + String(ev.company_id || "CO").replace(/[^A-Za-z0-9]/g, "") + "-" + (added.length + 1);
+        var contact = {
+          contact_id: contactId,
+          company_id: ev.company_id,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          title: row.title || "Executive",
+          email: row.email || "",
+          employment_confirmed: "yes",
+          linkedin_url: row.linkedin_url || "",
+          discovered_via: "hunter_domain_search"
+        };
+        // If Domain Search listed the person without email, try Email Finder once.
+        if (!contact.email) {
+          var ef = await enrichContactEmailWithHunter(contact, domain);
+          if (!(ef.ok && ef.detail === "found")) {
+            // Keep blank-email ICP alternate only if we already have room and title is strong; skip blanks to save noise.
+            continue;
+          }
+        }
+        upsertDiscoveredContact(contact);
+        added.push(contact);
+      }
+
+      return {
+        ok: true,
+        detail: updatedPreferred || added.length ? "domain_search_merged" : "domain_search_no_icp_emails",
+        added: added,
+        updatedPreferred: updatedPreferred,
+        scanned: ranked.length,
+        source: res.via || "hunter.io"
+      };
+    }
+
+    async function enrichCaseContactsForRun(ev) {
+      var preferred = contactsForCompany(ev.company_id)[0] || null;
+      var summary = {
+        preferred: null,
+        domain_search: null,
+        live_discovery: false
+      };
+      if (!preferred) return summary;
+      if (String(preferred.email || "").trim()) {
+        summary.preferred = { ok: true, detail: "already_had_email", skipped: true };
+        return summary;
+      }
+      summary.preferred = await enrichContactEmailWithHunter(preferred, ev.domain);
+      var preferredStillBlank = !String(preferred.email || "").trim();
+      var allowDiscovery = preferredStillBlank && (IS_LIVE || !!ev.live_exa);
+      if (allowDiscovery) {
+        summary.live_discovery = true;
+        summary.domain_search = await discoverAlternatePocsViaHunterDomainSearch(ev, preferred);
+        // Re-run Email Finder on preferred if Domain Search still left them blank (name variants already handled).
+        if (!String(preferred.email || "").trim() && summary.domain_search && summary.domain_search.updatedPreferred) {
+          summary.preferred = {
+            ok: true,
+            detail: "found",
+            contact: preferred,
+            hunter: { status: "found", source: "hunter_domain_search", live: true }
+          };
+        } else if (String(preferred.email || "").trim() && summary.preferred && summary.preferred.detail === "not_found") {
+          summary.preferred = {
+            ok: true,
+            detail: "found",
+            contact: preferred,
+            hunter: { status: "found", source: "hunter_domain_search", live: true, email: preferred.email }
           };
         }
-        return { ok: false, detail: errMsg, contact: contact };
       }
+      return summary;
     }
 
     function partnerDisplayName(partnerId) {
@@ -2418,6 +2593,8 @@ body.is-demo .live-only { display: none !important; }
         if (hunterLive.status) hunterBlock.status = hunterLive.status;
         if (hunterLive.source) hunterBlock.source = hunterLive.source;
         if (hunterLive.detail) hunterBlock.lookup_detail = hunterLive.detail;
+        if (hunterLive.domain_search) hunterBlock.domain_search = hunterLive.domain_search;
+        if (hunterLive.domain_search_error) hunterBlock.domain_search_error = hunterLive.domain_search_error;
       }
       return {
         candidate_event: ev,
@@ -2431,7 +2608,7 @@ body.is-demo .live-only { display: none !important; }
         partner_display_name: partnerDisplayName(partnerIdForCase(ev)),
         prequalified_match: whitelist,
         prequalified_whitelist: PREQUALIFIED_WHITELIST,
-        // Hunter.io Email Finder shape. Live when Settings proxy/key succeeds; otherwise embedded/blank.
+        // Hunter.io Email Finder (+ Domain Search alternates on live). Live when Settings proxy/key succeeds.
         hunter_io: hunterBlock,
         exa_ai: {
           source: "exa.ai",
@@ -3242,18 +3419,48 @@ body.is-demo .live-only { display: none !important; }
       if (seedContact && !String(seedContact.email || "").trim()) {
         if (metaEl) metaEl.textContent = "Hunter lookup " + ev.case_id;
         resultEl.innerHTML = '<span class="thinking">Hunter Email Finder…</span>';
-        var enrich = await enrichContactEmailWithHunter(seedContact, ev.domain);
+        var enrichBundle = await enrichCaseContactsForRun(ev);
+        var enrich = enrichBundle.preferred || { ok: false, detail: "no_preferred" };
+        if (enrichBundle.live_discovery) {
+          resultEl.innerHTML = '<span class="thinking">Hunter Domain Search for alternate POCs…</span>';
+        }
+        var ds = enrichBundle.domain_search;
         hunterLive = {
           live: true,
           status: enrich.hunter && enrich.hunter.status ? enrich.hunter.status : (enrich.ok && enrich.detail === "found" ? "found" : "not_found"),
           score: enrich.hunter && enrich.hunter.score != null ? enrich.hunter.score : null,
           source: enrich.hunter && enrich.hunter.source ? enrich.hunter.source : "hunter.io",
-          detail: enrich.detail || ""
+          detail: enrich.detail || "",
+          domain_search: ds
+            ? {
+                ran: true,
+                detail: ds.detail,
+                alternates_added: (ds.added || []).map(function (c) {
+                  return {
+                    contact_id: c.contact_id,
+                    name: (c.first_name + " " + c.last_name).trim(),
+                    title: c.title,
+                    email: c.email || null
+                  };
+                }),
+                updated_preferred: !!ds.updatedPreferred,
+                scanned_icp_titles: ds.scanned || 0
+              }
+            : { ran: false }
         };
+        if (String(seedContact.email || "").trim()) {
+          hunterLive.status = "found";
+          hunterLive.detail = enrich.detail === "found" ? "found" : "found_via_domain_search";
+        } else if (ds && ds.added && ds.added.some(function (c) { return !!String(c.email || "").trim(); })) {
+          hunterLive.status = "preferred_miss_alternate_found";
+          hunterLive.detail = "preferred_not_found_domain_search_alternates";
+        }
         if (!enrich.ok && enrich.detail && /cors_or_network|no_hunter_key_or_proxy/.test(enrich.detail)) {
-          // Continue the agent loop with blank email; surface the Hunter note in payload.
           hunterLive.status = "not_found";
           hunterLive.detail = enrich.detail;
+        }
+        if (ds && !ds.ok && ds.detail) {
+          hunterLive.domain_search_error = ds.detail;
         }
         resultEl.innerHTML = '<span class="thinking">Running…</span>';
         if (metaEl) metaEl.textContent = "Running " + ev.case_id;
@@ -3280,8 +3487,8 @@ body.is-demo .live-only { display: none !important; }
         emailGuidance = "Hunter.io returned a verified email for the preferred contact (see hunter_io / company_contacts). Use only that address. Never invent an email. In Why, you may say Hunter.io returned the email.";
       } else if (alternateEmails.length) {
         emailGuidance =
-          "Hunter.io did not return an email for the preferred POC, but returned a verified email for at least one alternate at this company. " +
-          "In plain-language why/reason_or_ambiguity: say Hunter.io missed the preferred person, name each alternate who has an email, and ask the partner to choose who to contact. " +
+          "Hunter.io did not return an email for the preferred POC, but company_contacts includes at least one alternate with a verified email (Email Finder and/or Domain Search on live cases; embedded alternates on capstone CE-08-style cases). " +
+          "In plain-language why/reason_or_ambiguity: say Hunter.io missed the preferred person, name each alternate who has an email and their title, and ask the partner to choose who to contact. " +
           "Put contact_ids only in citations. Do NOT invent an email. Do NOT Table 1 draft to the preferred POC. " +
           "Table 2 or Table 3 for human persona choice before any draft to the alternate. Keep draft fields blank in this prototype.";
       } else if (companyContacts.length > 1) {

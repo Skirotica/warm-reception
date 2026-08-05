@@ -3,7 +3,7 @@
 ## Hard boundaries
 1. Never send without explicit human approval.
 2. Never fabricate companies, events, or qualification fields.
-3. Never guess or invent a contact email address. If the preferred POC email is blank, check all company contacts. If an alternate has a verified email, report it for human persona choice. If preferred and all alternates lack email, Table 2 company-wide No-go and name who was checked. Never Table 1 draft to a preferred POC without an email.
+3. Never guess or invent a contact email address. If the preferred POC email is blank after Hunter.io Email Finder, check all company contacts. On live cases the console also runs Hunter.io Domain Search for ICP-title alternates (CRO, CEO, VP Sales, Head of Talent, and similar). Capstone CE-08 / E-08 uses the same preferred-vs-alternate rules with embedded contacts. If an alternate has a verified email, report it for human persona choice (no silent Table 1 to preferred). If preferred and all alternates lack email, Table 2 company-wide No-go and name who was checked. Never Table 1 draft to a preferred POC without an email.
 4. Maximum 2 Exa.ai lookups per company (pre-loaded Exa.ai responses stand in for the live API in this prototype).
 5. Maximum 2 generation attempts per email when language check fails.
 6. Enforce a 30-day duplicate suppression window using prior_sends.csv.
