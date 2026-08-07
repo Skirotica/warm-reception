@@ -1,7 +1,11 @@
 /**
  * Hunter proxy for Warm Reception (GitHub Pages).
- * Deploy on Cloudflare Workers. Set secret HUNTER_API_KEY to your Email Finder /
- * Domain Search capable API key.
+ * Deploy on Cloudflare Workers.
+ *
+ * Secrets (one Worker, two keys if Hunter split them by product):
+ *   HUNTER_EMAIL_FINDER_KEY  — Email Finder product key
+ *   HUNTER_DOMAIN_SEARCH_KEY — Domain Search product key
+ * Fallback: HUNTER_API_KEY used for either route if the specific secret is missing.
  *
  * Routes:
  *   GET /email-finder?domain=&first_name=&last_name=&linkedin_handle=
@@ -25,17 +29,21 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "") || "/";
 
-    if (!env.HUNTER_API_KEY) {
-      return new Response(JSON.stringify({ errors: [{ details: "HUNTER_API_KEY secret not set on worker" }] }), {
-        status: 500,
-        headers: { ...cors, "Content-Type": "application/json" }
-      });
-    }
-
     let hunterUrl;
+    let apiKey;
+
     if (path === "/email-finder" || path === "/") {
+      apiKey = env.HUNTER_EMAIL_FINDER_KEY || env.HUNTER_API_KEY;
+      if (!apiKey) {
+        return new Response(
+          JSON.stringify({
+            errors: [{ details: "Set secret HUNTER_EMAIL_FINDER_KEY (or HUNTER_API_KEY) on this worker" }]
+          }),
+          { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
+        );
+      }
       hunterUrl = new URL("https://api.hunter.io/v2/email-finder");
-      hunterUrl.searchParams.set("api_key", env.HUNTER_API_KEY);
+      hunterUrl.searchParams.set("api_key", apiKey);
       const domain = url.searchParams.get("domain") || "";
       const first = url.searchParams.get("first_name") || "";
       const last = url.searchParams.get("last_name") || "";
@@ -44,7 +52,6 @@ export default {
       if (first) hunterUrl.searchParams.set("first_name", first);
       if (last) hunterUrl.searchParams.set("last_name", last);
       if (linkedin) hunterUrl.searchParams.set("linkedin_handle", linkedin);
-      // Health ping on "/" with no params
       if (path === "/" && !domain && !first && !last && !linkedin) {
         return new Response(JSON.stringify({ ok: true, routes: ["/email-finder", "/domain-search"] }), {
           status: 200,
@@ -52,8 +59,17 @@ export default {
         });
       }
     } else if (path === "/domain-search") {
+      apiKey = env.HUNTER_DOMAIN_SEARCH_KEY || env.HUNTER_API_KEY;
+      if (!apiKey) {
+        return new Response(
+          JSON.stringify({
+            errors: [{ details: "Set secret HUNTER_DOMAIN_SEARCH_KEY (or HUNTER_API_KEY) on this worker" }]
+          }),
+          { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
+        );
+      }
       hunterUrl = new URL("https://api.hunter.io/v2/domain-search");
-      hunterUrl.searchParams.set("api_key", env.HUNTER_API_KEY);
+      hunterUrl.searchParams.set("api_key", apiKey);
       const domain = url.searchParams.get("domain") || "";
       const limit = url.searchParams.get("limit") || "10";
       if (domain) hunterUrl.searchParams.set("domain", domain);
