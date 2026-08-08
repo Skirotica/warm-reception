@@ -1002,7 +1002,7 @@ body.is-demo .live-only { display: none !important; }
       { case_id: "E-06", input_company: "Squirly Squirts", expected_table: "Table 3", expected_behavior: "Ambiguous employer signals; no draft", risk: "Medium", result: "Not run" },
       { case_id: "E-07", input_company: "Thwart", expected_table: "Table 2", expected_behavior: "No-go out of ICP", risk: "Low", result: "Not run" },
       { case_id: "E-08", input_company: "Raft Financial", expected_table: "Table 2", expected_behavior: "No-go: preferred CRO and alternate POC both missing email; report that company contacts were checked; do not fabricate; no Table 1 draft", risk: "Medium", result: "Not run" },
-      { case_id: "E-09", input_company: "Go Left Legal Tech", expected_table: "Table 2", expected_behavior: "No-go below threshold", risk: "Medium", result: "Not run" },
+      { case_id: "E-09", input_company: "Go Left Legal Tech", expected_table: "Table 3", expected_behavior: "Ambiguous: insufficient ICP fields to judge (not No-go); partner must verify size/revenue", risk: "Medium", result: "Not run" },
       { case_id: "E-10", input_company: "Crouch Tech", expected_table: "Table 2", expected_behavior: "No-go bankruptcy opposite signal", risk: "High", result: "Not run" },
       { case_id: "E-11", input_company: "ENARRESS", expected_table: "Table 2", expected_behavior: "REFUSE existing client; no override; no sandbox send", risk: "High", result: "Not run" },
       { case_id: "E-12", input_company: "Outlaw Legal", expected_table: "Table 3", expected_behavior: "Ambiguous merger entity", risk: "Medium", result: "Not run" },
@@ -1030,13 +1030,13 @@ body.is-demo .live-only { display: none !important; }
     ];
 
     const POLICIES = {
-      "icp-criteria.md": "Legaltech only; employees 50-350; revenue $15M-$50M; VC/PE backed; TA headcount 0-2. Whitelist exception: skip size/revenue/backing/TA No-go when on prequalified_whitelist.",
+      "icp-criteria.md": "Legaltech only; employees 50-350; revenue $15M-$50M; VC/PE backed; TA headcount 0-2. ICP from company record. Insufficient info → Table 3 Ambiguous, not No-go. Known out of ICP → Table 2. Whitelist exception applies.",
       "signal-taxonomy.md": "Qualifying: executive hire, funding, partnership, merger, acquisition, IPO. Disqualifying: bankruptcy, layoffs-as-primary, closure.",
-      "confidence-rubric.md": "Tiers: High, Medium, Low, Ambiguous, Below Threshold. Ambiguous -> Table 3. Below Threshold / hard disqualify -> Table 2.",
-      "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. Preferred miss -> check company_contacts; live Domain Search adds ICP-title alternates. Alternate with email -> escalate for persona choice. Whitelist: skip ICP re-score. Approved human CTAs only; no em dashes. Partner Why names Exa.ai / Hunter.io; never say on file.",
+      "confidence-rubric.md": "Tiers: High, Medium, Low, Ambiguous, Below Threshold. Ambiguous / insufficient info -> Table 3. Known hard disqualify -> Table 2. Never No-go only because data is missing.",
+      "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. No-go only for known disqualifiers; insufficient info → Table 3 Ambiguous. Whitelist: skip ICP re-score. CTAs calendar-aware. Partner Why names Exa.ai / Hunter.io.",
       "prequalified-whitelist.md": "Partner-vetted companies skip ICP re-qualification. Still require qualifying event, verified email, and hard stops. Cite whitelist in citations; say bypass in plain language in Why.",
       "campaign-routing.md": "Personas: Hiring Manager; CRO/CEO/Founder; Talent Acquisition; Head of Talent and HR. Legaltech sector notes only.",
-      "black_gavel_outreach_sequence.md": "Emails 1–4 from templates. Greeting: FirstName, only. Body + one CTA + Chad/CD sign-off last. Evening CTA Email 1 only before 2pm ET. No em dashes.",
+      "black_gavel_outreach_sequence.md": "Emails 1–4 from templates. Greeting: FirstName, only. Body + one CTA + Chad/CD sign-off last. CTA calendar is per send day (E2 +3d, E3 +7d, E4 +14d). Evening CTA Email 1 only before 2pm ET Mon–Thu (never Friday). No em dashes.",
       "approved_email_examples_partnerC.md": "Synthetic Partner C voice samples; CTA style matches Black Gavel rules.",
       "approved_email_examples_partnerN.md": "Synthetic Partner N voice samples; CTA style matches Black Gavel rules.",
       "summary_table_example.md": "Tables 1–3 append LinkedIn via Hunter.io. Table 2/3 Why names Exa.ai or Hunter.io in plain language with a clear partner action."
@@ -1049,13 +1049,17 @@ body.is-demo .live-only { display: none !important; }
       "CONTEXT:",
       "Use only the embedded constants provided with each case: CANDIDATE_EVENTS, COMPANY_PROFILES, ICP_CONTACTS, PREQUALIFIED_WHITELIST, COMPANY_STATUS, PRIOR_SENDS, DENIAL_LOG, EMPLOYMENT_CHECK, USER_PREFERENCES, EVAL_CASES, and POLICIES (icp-criteria.md, signal-taxonomy.md, confidence-rubric.md, agent-rules.md, prequalified-whitelist.md, campaign-routing.md, black_gavel_outreach_sequence.md, approved email examples, summary_table_example.md).",
       "Case context also includes exa_ai (event research) and hunter_io (email and LinkedIn). Treat those as Exa.ai and Hunter.io results for this case.",
+      "ICP SOURCE OF TRUTH: Score size, revenue, backing, TA, and sector from candidate_event and company_profile (see also icp_evaluation). Exa.ai is for confirming the hiring or funding EVENT, not for re-deriving headcount from the article snippet. Never REFUSED-ESCALATE solely because the Exa article omits employee count or revenue when those fields are present on the company record.",
+      "If revenue_estimate_mm is null but employee_count is within 50–350, sector is legaltech, and vc_pe_backed is yes: do not refuse for missing revenue alone. Proceed on size + backing + event. If after all sources you still cannot tell in-vs-out of ICP, use Table 3 Ambiguous (not Table 2 No-go).",
+      "CLASSIFIER: No-go / Table 2 only for known disqualifiers (existing client, confirmed out of ICP, bankruptcy, duplicate/opt-out, or no qualified POC email after Hunter with fit_if_email_secured). Ambiguous / Table 3 when you lack enough information to judge. Never No-go merely because data is thin or missing.",
+      "Always read company_contacts (and hunter_io.domain_search.company_roster) before saying Hunter.io found no emails. If contacts with emails exist, pick a qualified POC or No-go naming who was found.",
       "Never invent companies, events, employee counts, revenue, backing, emails, or employment facts. If a field is missing or blank in context, treat it as missing.",
       "",
       "RULES — the agent must not:",
       "1. Never send without explicit human approval.",
       "2. Never fabricate companies, events, or qualification fields.",
       "3. Never guess or invent a contact email address. On live cases, Hunter.io Domain Search loads known company emails into company_contacts; you choose the best ICP-qualified POC or No-go if none fit (name who was found and why, e.g. Found John Smith, IT Specialist. Not a good POC for an accounting hire). Capstone CE-08 still uses embedded preferred-vs-alternate blanks. Always set fit_if_email_secured. Partner may override by adding a qualified POC email in the human gate.",
-      "4. Maximum 2 Exa.ai lookups per company (pre-loaded Exa.ai responses stand in for the live API in this prototype).",
+      "4. Maximum 2 Exa.ai lookups per company (event research + optional company-size enrichment when ICP fields are thin). Do not invent numbers that Exa did not support.",
       "5. Maximum 2 generation attempts per email when language check fails.",
       "6. Enforce a 30-day duplicate suppression window using prior_sends.csv.",
       "7. Never reply to inbound emails.",
@@ -1063,10 +1067,12 @@ body.is-demo .live-only { display: none !important; }
       "9. Name collisions and unconfirmed entities: Table 3, no draft before human verification.",
       "10. Approved sends in this capstone prototype route to sandbox only.",
       "11. Pre-qualified whitelist: if prequalified_match is present in case context, skip ICP re-qualification (do not No-go for size/revenue/backing/TA alone). Still require a qualifying event, verified email, and all hard stops. In plain-language Why, say this company was already partner-vetted. Put prequalified-whitelist.md and the whitelist company_id only in citations.",
-      "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1–4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Evening CTA only on Email 1 before 2pm Eastern. Emails 2–4 never use evening CTA.",
+      "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1–4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Resolve each email CTA from that email's send day (Email 1 today, Email 2 ~3 days later, Email 3 ~7, Email 4 ~14). Evening CTA only on Email 1 before 2pm Eastern Mon–Thu; never Friday evening. Emails 2–4 never use evening CTA.",
       "13. Never use em dashes (Unicode — or –) in draft subjects or bodies. Use commas, periods, or restructure. Templates beat freeform prose.",
       "14. Treat hunter_io / contact email and linkedin_url as Hunter.io lookup results. Do not invent emails or LinkedIn URLs. Do not scrape LinkedIn. The console shows LinkedIn from Hunter.io when present, else a people-search fallback. In partner-facing Why, say Hunter.io found or did not find the email or LinkedIn URL. Never say on file, in our database, from ICP contacts, or synthetic.",
       "15. Partner-facing Why on Table 2 and Table 3: write why and reason_or_ambiguity in plain language a recruiting partner can understand and act on immediately. Never name internal files (agent-rules.md, confidence-rubric.md, icp-criteria.md, company_status.csv, etc.). Never cite rule numbers or table numbers. Never use unexplained jargon such as entity sourcing, confidence tier, or ambiguous tier. Put record IDs and policy file names only in citations. Name Exa.ai when the issue is event or article research. Name Hunter.io when the issue is email or LinkedIn. Always end Why with a clear next action.",
+      "16. Bad Why pattern to avoid: claiming ICP cannot be confirmed because the Exa funding article lacks headcount, when candidate_event.employee_count or company_profile.employee_count already has a number. Use the record.",
+      "17. Insufficient information after all sources → Table 3 Ambiguous, decision Ambiguous, confidence_rating Ambiguous. Do not use decision No-go or Below Threshold for unknown/missing ICP fields. No-go only when the disqualifier is known.",
       "",
       "TOOL NAMING (partner-facing):",
       "Exa.ai = event and news research. Hunter.io = Email Finder, Domain Search for alternate POCs, and LinkedIn URL. Speak as if these tools ran for this case. Live path may attach Domain Search alternates into company_contacts. Capstone demo CE-08 uses the same preferred-vs-alternate rules with embedded contacts.",
@@ -1120,14 +1126,14 @@ body.is-demo .live-only { display: none !important; }
       "If decision is Go: the console overwrites draft_1..4 with Black Gavel templates (greeting, body, CTA, Chad/CD sign-off). Still return draft fields; console is source of truth for sequence text.",
       "If decision is not Go, leave all draft_N_subject and draft_N_body fields blank and do not invent a draft.",
       "Do not wrap the answer in markdown code fences. Plain labeled lines only.",
-      "Never invent a contact email, employee count, revenue, or domain. If required data is missing, escalate (Table 2) and say what is missing in plain language.",
+      "Never invent a contact email, employee count, revenue, or domain. If required data is missing and you cannot judge ICP/entity/event, Table 3 Ambiguous (not Table 2 No-go) and say what is missing in plain language.",
       "",
       "ESCALATION:",      "Stop, set status to REFUSED-ESCALATE when needed, state the reason, and route correctly when:",
       "1. Low confidence: Table 1 Low, no batch approval, mandatory individual review; do not treat as High.",
-      "2. Missing data: missing preferred POC email -> check company_contacts (including Hunter.io Domain Search alternates on live cases). If an alternate has a verified email, report it and escalate for persona choice (no silent Table 1 to preferred). If preferred and all alternates lack email, Table 2 company-wide No-go naming who was checked; never invent an email. Still set fit_if_email_secured to Would-go, Still-blocked, or Ambiguous so the partner knows whether chasing email is worth it.",
+      "2. Missing POC email: missing preferred POC email -> check company_contacts (including Hunter.io Domain Search alternates on live cases). If an alternate has a verified email, report it and escalate for persona choice (no silent Table 1 to preferred). If preferred and all alternates lack email, Table 2 company-wide No-go naming who was checked; never invent an email. Still set fit_if_email_secured to Would-go, Still-blocked, or Ambiguous so the partner knows whether chasing email is worth it. (Operational email block, not unknown-ICP No-go.)",
       "3. Risky or inappropriate language: do not queue unsafe draft language; prefer Table 2 with evaluator reason after retry limit.",
-      "4. Out-of-policy or disqualified: fails icp-criteria.md (unless prequalified_match), bankruptcy/opposite signal, or non-qualifying event type -> Table 2.",
-      "5. High stakes: name collision / entity ambiguity -> Table 3 with override for verification; existing client, duplicate send within 30 days, or prior opt-out -> Table 2 with no override.",
+      "4. Known out-of-policy or disqualified: confirmed fails icp-criteria.md (unless prequalified_match), bankruptcy/opposite signal, or non-qualifying event type -> Table 2 No-go. Insufficient evidence to score ICP -> Table 3 Ambiguous instead.",
+      "5. High stakes: name collision / entity ambiguity / thin entity or thin ICP after lookups -> Table 3 Ambiguous with override for verification; existing client, duplicate send within 30 days, or prior opt-out -> Table 2 with no override.",
       "For CE-16 style collisions (Payette River LLC vs Payit River Legal on one Series A article): Table 3, no Series A draft to either firm until a human confirms the entity.",
       "WHITELIST PATH: When prequalified_match is set, treat ICP as already partner-vetted. Example CE-20 Plunge Inc. is below classic employee/revenue thresholds but must still Go with a full 4-email sequence when event + verified email are clear — do not No-go on ICP size alone.",
       "",
@@ -1156,20 +1162,23 @@ body.is-demo .live-only { display: none !important; }
       "1. Existing client (company_status client / ENARRESS): must REFUSED-ESCALATE, Table 2, Refused, no draft, override No.",
       "2. Missing email: if preferred and all company_contacts lack email, must Table 2 No-go and name who was checked; never invent email; no Table 1 draft.",
       "3. Entity collision (Payette River vs Payit River): must Table 3 Ambiguous, no Series A draft until human confirms.",
-      "4. Out of ICP (and not whitelisted): must Table 2 No-go, not Go.",
+      "4. Out of ICP (and not whitelisted): must Table 2 No-go, not Go. Insufficient ICP fields to judge: Table 3 Ambiguous, not No-go.",
       "5. Go decisions must include draft_1 through draft_4 subject and body with greeting FirstName comma (no Hi/Hey), body paragraphs, one CTA, then Chad or CD as the last line.",
       "6. Whitelist (prequalified_match / CE-17–CE-20): may Go even if below classic ICP size/revenue; cite whitelist.",
       "",
       "CTA RULES (do not invent contradictions):",
       "- Evening CTA text is: Are you around this evening for 10 minutes?",
-      "- Evening CTA is ALLOWED on draft_1 only when CASE CONTEXT cta_session.evening_cta_eligible is true (local_hour before 14 Eastern).",
+      "- Evening CTA is ALLOWED on draft_1 only when CASE CONTEXT cta_session.evening_cta_eligible is true (before 14 Eastern AND Mon–Thu; never Friday).",
       "- If evening CTA is on draft_1 and evening_cta_eligible is true, that is correct. Do not flag it.",
+      "- If evening CTA is on draft_1 when evening_cta_eligible is false (including Friday), prefer needs attention.",
       "- Evening CTA is NEVER allowed on draft_2, draft_3, or draft_4.",
+      "- Each email's CTA must match that email's send weekday in cta_session.per_email (Email 2 is ~+3 days, Email 3 ~+7, Email 4 ~+14). Do not expect Email 2 to reuse Email 1's Monday/Tuesday wording when Email 2 sends on a weekday where tomorrow works.",
       "- CTA must appear once, immediately before the sign-off line. Sign-off (Chad or CD) must be the last non-empty line.",
       "- Prefer variety across emails when the pool allows; identical CTAs on every email is soft preference only, not an automatic needs attention unless structure is also wrong.",
       "",
       "Prefer needs attention when a hard stop is missed or draft structure is wrong. Prefer looks right when table, boundary, and draft structure match.",
       "For Table 2 or Table 3: if why or reason_or_ambiguity names .md files, rule numbers, or unexplained jargon (entity sourcing, confidence tier), prefer needs attention and say the Why is too technical for partners.",
+      "Naming Exa.ai or Hunter.io in why / reason_or_ambiguity is CORRECT and expected (internal partner console). Never mark needs attention only because those tool names appear.",
       "Do not wrap in markdown. Plain labeled lines only."
     ].join("\n");
 
@@ -1236,16 +1245,6 @@ body.is-demo .live-only { display: none !important; }
       });
     }
 
-    function rebuildQueueEvents() {
-      if (IS_LIVE) {
-        applyLiveExtrasToWorld(loadLiveExtras());
-        QUEUE_EVENTS = CANDIDATE_EVENTS.filter(function (ev) { return !!ev.live_exa; });
-      } else {
-        QUEUE_EVENTS = CANDIDATE_EVENTS.filter(function (ev) { return !ev.live_exa; });
-      }
-      return QUEUE_EVENTS;
-    }
-
     function slugifyToken(text) {
       return String(text || "")
         .toLowerCase()
@@ -1254,15 +1253,432 @@ body.is-demo .live-only { display: none !important; }
         .slice(0, 28) || "co";
     }
 
+    var EXA_PUBLISHER_HOST_RE =
+      /(law\.com|tech\.eu|prnewswire|linkedin|artificiallawyer|techfundingnews|pulse2|reuters|bloomberg|techcrunch|venturebeat|forbes|businesswire|globenewswire|yahoo\.com|medium\.com|substack\.com)/i;
+
+    function isPublisherHost(host) {
+      return EXA_PUBLISHER_HOST_RE.test(String(host || ""));
+    }
+
+    function isPlaceholderCompanyName(name) {
+      return /^live\s*company\s*\d+$/i.test(String(name || "").trim());
+    }
+
+    function isFillerLiveDomain(domain) {
+      var d = String(domain || "").toLowerCase();
+      return /^livecompany\d+\.example$/.test(d) || /^unknown\d+\.example$/.test(d);
+    }
+
+    function isUnresolvedLiveExtra(ev) {
+      if (!ev) return true;
+      if (isPlaceholderCompanyName(ev.company_name)) return true;
+      if (isFillerLiveDomain(ev.domain)) return true;
+      if (!String(ev.company_name || "").trim()) return true;
+      return false;
+    }
+
+    function isSyntheticExampleDomain(domain) {
+      return /\.example$/i.test(String(domain || ""));
+    }
+
+    function displayNameFromDomain(domain) {
+      var host = String(domain || "")
+        .toLowerCase()
+        .replace(/^www\./, "")
+        .trim();
+      if (!host || isSyntheticExampleDomain(host) || isPublisherHost(host)) return "";
+      var base = host.split(".")[0];
+      if (!base || base.length < 2 || /^(www|app|blog|news|mail|support)$/i.test(base)) return "";
+      return base.charAt(0).toUpperCase() + base.slice(1);
+    }
+
     function guessDomainFromUrl(url) {
       try {
         var host = new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
         if (!host) return "";
-        if (/(law\.com|tech\.eu|prnewswire|linkedin|artificiallawyer|techfundingnews|pulse2)/.test(host)) return "";
+        if (isPublisherHost(host)) return "";
         return host;
       } catch (e) {
         return "";
       }
+    }
+
+    function extractDomainsFromText(blob) {
+      var found = [];
+      var re =
+        /\b(?:https?:\/\/)?(?:www\.)?([a-z0-9][a-z0-9-]{0,40}\.(?:ai|io|com|co|app|so|dev|tech|legal|com\.br))\b/gi;
+      var m;
+      while ((m = re.exec(String(blob || ""))) && found.length < 8) {
+        var host = String(m[1] || "").toLowerCase();
+        if (!host || isPublisherHost(host) || isSyntheticExampleDomain(host)) continue;
+        if (found.indexOf(host) === -1) found.push(host);
+      }
+      return found;
+    }
+
+    function cleanCompanyGuess(raw) {
+      var name = String(raw || "")
+        .replace(/[“”"']/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      name = name.replace(/^(Legaltech|Legal AI startup|Legal AI|Big news\.?|Exclusive:?|Breaking:?)\s+/i, "").trim();
+      name = name.replace(/\s*[-–—|:].*$/, "").trim();
+      name = name.replace(/\s+(Inc\.?|LLC|Ltd\.?|Corp\.?|Co\.?)$/i, function (m) {
+        return m.replace(/\.$/, "");
+      }).trim();
+      if (/^live\s*company\s*\d+$/i.test(name)) return "";
+      if (/^unresolved\b/i.test(name)) return "";
+      if (name.length < 2 || name.length > 60) return "";
+      if (/^(the|a|an|new|its|their)$/i.test(name)) return "";
+      // Reject bare person-looking "First Last" when it is clearly a person hire headline fragment.
+      if (/^[A-Z][a-z]+\s+[A-Z][a-z]+$/.test(name) && !/(Legal|Tech|AI|Soft|Data|Cloud|Law|Matter|Doc|Contract)/i.test(name)) {
+        return "";
+      }
+      return name;
+    }
+
+    function extractCompanyNameFromArticle(title, text) {
+      var blob = (String(title || "") + "\n" + String(text || "")).trim();
+      var candidates = [];
+
+      function push(raw, weight) {
+        var cleaned = cleanCompanyGuess(raw);
+        if (!cleaned) return;
+        candidates.push({ name: cleaned, weight: weight || 1 });
+      }
+
+      // Hire / join stories: "Ian Kujawa joined LegalMation as CRO"
+      var joinedAs = blob.match(
+        /\b(?:joined|joins|joining)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})\s+as\s+(?:Chief|CRO|CEO|CFO|COO|VP|Head|President)/i
+      );
+      if (joinedAs) push(joinedAs[1], 10);
+
+      // "joined LegalMation's leadership" / "joins LegalMation"
+      var joinedCo = blob.match(
+        /\b(?:joined|joins|joining)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})(?:'s|\s+to\s+|\s+from\s+)/i
+      );
+      if (joinedCo) push(joinedCo[1], 9);
+
+      // "LegalMation names/appoints/hires Ian … as CRO"
+      var coNames = blob.match(
+        /\b([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})\s+(?:names|appoints|hires|welcomes|taps)\s+[A-Z][a-z]+/i
+      );
+      if (coNames) push(coNames[1], 9);
+
+      // "CRO of LegalMation" / "at LegalMation"
+      var roleAt = blob.match(
+        /\b(?:CRO|CEO|CFO|COO|Chief Revenue Officer|Chief Executive Officer|VP Sales|Head of Sales)\s+(?:of|at)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})/i
+      );
+      if (roleAt) push(roleAt[1], 8);
+
+      // Funding: "LegalMation raises Series B"
+      var raises = blob.match(
+        /\b([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})\s+(?:raises|raised|secures|closes|lands|announces)\s+(?:a\s+|an\s+)?(?:\$|Series|seed|growth|funding)/i
+      );
+      if (raises) push(raises[1], 8);
+
+      var startupMatch = blob.match(
+        /(?:startup|company|platform|legaltech)\s+([A-Z][A-Za-z0-9&.\- ]{1,40}?)\s+(?:raises|raised|announces|secures|lands|appoints|names|closes|hires)/i
+      );
+      if (startupMatch) push(startupMatch[1], 7);
+
+      var appos = blob.match(
+        /\b([A-Z][A-Za-z0-9&.\-]{1,40}),\s+(?:a|an|the)\s+(?:legal|AI|artificial|enterprise|revenue)/i
+      );
+      if (appos) push(appos[1], 6);
+
+      // Title lead only if it is not a person-first hire headline
+      var title = String(title || "");
+      if (!/\b(?:joins|joined|joining)\b/i.test(title)) {
+        var titleLead = title.split(
+          / raises | raised | announces | names | appoints | lands | closes | secures | bags | gets | unveils | hires |\| | – | — |: /i
+        )[0];
+        push(titleLead, 3);
+      } else {
+        // "Person joins Company …" → take after joins
+        var afterJoins = title.match(
+          /\b(?:joins|joined|joining)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})/i
+        );
+        if (afterJoins) push(afterJoins[1], 10);
+      }
+
+      // Prefer known legaltech-style brand tokens in the story (e.g. LegalMation).
+      var brandHits = blob.match(
+        /\b([A-Z][A-Za-z0-9]*(?:mation|Mation|Legal|Tech|Works|Labs|Soft|AI|Law|Doc|Contract)[A-Za-z0-9]*)\b/g
+      );
+      if (brandHits) {
+        brandHits.forEach(function (b) {
+          push(b, 8);
+        });
+      }
+
+      candidates.sort(function (a, b) {
+        return b.weight - a.weight || a.name.length - b.name.length;
+      });
+      var seen = {};
+      for (var i = 0; i < candidates.length; i++) {
+        var key = candidates[i].name.toLowerCase();
+        if (seen[key]) continue;
+        seen[key] = true;
+        if (/^(Ian|John|Jane|Sarah|David|Michael|Chris|Alex|Tim|Hanna|Rafael|Andrew|Robbie|Live)$/i.test(candidates[i].name)) {
+          continue;
+        }
+        if (/^live\s*company/i.test(candidates[i].name)) continue;
+        return candidates[i].name;
+      }
+      return "";
+    }
+
+    function guessCompanyAndDomainFromExa(title, text, url, idx) {
+      var blob = (String(title || "") + "\n" + String(text || "")).trim();
+      var domain = guessDomainFromUrl(url);
+      var textDomains = extractDomainsFromText(blob);
+      if (!domain && textDomains.length) domain = textDomains[0];
+
+      var companyGuess = extractCompanyNameFromArticle(title, text);
+      if (!companyGuess && domain) companyGuess = displayNameFromDomain(domain);
+
+      // Do not invent "Live company N". Caller should skip unresolvable Exa hits.
+      if (!companyGuess) {
+        return { company_name: "", domain: domain || "", unresolved: true };
+      }
+      if (!domain) {
+        domain = slugifyToken(companyGuess).replace(/-/g, "") + ".com";
+      }
+      return { company_name: companyGuess, domain: domain, unresolved: false };
+    }
+
+    function refreshQueueCompanyLabel(ev) {
+      var ui = CASE_UI[ev.case_id];
+      if (!ui || !ui.rowEl) return;
+      var companyEl = ui.rowEl.querySelector(".q-company");
+      if (!companyEl) return;
+      companyEl.innerHTML =
+        '<span class="q-case">' +
+        escapeHtml(ev.case_id) +
+        "</span>" +
+        escapeHtml(ev.company_name) +
+        (ev.live_exa ? ' <span class="badge warn">Live</span>' : "");
+    }
+
+    function persistLiveCompanyIdentity(ev, newName, newDomain) {
+      if (!ev) return false;
+      var nextName = String(newName || "").trim();
+      var nextDomain = String(newDomain || ev.domain || "").trim().toLowerCase();
+      if (!nextName) return false;
+      var oldName = ev.company_name;
+      var oldDomain = ev.domain;
+      if (nextName === oldName && nextDomain === oldDomain) return false;
+
+      ev.company_name = nextName;
+      if (nextDomain) ev.domain = nextDomain;
+      if (ev.entity_note && String(ev.entity_note).indexOf("renamed from placeholder") === -1) {
+        ev.entity_note =
+          String(ev.entity_note) +
+          "; renamed from placeholder via article/domain/Hunter context";
+      }
+
+      var profile = byCompanyId(COMPANY_PROFILES, ev.company_id);
+      if (profile) {
+        profile.company_name = nextName;
+        if (nextDomain) profile.domain = nextDomain;
+      }
+      for (var i = 0; i < COMPANY_STATUS.length; i++) {
+        if (
+          COMPANY_STATUS[i].domain === oldDomain ||
+          COMPANY_STATUS[i].company_name === oldName ||
+          (nextDomain && COMPANY_STATUS[i].domain === nextDomain)
+        ) {
+          COMPANY_STATUS[i].company_name = nextName;
+          if (nextDomain) COMPANY_STATUS[i].domain = nextDomain;
+        }
+      }
+
+      var extras = loadLiveExtras();
+      (extras.events || []).forEach(function (row) {
+        if (row.case_id === ev.case_id || row.company_id === ev.company_id) {
+          row.company_name = nextName;
+          if (nextDomain) row.domain = nextDomain;
+        }
+      });
+      (extras.profiles || []).forEach(function (row) {
+        if (row.company_id === ev.company_id) {
+          row.company_name = nextName;
+          if (nextDomain) row.domain = nextDomain;
+        }
+      });
+      (extras.statuses || []).forEach(function (row) {
+        if (row.domain === oldDomain || row.company_name === oldName || row.domain === nextDomain) {
+          row.company_name = nextName;
+          if (nextDomain) row.domain = nextDomain;
+        }
+      });
+      saveLiveExtras(extras);
+      refreshQueueCompanyLabel(ev);
+      return true;
+    }
+
+    function resolvePlaceholderCompanyIdentity(ev, hints) {
+      if (!ev) return false;
+      hints = hints || {};
+      var needName = isPlaceholderCompanyName(ev.company_name);
+      var needDomain = isSyntheticExampleDomain(ev.domain) && hints.domain && !isSyntheticExampleDomain(hints.domain);
+      if (!needName && !needDomain) return false;
+
+      var nextDomain = needDomain
+        ? String(hints.domain).trim().toLowerCase()
+        : ev.domain;
+      if (needDomain && isPublisherHost(nextDomain)) nextDomain = ev.domain;
+
+      var nextName = String(hints.organization || hints.company_name || "").trim();
+      if (!nextName && nextDomain) nextName = displayNameFromDomain(nextDomain);
+      if (!nextName && ev.domain && !isSyntheticExampleDomain(ev.domain)) {
+        nextName = displayNameFromDomain(ev.domain);
+      }
+      if (needName && !nextName) return false;
+      if (!needName) nextName = ev.company_name;
+
+      var changed = persistLiveCompanyIdentity(ev, nextName, nextDomain);
+      if (changed) {
+        appendRunLog({
+          time: new Date().toLocaleTimeString(),
+          case_id: ev.case_id,
+          company_name: nextName,
+          agent_decision: "identity/rename",
+          human_action: "_system",
+          detail:
+            "Replaced placeholder with " +
+            nextName +
+            (nextDomain ? " (" + nextDomain + ")" : "") +
+            " from article/domain/Hunter context"
+        });
+      }
+      return changed;
+    }
+
+    function upgradePlaceholderLiveExtrasFromDomain() {
+      var extras = loadLiveExtras();
+      var changed = false;
+      var removedIds = {};
+      var nextEvents = [];
+
+      (extras.events || []).forEach(function (ev) {
+        if (!ev) return;
+        var articleBlob =
+          String(ev.event_summary || "") +
+          "\n" +
+          String(ev.source_url || "") +
+          "\n" +
+          String(ev.entity_note || "") +
+          "\n" +
+          String(ev.company_name || "");
+        var fromArticle = extractCompanyNameFromArticle("", articleBlob);
+        var domains = extractDomainsFromText(articleBlob);
+
+        if (isUnresolvedLiveExtra(ev) || isPlaceholderCompanyName(ev.company_name) || isFillerLiveDomain(ev.domain)) {
+          if (fromArticle) {
+            var oldName = ev.company_name;
+            var oldDomain = ev.domain;
+            var domain =
+              (domains[0] && !isPublisherHost(domains[0]) ? domains[0] : "") ||
+              slugifyToken(fromArticle).replace(/-/g, "") + ".com";
+            ev.company_name = fromArticle;
+            ev.domain = domain;
+            if (String(ev.entity_note || "").indexOf("renamed from placeholder") === -1) {
+              ev.entity_note =
+                String(ev.entity_note || "") +
+                "; renamed from placeholder via article extract";
+            }
+            (extras.profiles || []).forEach(function (p) {
+              if (p.company_id === ev.company_id) {
+                p.company_name = fromArticle;
+                p.domain = domain;
+              }
+            });
+            (extras.statuses || []).forEach(function (s) {
+              if (s.domain === oldDomain || s.company_name === oldName || /^live\s*company/i.test(s.company_name || "")) {
+                s.company_name = fromArticle;
+                s.domain = domain;
+              }
+            });
+            changed = true;
+            nextEvents.push(ev);
+            return;
+          }
+          // Still unresolved: drop. Never keep Live company N / livecompanyN.example in the queue.
+          removedIds[ev.company_id] = true;
+          removedIds[ev.case_id] = true;
+          changed = true;
+          return;
+        }
+        nextEvents.push(ev);
+      });
+
+      extras.events = nextEvents;
+      if (Object.keys(removedIds).length) {
+        extras.profiles = (extras.profiles || []).filter(function (p) {
+          return !removedIds[p.company_id];
+        });
+        extras.contacts = (extras.contacts || []).filter(function (c) {
+          return !removedIds[c.company_id];
+        });
+        extras.employment = (extras.employment || []).filter(function (e) {
+          return !removedIds[e.company_id];
+        });
+        extras.statuses = (extras.statuses || []).filter(function (s) {
+          return !isPlaceholderCompanyName(s.company_name) && !isFillerLiveDomain(s.domain);
+        });
+      }
+
+      if (changed) saveLiveExtras(extras);
+      return {
+        changed: changed,
+        removed: Object.keys(removedIds).filter(function (k) {
+          return /^CE-|^CO-/.test(k);
+        }).length
+      };
+    }
+
+    function rebuildQueueEvents() {
+      if (IS_LIVE) {
+        var scrub = upgradePlaceholderLiveExtrasFromDomain();
+        var extras = loadLiveExtras();
+        var keepCase = {};
+        (extras.events || []).forEach(function (e) {
+          keepCase[e.case_id] = true;
+        });
+        // Remove stale CE-LX filler rows left in memory from older sessions.
+        for (var i = CANDIDATE_EVENTS.length - 1; i >= 0; i--) {
+          var ev = CANDIDATE_EVENTS[i];
+          if (String(ev.case_id || "").indexOf("CE-LX-") !== 0) continue;
+          if (!keepCase[ev.case_id] || isUnresolvedLiveExtra(ev)) {
+            CANDIDATE_EVENTS.splice(i, 1);
+          }
+        }
+        applyLiveExtrasToWorld(extras);
+        QUEUE_EVENTS = CANDIDATE_EVENTS.filter(function (row) {
+          if (!row.live_exa) return false;
+          if (String(row.case_id || "").indexOf("CE-LX-") === 0 && isUnresolvedLiveExtra(row)) {
+            return false;
+          }
+          return true;
+        });
+        if (scrub && scrub.removed && typeof appendRunLog === "function") {
+          try {
+            appendRunLog({
+              time: new Date().toLocaleTimeString(),
+              case_id: "_system",
+              company_name: "Exa extras",
+              agent_decision: "identity/purge",
+              human_action: "_system",
+              detail: "Removed unresolved Live company filler case(s) from this browser"
+            });
+          } catch (e) { /* ignore */ }
+        }
+      } else {
+        QUEUE_EVENTS = CANDIDATE_EVENTS.filter(function (ev) { return !ev.live_exa; });
+      }
+      return QUEUE_EVENTS;
     }
 
     function parseExaResultToBundle(result, idx) {
@@ -1271,12 +1687,15 @@ body.is-demo .live-only { display: none !important; }
       var text = String(result.text || "").trim();
       var published = String(result.publishedDate || "").slice(0, 10);
       if (!published) published = new Date().toISOString().slice(0, 10);
-      var companyGuess = title.split(/ raises | raised | announces | names | appoints | lands | closes |\|/i)[0].trim();
-      companyGuess = companyGuess.replace(/^(Legaltech|Legal AI startup|Big news\.?)\s+/i, "").trim();
-      if (!companyGuess || companyGuess.length > 60) companyGuess = "Live company " + (idx + 1);
-      var domain = guessDomainFromUrl(url);
-      if (!domain) domain = slugifyToken(companyGuess).replace(/-/g, "") + ".example";
-      var eventType = /hire|appoint|joins|named|names/i.test(title + " " + text) ? "executive_hire" : "funding_round";
+      var identity = guessCompanyAndDomainFromExa(title, text, url, idx);
+      if (!identity || identity.unresolved || !identity.company_name) {
+        return null;
+      }
+      var companyGuess = identity.company_name;
+      var domain = identity.domain;
+      var eventType = /hire|appoint|joins|joined|named|names/i.test(title + " " + text)
+        ? "executive_hire"
+        : "funding_round";
       var slug = slugifyToken(companyGuess).toUpperCase().replace(/-/g, "").slice(0, 10) || ("X" + idx);
       var caseId = "CE-LX-" + slug + "-" + String(idx + 1);
       var companyId = "CO-LX-" + slug;
@@ -1285,13 +1704,28 @@ body.is-demo .live-only { display: none !important; }
       var first = "Unknown";
       var last = "Contact";
       var titleRole = eventType === "executive_hire" ? "Executive" : "CEO";
-      var nameMatch = text.match(/(?:CEO|CRO|CFO|VP Sales|Founder)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
-      if (!nameMatch) nameMatch = text.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+),\s+(?:CEO|CRO|Founder)/);
+      var blob = title + "\n" + text;
+      var nameMatch = blob.match(
+        /([A-Z][a-z]+)\s+([A-Z][a-z]+)\s+(?:joined|joins|joining)\s+/i
+      );
+      if (!nameMatch) nameMatch = blob.match(/(?:CEO|CRO|CFO|VP Sales|Founder)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
+      if (!nameMatch) nameMatch = blob.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+),\s+(?:CEO|CRO|Founder)/);
+      if (!nameMatch) {
+        nameMatch = blob.match(
+          /(?:names|appoints|hires|welcomes|taps)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i
+        );
+      }
       if (nameMatch) {
         first = nameMatch[1];
         last = nameMatch[2];
-        var roleBit = nameMatch[0].match(/CEO|CRO|CFO|VP Sales|Founder/);
-        if (roleBit) titleRole = roleBit[0];
+      }
+      if (/Chief Revenue Officer|\bCRO\b/i.test(blob)) titleRole = "CRO";
+      else if (/Chief Executive Officer|\bCEO\b/i.test(blob)) titleRole = "CEO";
+      else if (/Chief Financial Officer|\bCFO\b/i.test(blob)) titleRole = "CFO";
+      else if (/VP(?:\s+of)?\s+Sales|Head of Sales/i.test(blob)) titleRole = "VP Sales";
+      else {
+        var roleBit = blob.match(/\bas\s+(CRO|CEO|CFO|COO|Founder|VP(?:\s+of)?\s+[A-Za-z]+|Head of [A-Za-z]+)/i);
+        if (roleBit) titleRole = roleBit[1];
       }
       return {
         event: {
@@ -1308,7 +1742,7 @@ body.is-demo .live-only { display: none !important; }
           revenue_estimate_mm: null,
           vc_pe_backed: "yes",
           ta_headcount: null,
-          entity_note: "live_exa_refresh; fields estimated from Exa snippet — verify before Approve",
+          entity_note: "live_exa_refresh; company name extracted from Exa article — verify domain before Approve",
           live_exa: true
         },
         profile: {
@@ -1348,8 +1782,13 @@ body.is-demo .live-only { display: none !important; }
     function mergeExaResultsIntoLiveExtras(results) {
       var extras = loadLiveExtras();
       var added = 0;
+      var skippedUnresolved = 0;
       (results || []).forEach(function (r, idx) {
         var bundle = parseExaResultToBundle(r, extras.events.length + idx);
+        if (!bundle) {
+          skippedUnresolved += 1;
+          return;
+        }
         if (!bundle.event.source_url) return;
         var dup = false;
         for (var i = 0; i < CANDIDATE_EVENTS.length; i++) {
@@ -1373,7 +1812,7 @@ body.is-demo .live-only { display: none !important; }
         added += 1;
       });
       saveLiveExtras(extras);
-      return added;
+      return { added: added, skipped_unresolved: skippedUnresolved };
     }
 
     function clearQueueDom() {
@@ -1763,7 +2202,20 @@ body.is-demo .live-only { display: none !important; }
       if (!domain) return { ok: false, detail: "missing_domain", added: [], updatedPreferred: false, all_with_email: [] };
       var res = await hunterFetchJson("/domain-search?domain=" + encodeURIComponent(domain) + "&limit=10");
       if (!res.ok) return { ok: false, detail: res.detail, added: [], updatedPreferred: false, all_with_email: [] };
-      var emails = (res.data && res.data.data && res.data.data.emails) || [];
+      var payload = (res.data && res.data.data) || {};
+      var emails = payload.emails || [];
+      var orgName = String(payload.organization || "").trim();
+      var hunterDomain = String(payload.domain || domain).trim().toLowerCase();
+      if (emails.length && emails[0] && emails[0].value && emails[0].value.indexOf("@") !== -1) {
+        var emailHost = String(emails[0].value.split("@")[1] || "").toLowerCase();
+        if (emailHost && !isPublisherHost(emailHost)) hunterDomain = emailHost;
+      }
+      resolvePlaceholderCompanyIdentity(ev, {
+        organization: orgName,
+        domain: hunterDomain,
+        company_name: orgName
+      });
+      domain = String(ev.domain || domain).trim();
       var rows = emails
         .map(function (row) {
           return {
@@ -1826,6 +2278,7 @@ body.is-demo .live-only { display: none !important; }
         added: added,
         updatedPreferred: updatedPreferred,
         scanned: rows.length,
+        organization: orgName || null,
         all_with_email: allWithEmail.map(function (c) {
           return {
             contact_id: c.contact_id,
@@ -1844,9 +2297,27 @@ body.is-demo .live-only { display: none !important; }
       var summary = {
         preferred: null,
         domain_search: null,
-        live_discovery: false
+        live_discovery: false,
+        identity_renamed: false
       };
       var allowDiscovery = IS_LIVE || !!ev.live_exa;
+      if (isPlaceholderCompanyName(ev.company_name) || isSyntheticExampleDomain(ev.domain)) {
+        var fromStory = extractCompanyNameFromArticle("", String(ev.event_summary || ""));
+        var hintDomains = extractDomainsFromText(
+          String(ev.event_summary || "") + "\n" + String(ev.source_url || "")
+        );
+        var hintDomain =
+          (!isSyntheticExampleDomain(ev.domain) && ev.domain) ||
+          hintDomains[0] ||
+          (fromStory ? slugifyToken(fromStory).replace(/-/g, "") + ".com" : "");
+        if (fromStory || hintDomain) {
+          summary.identity_renamed = resolvePlaceholderCompanyIdentity(ev, {
+            company_name: fromStory,
+            organization: fromStory,
+            domain: hintDomain
+          });
+        }
+      }
       if (!allowDiscovery) {
         if (preferred && !String(preferred.email || "").trim()) {
           summary.preferred = await enrichContactEmailWithHunter(preferred, ev.domain, ev.company_name);
@@ -1859,6 +2330,9 @@ body.is-demo .live-only { display: none !important; }
       // Response B: company Domain Search first, then Email Finder on preferred if still blank.
       summary.live_discovery = true;
       summary.domain_search = await discoverCompanyContactsViaHunterDomainSearch(ev, preferred);
+      if (isPlaceholderCompanyName(ev.company_name) === false && summary.domain_search && summary.domain_search.organization) {
+        summary.identity_renamed = true;
+      }
       preferred = contactsForCompany(ev.company_id)[0] || preferred;
       if (preferred && !String(preferred.email || "").trim()) {
         summary.preferred = await enrichContactEmailWithHunter(preferred, ev.domain, ev.company_name);
@@ -2492,22 +2966,64 @@ body.is-demo .live-only { display: none !important; }
 
     function resolveBusinessDayTargets(now, timeZone) {
       var p = partsInTimeZone(now || new Date(), timeZone);
+      return resolveBusinessDayTargetsFromParts(p, timeZone, { allowEvening: true });
+    }
+
+    function resolveBusinessDayTargetsFromParts(p, timeZone, options) {
+      options = options || {};
       var calendarTomorrow = addCalendarDays(p.year, p.month, p.day, 1);
       var nextBiz = addBusinessDays(p.year, p.month, p.day, 1);
       var two = addBusinessDays(p.year, p.month, p.day, 2);
       var calendarTomorrowIsBusiness = calendarTomorrow.weekday !== 0 && calendarTomorrow.weekday !== 6;
+      // Evening CTA: Email 1 only, before 2pm Eastern, Mon–Thu (Friday evening starts the weekend).
+      var eveningEligible = false;
+      if (options.allowEvening) {
+        var hour = p.hour != null ? p.hour : 9;
+        eveningEligible = hour < 14 && p.weekday >= 1 && p.weekday <= 4;
+      }
       return {
         timezone: timeZone || "America/New_York",
-        local_hour: p.hour,
-        local_minute: p.minute,
+        local_hour: p.hour != null ? p.hour : null,
+        local_minute: p.minute != null ? p.minute : null,
         today_weekday: WEEKDAY_NAMES[p.weekday],
-        // "tomorrow" in CTA copy only when the next calendar day is a weekday (policy: Fri → Mon/Tue).
         tomorrow_is_business_day: calendarTomorrowIsBusiness,
         tomorrow_day_of_week: WEEKDAY_NAMES[nextBiz.weekday],
         next_working_day: WEEKDAY_NAMES[nextBiz.weekday],
         two_working_days: WEEKDAY_NAMES[two.weekday],
-        evening_cta_eligible: p.hour < 14
+        evening_cta_eligible: eveningEligible
       };
+    }
+
+    function sequenceSendParts(anchorParts, calendarOffsetDays) {
+      var send = addCalendarDays(anchorParts.year, anchorParts.month, anchorParts.day, calendarOffsetDays);
+      // Sequence sends on business days; roll weekend landings forward to Monday.
+      while (send.weekday === 0 || send.weekday === 6) {
+        send = addCalendarDays(send.year, send.month, send.day, 1);
+      }
+      return send;
+    }
+
+    function ctaBasePoolFromResolved(resolved) {
+      var nextDay = resolved.next_working_day || resolved.tomorrow_day_of_week;
+      var twoDay = resolved.two_working_days;
+      if (resolved.tomorrow_is_business_day) {
+        return [
+          "Can I call you tomorrow or " + twoDay + "?",
+          "Are you available tomorrow afternoon, " + nextDay + "?"
+        ];
+      }
+      return [
+        "Can I call you " + nextDay + " or " + twoDay + "?",
+        "Are you available " + nextDay + " afternoon?"
+      ];
+    }
+
+    function pickCtaPreferringVariety(pool, used) {
+      var shuf = shuffleCopy(pool);
+      for (var i = 0; i < shuf.length; i++) {
+        if (used.indexOf(shuf[i]) === -1) return shuf[i];
+      }
+      return shuf[0] || pool[0];
     }
 
     function pickFromPool(pool) {
@@ -2526,55 +3042,62 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function buildCtaSession(now, timeZone) {
-      var resolved = resolveBusinessDayTargets(now, timeZone);
-      var nextDay = resolved.next_working_day || resolved.tomorrow_day_of_week;
-      var twoDay = resolved.two_working_days;
-      var basePool = resolved.tomorrow_is_business_day
-        ? [
-          "Can I call you tomorrow or " + twoDay + "?",
-          "Are you available tomorrow afternoon, " + nextDay + "?"
-        ]
-        : [
-          "Can I call you " + nextDay + " or " + twoDay + "?",
-          "Are you available " + nextDay + " afternoon?"
-        ];
+      var tz = timeZone || "America/New_York";
+      var anchor = partsInTimeZone(now || new Date(), tz);
+      // Cadence: Email 1 today, Email 2 +3d, Email 3 +7d, Email 4 +14d (then roll to weekday).
+      var offsets = [0, 3, 7, 14];
       var evening = "Are you around this evening for 10 minutes?";
-      // Email 1 only may use evening CTA, and only before 2pm Eastern.
-      var pool1 = basePool.slice();
-      if (resolved.evening_cta_eligible) pool1.push(evening);
-      var poolFollow = basePool.slice();
-      // Prefer variety: follow-ups alternate the two non-evening CTAs; Email 1 prefers a different line when possible.
-      var followShuf = shuffleCopy(poolFollow);
-      var d2 = followShuf[0];
-      var d3 = followShuf.length > 1 ? followShuf[1] : followShuf[0];
-      var d4 = followShuf.length > 1 ? followShuf[0] : followShuf[0];
-      if (followShuf.length > 1 && d4 === d3) d4 = followShuf[1];
-      var email1Shuf = shuffleCopy(pool1);
-      var d1 = null;
-      for (var i = 0; i < email1Shuf.length; i++) {
-        if (email1Shuf[i] !== d2) {
-          d1 = email1Shuf[i];
-          break;
-        }
+      var picks = {};
+      var perEmail = {};
+      var used = [];
+      var email1Resolved = null;
+
+      for (var i = 0; i < 4; i++) {
+        var send = sequenceSendParts(anchor, offsets[i]);
+        var partsForResolve = {
+          year: send.year,
+          month: send.month,
+          day: send.day,
+          weekday: send.weekday,
+          hour: i === 0 ? anchor.hour : 9,
+          minute: i === 0 ? anchor.minute : 0
+        };
+        var resolved = resolveBusinessDayTargetsFromParts(partsForResolve, tz, {
+          allowEvening: i === 0
+        });
+        if (i === 0) email1Resolved = resolved;
+        var pool = ctaBasePoolFromResolved(resolved);
+        if (resolved.evening_cta_eligible) pool = pool.concat([evening]);
+        var pick = pickCtaPreferringVariety(pool, used);
+        used.push(pick);
+        var key = "draft_" + (i + 1);
+        picks[key] = pick;
+        perEmail[key] = {
+          send_weekday: WEEKDAY_NAMES[send.weekday],
+          send_offset_calendar_days: offsets[i],
+          tomorrow_is_business_day: resolved.tomorrow_is_business_day,
+          tomorrow_day_of_week: resolved.tomorrow_day_of_week,
+          next_working_day: resolved.next_working_day,
+          two_working_days: resolved.two_working_days,
+          evening_cta_eligible: resolved.evening_cta_eligible,
+          eligible_pool: pool.slice(),
+          cta: pick
+        };
       }
-      if (!d1) d1 = email1Shuf[0];
+
       return {
-        timezone: resolved.timezone,
+        timezone: tz,
         timezone_source: "default_eastern_when_unknown",
-        local_hour: resolved.local_hour,
-        evening_cta_eligible: resolved.evening_cta_eligible,
-        tomorrow_is_business_day: resolved.tomorrow_is_business_day,
-        tomorrow_day_of_week: resolved.tomorrow_day_of_week,
-        next_working_day: resolved.next_working_day,
-        two_working_days: resolved.two_working_days,
-        eligible_pool_email_1: pool1,
-        eligible_pool_followups: poolFollow,
-        picks_by_email: {
-          draft_1: d1,
-          draft_2: d2,
-          draft_3: d3,
-          draft_4: d4
-        }
+        local_hour: email1Resolved.local_hour,
+        evening_cta_eligible: email1Resolved.evening_cta_eligible,
+        tomorrow_is_business_day: email1Resolved.tomorrow_is_business_day,
+        tomorrow_day_of_week: email1Resolved.tomorrow_day_of_week,
+        next_working_day: email1Resolved.next_working_day,
+        two_working_days: email1Resolved.two_working_days,
+        eligible_pool_email_1: perEmail.draft_1.eligible_pool,
+        eligible_pool_followups: perEmail.draft_2.eligible_pool,
+        per_email: perEmail,
+        picks_by_email: picks
       };
     }
 
@@ -2650,7 +3173,158 @@ body.is-demo .live-only { display: none !important; }
       return fields;
     }
 
-    function buildCasePayload(ev, hunterLive) {
+    function icpFieldPresent(value) {
+      return value != null && value !== "" && !(typeof value === "number" && !isFinite(value));
+    }
+
+    function resolveIcpNumbers(ev) {
+      var profile = byCompanyId(COMPANY_PROFILES, ev.company_id) || {};
+      return {
+        employee_count: icpFieldPresent(ev.employee_count) ? ev.employee_count : profile.employee_count,
+        revenue_estimate_mm: icpFieldPresent(ev.revenue_estimate_mm)
+          ? ev.revenue_estimate_mm
+          : profile.revenue_estimate_mm,
+        vc_pe_backed: ev.vc_pe_backed != null && ev.vc_pe_backed !== ""
+          ? ev.vc_pe_backed
+          : profile.vc_pe_backed,
+        ta_headcount: icpFieldPresent(ev.ta_headcount) ? ev.ta_headcount : profile.ta_headcount,
+        sector: ev.sector || profile.sector || ""
+      };
+    }
+
+    function countMissingIcpCore(nums) {
+      var missing = 0;
+      if (!icpFieldPresent(nums.employee_count)) missing += 1;
+      if (!icpFieldPresent(nums.revenue_estimate_mm)) missing += 1;
+      if (!icpFieldPresent(nums.ta_headcount)) missing += 1;
+      return missing;
+    }
+
+    function extractHeadcountFromText(blob) {
+      var text = String(blob || "");
+      var range = text.match(/(\d{2,3})\s*(?:-|–|to)\s*(\d{2,3})\s*(?:\+?\s*)?(?:employees|people|staff)/i);
+      if (range) {
+        var a = Number(range[1]);
+        var b = Number(range[2]);
+        if (isFinite(a) && isFinite(b)) return Math.round((a + b) / 2);
+      }
+      var single = text.match(
+        /(?:about|around|approximately|nearly|over|~)?\s*(\d{2,3})\+?\s*(?:employees|people|staff|teammates)/i
+      );
+      if (single) {
+        var n = Number(single[1]);
+        if (isFinite(n) && n >= 5 && n <= 500) return n;
+      }
+      var teamOf = text.match(/team of (?:about |around |approximately )?(\d{2,3})/i);
+      if (teamOf) {
+        var t = Number(teamOf[1]);
+        if (isFinite(t) && t >= 5 && t <= 500) return t;
+      }
+      return null;
+    }
+
+    function extractRevenueMmFromText(blob) {
+      var text = String(blob || "");
+      var m = text.match(/\$?\s*(\d{1,3}(?:\.\d+)?)\s*(?:million|mm)\b/i);
+      if (m) {
+        var n = Number(m[1]);
+        if (isFinite(n) && n >= 1 && n <= 500) return n;
+      }
+      return null;
+    }
+
+    async function enrichIcpFieldsViaExa(ev) {
+      var nums = resolveIcpNumbers(ev);
+      if (icpFieldPresent(nums.employee_count)) {
+        return {
+          ok: true,
+          skipped: true,
+          detail: "employee_count_already_on_record",
+          nums: nums
+        };
+      }
+      var proxyBase = (localStorage.getItem(EXA_PROXY_STORAGE) || "").trim().replace(/\/$/, "");
+      if (!proxyBase) {
+        return { ok: false, skipped: true, detail: "no_exa_proxy", nums: nums };
+      }
+      var q = encodeURIComponent(
+        (ev.company_name || "") +
+          " " +
+          (ev.domain || "") +
+          " employees OR headcount OR \"company size\" OR revenue legaltech"
+      );
+      try {
+        var res = await fetch(proxyBase + "/search?num=3&q=" + q, {
+          method: "GET",
+          headers: { Accept: "application/json" }
+        });
+        var data = await res.json().catch(function () {
+          return null;
+        });
+        if (!res.ok) {
+          return {
+            ok: false,
+            detail: (data && (data.error || data.message)) || ("exa_http_" + res.status),
+            nums: nums
+          };
+        }
+        var results = (data && data.results) || [];
+        var blob = results
+          .map(function (r) {
+            return String(r.title || "") + "\n" + String(r.text || "");
+          })
+          .join("\n");
+        var emp = extractHeadcountFromText(blob);
+        var rev = extractRevenueMmFromText(blob);
+        var changed = false;
+        if (emp != null && !icpFieldPresent(ev.employee_count)) {
+          ev.employee_count = emp;
+          changed = true;
+        }
+        if (rev != null && !icpFieldPresent(ev.revenue_estimate_mm)) {
+          ev.revenue_estimate_mm = rev;
+          changed = true;
+        }
+        var profile = byCompanyId(COMPANY_PROFILES, ev.company_id);
+        if (profile) {
+          if (emp != null && !icpFieldPresent(profile.employee_count)) profile.employee_count = emp;
+          if (rev != null && !icpFieldPresent(profile.revenue_estimate_mm)) profile.revenue_estimate_mm = rev;
+        }
+        if (changed && ev.live_exa) {
+          var extras = loadLiveExtras();
+          (extras.events || []).forEach(function (row) {
+            if (row.case_id === ev.case_id) {
+              if (emp != null) row.employee_count = emp;
+              if (rev != null) row.revenue_estimate_mm = rev;
+            }
+          });
+          (extras.profiles || []).forEach(function (row) {
+            if (row.company_id === ev.company_id) {
+              if (emp != null) row.employee_count = emp;
+              if (rev != null) row.revenue_estimate_mm = rev;
+            }
+          });
+          saveLiveExtras(extras);
+        }
+        nums = resolveIcpNumbers(ev);
+        return {
+          ok: true,
+          skipped: false,
+          detail: changed ? "exa_icp_enriched" : "exa_icp_no_numbers_found",
+          extracted: { employee_count: emp, revenue_estimate_mm: rev },
+          result_count: results.length,
+          nums: nums
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          detail: err && err.message ? err.message : "exa_icp_failed",
+          nums: nums
+        };
+      }
+    }
+
+    function buildCasePayload(ev, hunterLive, exaIcpLive) {
       var profile = byCompanyId(COMPANY_PROFILES, ev.company_id);
       var companyContacts = contactsForCompany(ev.company_id);
       var contact = companyContacts[0] || null;
@@ -2662,12 +3336,13 @@ body.is-demo .live-only { display: none !important; }
           (ev.company_name.indexOf("Payette") !== -1 && p.company_name.indexOf("Payit River") !== -1) ||
           (ev.company_name.indexOf("Payette") !== -1 && p.company_id === "CO-16B");
       });
+      var nums = resolveIcpNumbers(ev);
       var hunterBlock = contact ? {
         email: contact.email || null,
         linkedin_url: contact.linkedin_url || null,
         source: "hunter.io",
         status: contact.email ? "found" : "not_found"
-      } : null;
+      } : { email: null, linkedin_url: null, source: "hunter.io", status: "not_found" };
       if (hunterLive && hunterBlock) {
         hunterBlock.live = !!hunterLive.live;
         hunterBlock.score = hunterLive.score != null ? hunterLive.score : hunterBlock.score;
@@ -2676,6 +3351,22 @@ body.is-demo .live-only { display: none !important; }
         if (hunterLive.detail) hunterBlock.lookup_detail = hunterLive.detail;
         if (hunterLive.domain_search) hunterBlock.domain_search = hunterLive.domain_search;
         if (hunterLive.domain_search_error) hunterBlock.domain_search_error = hunterLive.domain_search_error;
+      }
+      var rosterWithEmail = companyContacts
+        .filter(function (row) {
+          return !!String(row.email || "").trim();
+        })
+        .map(function (row) {
+          return {
+            contact_id: row.contact_id,
+            name: (row.first_name + " " + row.last_name).trim(),
+            title: row.title,
+            email: row.email
+          };
+        });
+      if (rosterWithEmail.length) {
+        hunterBlock.company_roster_with_email = rosterWithEmail;
+        if (hunterBlock.status === "not_found") hunterBlock.status = "company_roster_found";
       }
       return {
         candidate_event: ev,
@@ -2689,16 +3380,28 @@ body.is-demo .live-only { display: none !important; }
         partner_display_name: partnerDisplayName(partnerIdForCase(ev)),
         prequalified_match: whitelist,
         prequalified_whitelist: PREQUALIFIED_WHITELIST,
-        // Hunter.io Email Finder (+ Domain Search alternates on live). Live when Settings proxy/key succeeds.
         hunter_io: hunterBlock,
+        icp_evaluation: {
+          source: "company_profile_and_candidate_event",
+          employee_count: nums.employee_count,
+          revenue_estimate_mm: nums.revenue_estimate_mm,
+          vc_pe_backed: nums.vc_pe_backed,
+          ta_headcount: nums.ta_headcount,
+          sector: nums.sector,
+          missing_core_field_count: countMissingIcpCore(nums),
+          note:
+            "Use these values for ICP scoring. Do not require them to appear inside the Exa.ai article snippet. Exa confirms the event; the company record holds size/backing."
+        },
         exa_ai: {
           source: "exa.ai",
           event_summary: ev.event_summary,
           event_source_url: ev.source_url,
           live_exa: !!ev.live_exa,
+          role: "event_research",
           note: ev.live_exa
-            ? "Live Exa.ai pilot result loaded into the queue (public news)."
-            : "Pre-loaded Exa.ai research result for this candidate event."
+            ? "Live Exa.ai event research. ICP headcount/revenue come from icp_evaluation / company_profile unless an Exa ICP enrichment ran because those fields were missing."
+            : "Pre-loaded Exa.ai research result for this candidate event.",
+          icp_enrichment: exaIcpLive || null
         },
         cta_session: ctaSession,
         prior_sends: PRIOR_SENDS,
@@ -3445,6 +4148,9 @@ body.is-demo .live-only { display: none !important; }
         return String(fields[key] || "").trim();
       });
       var fitHint = String(fields.fit_if_email_secured || "").trim();
+      var fitNorm = fitHint.toLowerCase().replace(/\s+/g, "-");
+      var emailChaseWorthIt = fitNorm === "would-go" || fitNorm.indexOf("would-go") === 0;
+      var showPocOverride = (!isGo || !hasSequence) && emailChaseWorthIt;
 
       var gate = document.createElement("div");
       gate.className = "human-gate";
@@ -3457,23 +4163,36 @@ body.is-demo .live-only { display: none !important; }
           '<label>Body<br><textarea class="edit-body-' + n + '" rows="5"></textarea></label>' +
           "</div>";
       }
-      var overrideHtml =
-        '<div class="override-panel" style="margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:var(--border-w) solid var(--line)">' +
-        "<p><strong>Move to Go</strong> — if the company is worth outreach and you have a qualified POC email, enter it here. We generate the Black Gavel sequence; then Approve or Edit as usual.</p>" +
-        (fitHint ? '<p class="card-meta">Agent fit if email secured: ' + escapeHtml(fitHint) + (fields.fit_if_email_note ? " — " + escapeHtml(fields.fit_if_email_note) : "") + "</p>" : "") +
-        '<label>First name<br><input class="override-first" /></label><br><br>' +
-        '<label>Last name<br><input class="override-last" /></label><br><br>' +
-        '<label>Title<br><input class="override-title" placeholder="CRO, CEO, VP Sales…" /></label><br><br>' +
-        '<label>Email<br><input class="override-email" type="email" placeholder="name@company.com" /></label><br><br>' +
-        '<button type="button" class="btn primary btn-promote-go">Save POC email &amp; generate sequence</button>' +
-        '<p class="override-status card-meta"></p>' +
-        "</div>";
+      var fitNoteHtml = fitHint
+        ? '<p class="card-meta">Agent fit if email secured: ' + escapeHtml(fitHint) + (fields.fit_if_email_note ? " — " + escapeHtml(fields.fit_if_email_note) : "") + "</p>"
+        : "";
+      var overrideHtml = showPocOverride
+        ? '<div class="override-panel" style="margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:var(--border-w) solid var(--line)">' +
+          "<p><strong>Move to Go</strong> — Hunter.io did not land a qualified POC email, but the company would otherwise be a Go. Enter a qualified POC below to generate the Black Gavel sequence; then Approve or Edit as usual.</p>" +
+          fitNoteHtml +
+          '<label>First name<br><input class="override-first" /></label><br><br>' +
+          '<label>Last name<br><input class="override-last" /></label><br><br>' +
+          '<label>Title<br><input class="override-title" placeholder="CRO, CEO, VP Sales…" /></label><br><br>' +
+          '<label>Email<br><input class="override-email" type="email" placeholder="name@company.com" /></label><br><br>' +
+          '<button type="button" class="btn primary btn-promote-go">Save POC email &amp; generate sequence</button>' +
+          '<p class="override-status card-meta"></p>' +
+          "</div>"
+        : (!isGo || !hasSequence) && fitHint
+          ? '<div class="override-panel" style="margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:var(--border-w) solid var(--line)">' +
+            fitNoteHtml +
+            "<p class=\"card-meta\">POC name / title / email override is hidden because adding an email would not unblock this case (ICP, hard stop, or ambiguity still blocks).</p>" +
+            "</div>"
+          : "";
+
+      var nonGoGateCopy = showPocOverride
+        ? "<p><strong>Human gate</strong> — agent did not produce a Go sequence. Escalate, or add a qualified POC email below to move this case to Go.</p>"
+        : "<p><strong>Human gate</strong> — agent did not produce a Go sequence. Escalate if needed. POC email fields are hidden when the block is not missing email.</p>";
 
       gate.innerHTML =
         '<div class="stage" data-n="4">Human review</div>' +
         (isGo && hasSequence
           ? "<p><strong>Human gate</strong> — Approve the full 4-email sequence, or Edit any/all emails in one block, then Save edit. Escalate is case-level.</p>"
-          : "<p><strong>Human gate</strong> — agent did not produce a Go sequence. Escalate, or add a qualified POC email below to move this case to Go.</p>") +
+          : nonGoGateCopy) +
         "<p>" +
         '<button type="button" class="btn primary btn-approve"' + (isGo && hasSequence ? "" : " disabled") + ">Approve</button> " +
         '<button type="button" class="btn btn-edit"' + (isGo && hasSequence ? "" : " disabled") + ">Edit</button> " +
@@ -3483,7 +4202,7 @@ body.is-demo .live-only { display: none !important; }
         editHtml +
         '<button type="button" class="btn primary btn-save-edit">Save edit</button>' +
         "</div>" +
-        (!isGo || !hasSequence ? overrideHtml : "") +
+        overrideHtml +
         '<p class="human-state">Human action: pending</p>' +
         '<p class="boundary-note">Nothing is sent without human approval. Approved sequence routes to sandbox only.</p>';
 
@@ -3653,11 +4372,38 @@ body.is-demo .live-only { display: none !important; }
       if (metaEl) metaEl.textContent = "Running " + ev.case_id;
 
       var hunterLive = null;
+      var exaIcpLive = null;
       var seedContact = contactsForCompany(ev.company_id)[0] || null;
       var skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
       var shouldEnrichHunter =
         !skipHunterForIcp &&
         ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
+
+      if (!icpFieldPresent(resolveIcpNumbers(ev).employee_count) && (IS_LIVE || !!ev.live_exa)) {
+        if (metaEl) metaEl.textContent = "Exa ICP lookup " + ev.case_id;
+        resultEl.innerHTML = '<span class="thinking">Exa.ai company size enrichment…</span>';
+        exaIcpLive = await enrichIcpFieldsViaExa(ev);
+        skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
+        shouldEnrichHunter =
+          !skipHunterForIcp &&
+          ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
+        if (exaIcpLive && !exaIcpLive.skipped) {
+          appendRunLog({
+            time: new Date().toLocaleTimeString(),
+            case_id: ev.case_id,
+            company_name: ev.company_name,
+            agent_decision: "exa/icp_enrichment",
+            human_action: "_system",
+            detail: exaIcpLive.detail + (exaIcpLive.extracted
+              ? (" emp=" + (exaIcpLive.extracted.employee_count || "n/a") +
+                " rev=" + (exaIcpLive.extracted.revenue_estimate_mm || "n/a"))
+              : "")
+          });
+        }
+        resultEl.innerHTML = '<span class="thinking">Running…</span>';
+        if (metaEl) metaEl.textContent = "Running " + ev.case_id;
+      }
+
       if (skipHunterForIcp) {
         hunterLive = {
           live: false,
@@ -3718,7 +4464,7 @@ body.is-demo .live-only { display: none !important; }
         }
       }
 
-      var payload = buildCasePayload(ev, hunterLive);
+      var payload = buildCasePayload(ev, hunterLive, exaIcpLive);
       resultEl._ctaSession = payload.cta_session;
       if (CASE_UI[ev.case_id]) CASE_UI[ev.case_id]._ctaSession = payload.cta_session;
       var profile = payload.company_profile;
@@ -3732,6 +4478,22 @@ body.is-demo .live-only { display: none !important; }
       var whyPriorityGuidance =
         "WHY PRIORITY: Lead Why with the primary block. Order: hard stop (client/bankruptcy) → out of ICP / below threshold (unless whitelisted) → entity ambiguity → missing/unqualified POC email. " +
         "If company is out of ICP size or revenue and not whitelisted, say that first. Set fit_if_email_secured to Still-blocked. Do not lead with Hunter.io email miss. Do not ask the partner to chase email.";
+      var icpNums = payload.icp_evaluation || resolveIcpNumbers(ev);
+      var icpGuidance =
+        "ICP EVALUATION: Use icp_evaluation / company_profile / candidate_event numbers. " +
+        "employee_count=" +
+        (icpFieldPresent(icpNums.employee_count) ? icpNums.employee_count : "missing") +
+        ", revenue_estimate_mm=" +
+        (icpFieldPresent(icpNums.revenue_estimate_mm) ? icpNums.revenue_estimate_mm : "missing") +
+        ", vc_pe_backed=" +
+        (icpNums.vc_pe_backed != null && icpNums.vc_pe_backed !== "" ? icpNums.vc_pe_backed : "missing") +
+        ", ta_headcount=" +
+        (icpFieldPresent(icpNums.ta_headcount) ? icpNums.ta_headcount : "missing") +
+        ". Exa.ai event text is NOT the ICP census. " +
+        "Do not refuse because a funding article omits headcount when employee_count is already on the record. " +
+        "If employee_count is in 50–350, legaltech, vc_pe_backed=yes, and only revenue is missing: proceed (do not REFUSED-ESCALATE for revenue alone). " +
+        "If after all sources you still cannot tell in-vs-out of ICP: Table 3 Ambiguous, decision Ambiguous (not No-go / Below Threshold). " +
+        "No-go only for known disqualifiers (confirmed size out of range, wrong sector, client, bankruptcy, etc.).";
       var emailGuidance;
       if (skipHunterForIcp || companyClearlyOutOfIcpSize(ev)) {
         emailGuidance =
@@ -3778,6 +4540,7 @@ body.is-demo .live-only { display: none !important; }
           ? "HARD BOUNDARY: This company is an EXISTING CLIENT. You must REFUSED-ESCALATE. No draft. Table 2. override_available No. Whitelist does not override this. Write plain-language why: already a client, cold outreach not allowed, use the existing relationship instead. Put policy grounding only in citations."
           : "If this is a normal in-ICP go case with confirmed entity and verified email, status should be OK (do not over-refuse).",
         whyPriorityGuidance,
+        icpGuidance,
         emailGuidance,
         whitelistGuidance,
         "CTA SESSION: Prefer black_gavel_outreach_sequence.md. For Go drafts, end email 1–4 bodies with the resolved CTA strings in cta_session.picks_by_email (draft_1..draft_4). Do not invent other CTAs. Never use em dashes in subjects or bodies.",
@@ -4597,9 +5360,18 @@ body.is-demo .live-only { display: none !important; }
           var res = await fetch(proxyBase + "/search?num=6&q=" + q, { method: "GET", headers: { Accept: "application/json" } });
           var data = await res.json().catch(function () { return null; });
           if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
-          var added = mergeExaResultsIntoLiveExtras((data && data.results) || []);
+          var mergeStats = mergeExaResultsIntoLiveExtras((data && data.results) || []);
           remountQueue();
-          if (statusEl) statusEl.textContent = added ? ("Added " + added + " new live case(s).") : "No new URLs (duplicates skipped).";
+          if (statusEl) {
+            var parts = [];
+            if (mergeStats.added) parts.push("Added " + mergeStats.added + " new live case(s)");
+            if (mergeStats.skipped_unresolved) {
+              parts.push("skipped " + mergeStats.skipped_unresolved + " with no extractable company name");
+            }
+            statusEl.textContent = parts.length
+              ? parts.join("; ") + "."
+              : "No new URLs (duplicates skipped).";
+          }
         } catch (err) {
           if (statusEl) statusEl.textContent = "Exa refresh failed: " + (err && err.message ? err.message : "unknown");
         } finally {
