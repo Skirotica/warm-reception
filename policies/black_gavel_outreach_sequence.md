@@ -9,6 +9,20 @@ Console fills this file’s sentences; do not invent alternate openers. Subjects
 - Email 3: ~7 days later (soft bump). Sign-off: CD
 - Email 4: ~14 days later (polite close). Sign-off: CD
 
+## Human gate and sequence sends
+Approve (or Edit then save) means the partner is approving the **full four-email Black Gavel sequence** as the planned outreach package for that case, not email 1 alone. In this prototype, that approval routes the package to **sandbox only**. It does not start an unsupervised live drip.
+
+Emails 2–4 are **conditionally authorized**. Before any remaining send goes out (in a real send path), the system must cancel or hold the rest of the sequence if any of these happen after approval:
+
+1. **Reply** from the prospect (or a clear engagement that the partner marks as “in conversation”). Stop remaining automated sequence emails. Partner handles the thread manually.
+2. **Bounce** (hard bounce / undeliverable). Stop remaining sends. Mark contact email bad. Do not keep the cadence.
+3. **Opt-out** / unsubscribe / “do not contact.” Stop remaining sends immediately. Record prior opt-out so future cases No-go.
+4. **Partner cancel or pause.** Partner can kill or freeze the rest of the sequence from the console. No further emails leave.
+
+If none of those stop signals fire, emails follow the cadence above with CTAs resolved for each send day. Duplicate outreach stays blocked by the 30-day prior-sends rule. The agent never auto-replies to inbound mail.
+
+Capstone boundary: Develop proves draft + one Approve of the four-email package + these stop rules as policy. It does not require a live delayed-send engine.
+
 ## Style rules (mandatory)
 1. Prefer this template file over freeform agent prose. The console fills tokens from case records.
 2. Greeting on email steps: {{first_name}}, only. No Hi or Hey on email steps.

@@ -793,6 +793,15 @@ body.is-demo .live-only { display: none !important; }
     const HUNTER_KEY_STORAGE = "warm_reception_hunter_email_finder_key";
     const HUNTER_PROXY_STORAGE = "warm_reception_hunter_proxy_url";
     const EXA_PROXY_STORAGE = "warm_reception_exa_proxy_url";
+
+    function normalizeExaProxyBase(raw) {
+      var base = String(raw || "").trim();
+      if (!base) return "";
+      // Accept paste of .../search or .../search?q=... — app always appends /search itself.
+      base = base.replace(/\/search\/?(?:\?.*)?$/i, "");
+      base = base.replace(/\/$/, "");
+      return base;
+    }
     const LIVE_EXTRAS_STORAGE = "warm_reception_live_extras_v1";
     const EVAL_RESULTS_STORAGE = "warm_reception_eval_results_v3";
     const VOICE_MEMORY_STORAGE = "warm_reception_voice_memory_v1";
@@ -805,9 +814,13 @@ body.is-demo .live-only { display: none !important; }
     var QUEUE_EVENTS = [];
 
     function detectAppMode() {
-      var path = String(location.pathname || "").toLowerCase();
-      if (path.indexOf("/live") !== -1) return "live";
-      if (/[?&]mode=live(?:&|$)/.test(location.search || "")) return "live";
+      // Query wins so a wrong folder open can be forced back to demo: ?mode=demo
+      var search = String(location.search || "");
+      if (/[?&]mode=demo(?:&|$)/i.test(search)) return "demo";
+      if (/[?&]mode=live(?:&|$)/i.test(search)) return "live";
+      // Live only when this file lives under a /live/ path segment (not a random substring).
+      var path = String(location.pathname || "").toLowerCase().replace(/\\/g, "/");
+      if (/(?:^|\/)live\/(?:index\.html)?$/.test(path) || /\/live\/?$/.test(path)) return "live";
       return "demo";
     }
     var APP_MODE = detectAppMode();
@@ -3243,7 +3256,7 @@ body.is-demo .live-only { display: none !important; }
           nums: nums
         };
       }
-      var proxyBase = (localStorage.getItem(EXA_PROXY_STORAGE) || "").trim().replace(/\/$/, "");
+      var proxyBase = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
       if (!proxyBase) {
         return { ok: false, skipped: true, detail: "no_exa_proxy", nums: nums };
       }
@@ -5328,7 +5341,7 @@ body.is-demo .live-only { display: none !important; }
     function refreshExaProxyStatus() {
       var status = document.getElementById("exa-proxy-status");
       var input = document.getElementById("exa-proxy-url");
-      var proxy = (localStorage.getItem(EXA_PROXY_STORAGE) || "").trim();
+      var proxy = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
       if (status) status.textContent = proxy ? "Exa proxy saved" : "No Exa proxy";
       if (input && proxy) input.value = proxy;
     }
@@ -5337,7 +5350,7 @@ body.is-demo .live-only { display: none !important; }
     if (saveExaProxyBtn) {
       saveExaProxyBtn.addEventListener("click", function () {
         var input = document.getElementById("exa-proxy-url");
-        var value = (input && input.value ? input.value : "").trim().replace(/\/$/, "");
+        var value = normalizeExaProxyBase(input && input.value ? input.value : "");
         if (!value) localStorage.removeItem(EXA_PROXY_STORAGE);
         else localStorage.setItem(EXA_PROXY_STORAGE, value);
         refreshExaProxyStatus();
@@ -5348,7 +5361,7 @@ body.is-demo .live-only { display: none !important; }
     if (refreshExaBtn) {
       refreshExaBtn.addEventListener("click", async function () {
         var statusEl = document.getElementById("live-refresh-status");
-        var proxyBase = (localStorage.getItem(EXA_PROXY_STORAGE) || "").trim().replace(/\/$/, "");
+        var proxyBase = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
         if (!proxyBase) {
           if (statusEl) statusEl.textContent = "Save an Exa proxy URL first (Cloudflare Worker).";
           return;
