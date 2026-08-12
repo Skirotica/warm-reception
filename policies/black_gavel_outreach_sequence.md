@@ -50,7 +50,11 @@ Business days only (skip Sat/Sun). Friday send: Monday or Tuesday (never "tomorr
 
 ## Persona: CRO / CEO / Founder
 
-### Email 1
+Use **only when the recipient is the executive named in an executive_hire event** (they joined or were appointed). Body copy may say "your recent move" / "your move to {{company}}".
+
+If the trigger is another person's hire, or the event is funding/partnership/IPO, use **Persona: CRO / CEO / Founder (company event)** or the sheet that matches the POC role. Never congratulate the wrong person on a move they did not make.
+
+### Email 1 (move — recipient is the hire)
 Subject: Congrats on the {{CV1}}, quick note from Black Gavel
 Sign-off: Chad
 Body:
@@ -99,6 +103,64 @@ Body:
 {{first_name}},
 
 I will close the loop on outreach about your move to {{company}}. If hiring becomes urgent later, we are easy to reopen.
+
+{{cta}}
+
+CD
+
+## Persona: CRO / CEO / Founder (company event)
+
+Use when the POC is CRO/CEO/Founder/VP Sales but the **trigger event is not their personal hire** (someone else was hired, or funding/partnership/IPO). References the event at {{company}}; no "your move" language.
+
+### Email 1
+Subject: The {{CV1}} at {{company}}, quick note from Black Gavel
+Sign-off: Chad
+Body:
+{{first_name}},
+
+Noting the {{CV1}} at {{company}}. {{CV2}}
+
+When leadership teams add a senior hire on news like that, they often need one or two critical revenue or leadership seats filled quickly. We help growth-stage legaltech companies do that without the usual noise.
+
+{{cta}}
+
+Chad
+
+### Email 2
+Subject: {{company}}, seats peers fill after the {{CV1}}
+Sign-off: Chad
+Body:
+{{first_name}},
+
+Following up on the {{CV1}} at {{company}}. Teams in your stage often need one or two critical hires within 60-90 days after news like that.
+
+We run scoped searches so you stay focused on the business, not inbox noise.
+
+{{cta}}
+
+Chad
+
+### Email 3
+Subject: Quick bump, {{company}} hiring after the {{CV1}}
+Sign-off: CD
+Body:
+{{first_name}},
+
+Short bump in case the timing was off. Happy to share a one-pager on how we staff revenue and leadership roles after a move like the {{CV1}}.
+
+No pitch deck required. Just a short conversation if useful.
+
+{{cta}}
+
+CD
+
+### Email 4
+Subject: Closing the loop on {{company}}
+Sign-off: CD
+Body:
+{{first_name}},
+
+I will close the loop on outreach about the {{CV1}} at {{company}}. If hiring becomes urgent later, we are easy to reopen.
 
 {{cta}}
 

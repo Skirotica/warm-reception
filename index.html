@@ -1080,7 +1080,7 @@ body.is-demo .live-only { display: none !important; }
       "9. Name collisions and unconfirmed entities: Table 3, no draft before human verification.",
       "10. Approved sends in this capstone prototype route to sandbox only.",
       "11. Pre-qualified whitelist: if prequalified_match is present in case context, skip ICP re-qualification (do not No-go for size/revenue/backing/TA alone). Still require a qualifying event, verified email, and all hard stops. In plain-language Why, say this company was already partner-vetted. Put prequalified-whitelist.md and the whitelist company_id only in citations.",
-      "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1?4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Resolve each email CTA from that email's send day (Email 1 today, Email 2 ~3 days later, Email 3 ~7, Email 4 ~14). Evening CTA only on Email 1 before 2pm Eastern Mon?Thu; never Friday evening. Emails 2?4 never use evening CTA.",
+      "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1?4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Resolve each email CTA from that email's send day (Email 1 today, Email 2 ~3 days later, Email 3 ~7, Email 4 ~14). Evening CTA only on Email 1 before 2pm Eastern Mon?Thu; never Friday evening. Emails 2?4 never use evening CTA. Use move/congrats-on-joining copy only when the POC is the named executive hire; otherwise use company-event templates (no your move to the wrong person).",
       "13. Never use em dashes (Unicode ? or ?) in draft subjects or bodies. Use commas, periods, or restructure. Templates beat freeform prose.",
       "14. Treat hunter_io / contact email and linkedin_url as Hunter.io lookup results. Do not invent emails or LinkedIn URLs. Do not scrape LinkedIn. The console shows LinkedIn from Hunter.io when present, else a people-search fallback. In partner-facing Why, say Hunter.io found or did not find the email or LinkedIn URL. Never say on file, in our database, from ICP contacts, or synthetic.",
       "15. Partner-facing Why on Table 2 and Table 3: write why and reason_or_ambiguity in plain language a recruiting partner can understand and act on immediately. Never name internal files (agent-rules.md, confidence-rubric.md, icp-criteria.md, company_status.csv, etc.). Never cite rule numbers or table numbers. Never use unexplained jargon such as entity sourcing, confidence tier, or ambiguous tier. Put record IDs and policy file names only in citations. Name Exa.ai when the issue is event or article research. Name Hunter.io when the issue is email or LinkedIn. Always end Why with a clear next action.",
@@ -1089,6 +1089,18 @@ body.is-demo .live-only { display: none !important; }
       "",
       "TOOL NAMING (partner-facing):",
       "Exa.ai = event and news research. Hunter.io = Email Finder, Domain Search for alternate POCs, and LinkedIn URL. Speak as if these tools ran for this case. Live path may attach Domain Search alternates into company_contacts. Capstone demo CE-08 uses the same preferred-vs-alternate rules with embedded contacts.",
+      "",
+      "PERSONA SHEET SELECTION (read all sheets in black_gavel_outreach_sequence.md before Go):",
+      "Black Gavel has separate 4-email sheets by POC type. You must compare all of them for each Go case and set persona_used to exactly one sheet name. The console fills drafts from your persona_used choice.",
+      "Sheets (exact persona_used values):",
+      "1. CRO / CEO / Founder — use only when the POC is the executive named in an executive_hire event (they joined/were appointed). Move/congrats-on-joining copy.",
+      "2. CRO / CEO / Founder (company event) — use when POC is CRO/CEO/Founder/VP Sales but the trigger is someone else's hire, or the event is funding/partnership/IPO/merger. References the event at the company; never your move to the wrong person.",
+      "3. Head of Talent and HR — POC is Head of Talent, VP Talent, CHRO, Chief People.",
+      "4. Talent Acquisition — POC is TA lead, recruiter, talent acquisition.",
+      "5. Hiring Manager — POC is a hiring manager or none of the above sheets fit.",
+      "persona_assigned: your first-pass sheet from POC title alone.",
+      "persona_used: the sheet you chose after comparing all sheets against POC role, event type, and whether the POC is the named hire. Put a one-line rationale in trigger_reference (example: Andrew Baker hired; emailing CEO Tom Baldwin; company-event leadership sheet, not move copy).",
+      "If the named hire has a verified email and is the best POC, prefer emailing the hire with CRO / CEO / Founder (move). Do not email the CEO with move copy when someone else was hired.",
       "",
       "OUTPUT:",
       "Return exactly these labeled fields (one per line as Field: value):",
@@ -1177,7 +1189,8 @@ body.is-demo .live-only { display: none !important; }
       "3. Entity collision (Payette River vs Payit River): must Table 3 Ambiguous, no Series A draft until human confirms.",
       "4. Out of ICP (and not whitelisted): must Table 2 No-go, not Go. Insufficient ICP fields to judge: Table 3 Ambiguous, not No-go.",
       "5. Go decisions must include draft_1 through draft_4 subject and body with greeting FirstName comma (no Hi/Hey), body paragraphs, one CTA, then Chad or CD as the last line.",
-      "6. Whitelist (prequalified_match / CE-17?CE-20): may Go even if below classic ICP size/revenue; cite whitelist.",
+      "6. Trigger vs recipient: if event is executive_hire of Person A but POC is Person B, drafts must NOT say your move or congrats on joining the company to Person B. Company-event copy (recent hire news at the company) is required. Same for funding/partnership triggers to a CEO who did not personally move.",
+      "7. Whitelist (prequalified_match / CE-17?CE-20): may Go even if below classic ICP size/revenue; cite whitelist.",
       "",
       "CTA RULES (do not invent contradictions):",
       "- Evening CTA text is: Are you around this evening for 10 minutes?",
@@ -2790,6 +2803,39 @@ body.is-demo .live-only { display: none !important; }
           ]
         }
       ],
+      "CRO / CEO / Founder (company event)": [
+        {
+          subject: "The {{CV1}} at {{company}}, quick note from Black Gavel",
+          signoff: "Chad",
+          paragraphs: [
+            "Noting the {{CV1}} at {{company}}. {{CV2}}",
+            "When leadership teams add a senior hire on news like that, they often need one or two critical revenue or leadership seats filled quickly. We help growth-stage legaltech companies do that without the usual noise."
+          ]
+        },
+        {
+          subject: "{{company}}, seats peers fill after the {{CV1}}",
+          signoff: "Chad",
+          paragraphs: [
+            "Following up on the {{CV1}} at {{company}}. Teams in your stage often need one or two critical hires within 60-90 days after news like that.",
+            "We run scoped searches so you stay focused on the business, not inbox noise."
+          ]
+        },
+        {
+          subject: "Quick bump, {{company}} hiring after the {{CV1}}",
+          signoff: "CD",
+          paragraphs: [
+            "Short bump in case the timing was off. Happy to share a one-pager on how we staff revenue and leadership roles after a move like the {{CV1}}.",
+            "No pitch deck required. Just a short conversation if useful."
+          ]
+        },
+        {
+          subject: "Closing the loop on {{company}}",
+          signoff: "CD",
+          paragraphs: [
+            "I will close the loop on outreach about the {{CV1}} at {{company}}. If hiring becomes urgent later, we are easy to reopen."
+          ]
+        }
+      ],
       "Head of Talent and HR": [
         {
           subject: "The {{CV1}} at {{company}}",
@@ -2894,11 +2940,85 @@ body.is-demo .live-only { display: none !important; }
       return "CRO / CEO / Founder";
     }
 
+    function normalizePersonName(name) {
+      return String(name || "")
+        .toLowerCase()
+        .replace(/[^a-z\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function extractHireeFromEvent(ev) {
+      var summary = String(ev && ev.event_summary || "").trim();
+      if (!summary) return "";
+      var patterns = [
+        /(?:appointed|hired|named|joins|joined|joining)\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\s+as\b/i,
+        /(?:appointed|hired|named)\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\b/i
+      ];
+      for (var i = 0; i < patterns.length; i++) {
+        var m = summary.match(patterns[i]);
+        if (m && m[1]) return String(m[1]).replace(/\s+/g, " ").trim();
+      }
+      return "";
+    }
+
+    function pocIsEventHiree(ev, contact) {
+      if (String(ev && ev.event_type || "").toLowerCase() !== "executive_hire") return false;
+      var hiree = normalizePersonName(extractHireeFromEvent(ev));
+      if (!hiree) return false;
+      var poc = normalizePersonName(
+        ((contact && contact.first_name) || "") + " " + ((contact && contact.last_name) || "")
+      );
+      if (!poc) return false;
+      return poc === hiree || poc.indexOf(hiree) !== -1 || hiree.indexOf(poc) !== -1;
+    }
+
+    function normalizePersonaSheet(name) {
+      var s = String(name || "").trim();
+      if (!s) return "";
+      if (BLACK_GAVEL_TEMPLATES[s]) return s;
+      var lower = s.toLowerCase();
+      var keys = Object.keys(BLACK_GAVEL_TEMPLATES);
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i].toLowerCase() === lower) return keys[i];
+      }
+      if (/company event/.test(lower) && /cro|ceo|founder/.test(lower)) {
+        return "CRO / CEO / Founder (company event)";
+      }
+      if (/head of talent|chro|vp talent|talent and hr/.test(lower)) return "Head of Talent and HR";
+      if (/talent acquisition|recruiter/.test(lower)) return "Talent Acquisition";
+      if (/hiring manager/.test(lower)) return "Hiring Manager";
+      if (/cro|ceo|founder|vp sales|head of sales/.test(lower)) return "CRO / CEO / Founder";
+      return "";
+    }
+
+    function defaultPersonaSheet(ev, contact) {
+      var fromTitle = personaFromTitle(contact && contact.title);
+      if (fromTitle === "CRO / CEO / Founder") {
+        return pocIsEventHiree(ev, contact)
+          ? "CRO / CEO / Founder"
+          : "CRO / CEO / Founder (company event)";
+      }
+      return fromTitle;
+    }
+
+    function resolveTemplatePersona(ev, contact, agentPersonaUsed) {
+      var chosen = normalizePersonaSheet(agentPersonaUsed);
+      if (!chosen) chosen = defaultPersonaSheet(ev, contact);
+      if (chosen === "CRO / CEO / Founder" && !pocIsEventHiree(ev, contact)) {
+        return "CRO / CEO / Founder (company event)";
+      }
+      return chosen;
+    }
+
     function cv1FromEvent(ev) {
       var type = String(ev && ev.event_type || "").toLowerCase();
       var summary = String(ev && ev.event_summary || "");
       if (type === "executive_hire") {
-        // Stop at the role only (VP Sales), not "VP Sales after seed extension".
+        var asLongRole = summary.match(/\bas\s+(.+?)(?:\s+(?:to|from|after)\b|$)/i);
+        if (asLongRole && asLongRole[1]) {
+          return String(asLongRole[1]).replace(/\s+/g, " ").trim() + " hire";
+        }
         var rolePat = "(CRO|CEO|CFO|COO|Founder|VP(?:\\s+of)?\\s+[A-Za-z]+|Head of [A-Za-z]+)";
         var asRole = summary.match(new RegExp("\\bas\\s+" + rolePat + "\\b", "i"));
         var role = asRole || summary.match(new RegExp("\\b" + rolePat + "\\b", "i"));
@@ -3118,9 +3238,9 @@ body.is-demo .live-only { display: none !important; }
         .replace(/--+/g, ",");
     }
 
-    function buildBlackGavelSequence(ev, contact, ctaSession) {
-      var persona = personaFromTitle(contact && contact.title);
-      var sheets = BLACK_GAVEL_TEMPLATES[persona] || BLACK_GAVEL_TEMPLATES["CRO / CEO / Founder"];
+    function buildBlackGavelSequence(ev, contact, ctaSession, agentPersonaUsed, agentPersonaAssigned) {
+      var persona = resolveTemplatePersona(ev, contact, agentPersonaUsed);
+      var sheets = BLACK_GAVEL_TEMPLATES[persona] || BLACK_GAVEL_TEMPLATES["Hiring Manager"];
       var firstName = (contact && contact.first_name) || "there";
       var tokens = {
         first_name: firstName,
@@ -3129,7 +3249,7 @@ body.is-demo .live-only { display: none !important; }
         CV2: cv2FromEventDate(ev && ev.event_date)
       };
       var out = {
-        persona_assigned: persona,
+        persona_assigned: normalizePersonaSheet(agentPersonaAssigned) || personaFromTitle(contact && contact.title),
         persona_used: persona
       };
       for (var i = 0; i < 4; i++) {
@@ -3151,15 +3271,43 @@ body.is-demo .live-only { display: none !important; }
       return out;
     }
 
+    function contactFromFields(fields) {
+      var name = String(fields && fields.poc_name || "").trim();
+      var parts = name.split(/\s+/);
+      return {
+        first_name: parts[0] || "",
+        last_name: parts.slice(1).join(" ") || "",
+        title: (fields && (fields.poc_title || fields.persona_assigned)) || ""
+      };
+    }
+
+    function draftHasMoveCopy(fields) {
+      if (!fields) return false;
+      var blob = "";
+      for (var n = 1; n <= 4; n++) {
+        blob += " " + String(fields["draft_" + n + "_body"] || "");
+      }
+      blob = blob.toLowerCase();
+      return blob.indexOf("your recent move") !== -1 || blob.indexOf("following up on your move") !== -1 ||
+        blob.indexOf("outreach about your move") !== -1;
+    }
+
+    function enforceCompanyEventTemplates(fields, ev, ctaSession) {
+      if (!fields || !ev || !hasGoDecision(fields)) return fields;
+      if (String(ev.event_type || "").toLowerCase() !== "executive_hire") return fields;
+      var contact = contactFromFields(fields);
+      if (pocIsEventHiree(ev, contact)) return fields;
+      var expected = resolveTemplatePersona(ev, contact, fields.persona_used);
+      if (expected.indexOf("company event") === -1) return fields;
+      if (fields.persona_used === expected && !draftHasMoveCopy(fields)) return fields;
+      return applyBlackGavelSequence(fields, ev, ctaSession);
+    }
+
     function applyBlackGavelSequence(fields, ev, ctaSession) {
       if (!fields) return fields;
       var decision = String(fields.decision || "").trim().toLowerCase();
       if (decision !== "go") return fields;
-      var contact = {
-        first_name: String(fields.poc_name || "").trim().split(/\s+/)[0] || "",
-        last_name: String(fields.poc_name || "").trim().split(/\s+/).slice(1).join(" ") || "",
-        title: fields.poc_title || fields.persona_assigned || ""
-      };
+      var contact = contactFromFields(fields);
       if (ev) {
         var rows = contactsForCompany(ev.company_id);
         var match = null;
@@ -3178,7 +3326,13 @@ body.is-demo .live-only { display: none !important; }
           if (!contact.title) contact.title = match.title;
         }
       }
-      var built = buildBlackGavelSequence(ev, contact, ctaSession || buildCtaSession(new Date(), "America/New_York"));
+      var built = buildBlackGavelSequence(
+        ev,
+        contact,
+        ctaSession || buildCtaSession(new Date(), "America/New_York"),
+        fields.persona_used,
+        fields.persona_assigned
+      );
       Object.keys(built).forEach(function (k) { fields[k] = built[k]; });
       return fields;
     }
@@ -3797,7 +3951,7 @@ body.is-demo .live-only { display: none !important; }
         parsed.fields.draft_3_body = parsed.fields.draft_3_body || "";
         parsed.fields.draft_4_subject = parsed.fields.draft_4_subject || "";
         parsed.fields.draft_4_body = parsed.fields.draft_4_body || "";
-        applyBlackGavelSequence(parsed.fields, ev, resultEl._ctaSession);
+        parsed.fields = enforceCompanyEventTemplates(parsed.fields, ev, resultEl._ctaSession);
         resultEl._lastFields = parsed.fields;
         var failDecision = document.createElement("div");
         failDecision.className = "stage";
@@ -3811,7 +3965,7 @@ body.is-demo .live-only { display: none !important; }
         resultEl.insertBefore(failOutput, notice);
       } else {
         normalizeSequenceDraftFields(parsed.fields);
-        applyBlackGavelSequence(parsed.fields, ev, resultEl._ctaSession);
+        parsed.fields = enforceCompanyEventTemplates(parsed.fields, ev, resultEl._ctaSession);
         resultEl._lastFields = parsed.fields;
         var statusVal = String(parsed.fields.status || "").trim().toUpperCase();
         var isRefused = statusVal.indexOf("REFUSED") !== -1;
@@ -4600,6 +4754,11 @@ body.is-demo .live-only { display: none !important; }
           voiceNote.textContent = "Applying " + partnerDisplayName(partnerIdForCase(ev)) + "'s voice memory?";
           resultEl.appendChild(voiceNote);
           await applyVoiceMemoryToFields(resultEl._lastFields, ev);
+          resultEl._lastFields = enforceCompanyEventTemplates(
+            resultEl._lastFields,
+            ev,
+            resultEl._ctaSession || buildCtaSession(new Date(), "America/New_York")
+          );
           renderSequenceDrafts(resultEl, resultEl._lastFields);
           if (voiceNote.parentNode) voiceNote.remove();
           var applied = document.createElement("p");
@@ -4770,6 +4929,23 @@ body.is-demo .live-only { display: none !important; }
       return detail;
     }
 
+    function refreshStoredGoDrafts(ui, resultEl) {
+      if (!ui || !ui.ev || !ui.lastFields || !hasGoDecision(ui.lastFields)) return false;
+      var ctaSession = ui._ctaSession || resultEl._ctaSession ||
+        buildCtaSession(new Date(), "America/New_York");
+      var refreshed = enforceCompanyEventTemplates(Object.assign({}, ui.lastFields), ui.ev, ctaSession);
+      if (refreshed.persona_used === ui.lastFields.persona_used && !draftHasMoveCopy(ui.lastFields)) {
+        return false;
+      }
+      ui.lastFields = refreshed;
+      resultEl._lastFields = refreshed;
+      var personaRow = resultEl.querySelector('.field[data-field="persona_used"] .field-value');
+      if (personaRow) personaRow.textContent = refreshed.persona_used || "";
+      renderSequenceDrafts(resultEl, refreshed);
+      ui.lastHtml = resultEl.innerHTML;
+      return true;
+    }
+
     function restoreResultIntoRow(ui) {
       var resultEl = ui.resultEl;
       if (ui.lastHtml) {
@@ -4777,6 +4953,7 @@ body.is-demo .live-only { display: none !important; }
         resultEl._lastFields = ui.lastFields || null;
         resultEl._caseEvent = ui.ev;
         resultEl._humanComplete = !!ui.humanComplete;
+        refreshStoredGoDrafts(ui, resultEl);
         var oldGate = resultEl.querySelector(".human-gate");
         if (oldGate) oldGate.remove();
         if (ui.lastFields || resultEl.querySelector(".field-list") || resultEl.querySelector(".error-note")) {
