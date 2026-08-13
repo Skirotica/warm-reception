@@ -69,12 +69,12 @@ If you are building out key seats behind that move, we help growth-stage legalte
 Chad
 
 ### Email 2
-Subject: {{company}}, how peers fill seats after the {{CV1}}
+Subject: {{company}}, how peers fill seats after your move
 Sign-off: Chad
 Body:
 {{first_name}},
 
-Following up on your move to {{company}}. Teams in your stage often need one or two critical hires within 60-90 days of a move like that.
+Following up on your move to {{company}}. Teams in your stage often need one or two critical hires within 60-90 days after your move.
 
 We run scoped searches so you stay focused on the business, not inbox noise.
 
@@ -83,7 +83,7 @@ We run scoped searches so you stay focused on the business, not inbox noise.
 Chad
 
 ### Email 3
-Subject: Quick bump, {{company}} hiring after the {{CV1}}
+Subject: Quick bump, {{company}} hiring after your move
 Sign-off: CD
 Body:
 {{first_name}},

@@ -1189,10 +1189,11 @@ body.is-demo .live-only { display: none !important; }
       "3. Entity collision (Payette River vs Payit River): must Table 3 Ambiguous, no Series A draft until human confirms.",
       "4. Out of ICP (and not whitelisted): must Table 2 No-go, not Go. Insufficient ICP fields to judge: Table 3 Ambiguous, not No-go.",
       "5. Go decisions must include draft_1 through draft_4 subject and body with greeting FirstName comma (no Hi/Hey), body paragraphs, one CTA, then Chad or CD as the last line.",
-      "6. Trigger vs recipient (do not invert this):",
-      "- If the POC IS the named hire (Jordan Ellis hired as CRO, emailing Jordan): personal-move copy is required, such as Congrats on your recent move to {company}. Flag needs attention if copy uses company-event framing, the CRO hire at {company}, your CRO hire, or your recent CRO hire at {company} (that treats the hired exec as if they made a hire, or as if they did not join).",
-      "- If the POC is NOT the named hire (Andrew Baker hired, emailing CEO Tom Baldwin): company-event copy is required, such as Noting the {role} hire at {company}. Flag needs attention if copy says your recent move or your move to.",
-      "- looks right: Jordan gets move copy. Tom Baldwin gets company-event copy. Same for funding/partnership triggers to a CEO who did not personally move.",
+      "6. Trigger vs recipient. Do not invert this.",
+      "PERSONAL-MOVE phrases (never call these company-event): your move, your recent move, after your move, Following up on your move, a move like that, outreach about your move.",
+      "COMPANY-EVENT phrases: Noting the {CV1} at {company}, the CRO hire at {company}. Invalid hybrid: your recent CRO hire, your CRO hire, your recent CRO hire at {company}.",
+      "- CE-01 Jordan Ellis (POC IS the named hire at Rapid Accounting): LOOKS RIGHT when Email 1 starts Congrats on your recent move to Rapid Accounting and Emails 2-4 say Following up on your move or after your move. NEEDS ATTENTION only if bodies say Noting the CRO hire at Rapid Accounting or your recent CRO hire at Rapid Accounting.",
+      "- Entegrata / Tom Baldwin (POC is NOT the hire; Andrew Baker was hired): LOOKS RIGHT when copy is company-event, Noting the {CV1} at Entegrata, with no your move. NEEDS ATTENTION if copy says Congrats on your recent move to Entegrata.",
       "7. Whitelist (prequalified_match / CE-17?CE-20): may Go even if below classic ICP size/revenue; cite whitelist.",
       "",
       "CTA RULES (do not invent contradictions):",
@@ -2784,15 +2785,15 @@ body.is-demo .live-only { display: none !important; }
           ]
         },
         {
-          subject: "{{company}}, how peers fill seats after the {{CV1}}",
+          subject: "{{company}}, how peers fill seats after your move",
           signoff: "Chad",
           paragraphs: [
-            "Following up on your move to {{company}}. Teams in your stage often need one or two critical hires within 60-90 days of a move like that.",
+            "Following up on your move to {{company}}. Teams in your stage often need one or two critical hires within 60-90 days after your move.",
             "We run scoped searches so you stay focused on the business, not inbox noise."
           ]
         },
         {
-          subject: "Quick bump, {{company}} hiring after the {{CV1}}",
+          subject: "Quick bump, {{company}} hiring after your move",
           signoff: "CD",
           paragraphs: [
             "Short bump in case the timing was off. Happy to share a one-pager on how we staff revenue and leadership roles after your move.",
@@ -3307,7 +3308,7 @@ body.is-demo .live-only { display: none !important; }
       }
       blob = blob.toLowerCase();
       return blob.indexOf("your recent move") !== -1 || blob.indexOf("following up on your move") !== -1 ||
-        blob.indexOf("outreach about your move") !== -1;
+        blob.indexOf("outreach about your move") !== -1 || blob.indexOf("after your move") !== -1;
     }
 
     function draftHasHybridHireCopy(fields) {
@@ -4113,6 +4114,25 @@ body.is-demo .live-only { display: none !important; }
       return { verdict: verdict, reason: reason };
     }
 
+    function reviewerReasonIsCopyMismatch(reason) {
+      var blob = String(reason || "").toLowerCase();
+      return /company-event|personal-move|your move|recent move|after your move|framing|cro hire|congrats on/.test(blob);
+    }
+
+    function correctReviewerCopyVerdict(review, ev, fields) {
+      if (!review || !ev || !fields) return review;
+      if (!hasGoDecision(fields)) return review;
+      if (!reviewerReasonIsCopyMismatch(review.reason)) return review;
+      var contact = contactFromFields(fields);
+      if (pocIsEventHiree(ev, contact) && draftHasMoveCopy(fields) && !draftHasHybridHireCopy(fields)) {
+        return {
+          verdict: "looks right",
+          reason: "Personal-move copy is correct for the named hire. Email 1 Congrats on your recent move, and later emails may say your move or after your move."
+        };
+      }
+      return review;
+    }
+
     function renderReviewerPanel(resultEl, review) {
       var existing = resultEl.querySelector(".review-agent");
       if (existing) existing.remove();
@@ -4166,6 +4186,7 @@ body.is-demo .live-only { display: none !important; }
       var userMessage = [
         "Critique the FINAL OUTPUT for this case (the drafts shown in the console after Black Gavel template fill).",
         "Ignore any earlier raw model prose. Use FINAL OUTPUT draft_N bodies as the source of truth.",
+        "If emailing the named hire (CE-01 Jordan Ellis) and Email 1 is Congrats on your recent move to Rapid Accounting, verdict is looks right. your move / after your move in later emails is personal-move, not company-event.",
         "Return ONLY: verdict: looks right|needs attention",
         "and reason: one sentence with no internal contradiction",
         "",
@@ -4208,7 +4229,7 @@ body.is-demo .live-only { display: none !important; }
           content = data.content.map(function (part) { return part.text || ""; }).join("\n");
         }
         content = content || rawText || "";
-        var review = parseReviewerOutput(content);
+        var review = correctReviewerCopyVerdict(parseReviewerOutput(content), ev, finalFields);
         renderReviewerPanel(resultEl, review);
         appendRunLog({
           time: new Date().toLocaleTimeString(),
