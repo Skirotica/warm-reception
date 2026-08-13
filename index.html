@@ -1189,7 +1189,10 @@ body.is-demo .live-only { display: none !important; }
       "3. Entity collision (Payette River vs Payit River): must Table 3 Ambiguous, no Series A draft until human confirms.",
       "4. Out of ICP (and not whitelisted): must Table 2 No-go, not Go. Insufficient ICP fields to judge: Table 3 Ambiguous, not No-go.",
       "5. Go decisions must include draft_1 through draft_4 subject and body with greeting FirstName comma (no Hi/Hey), body paragraphs, one CTA, then Chad or CD as the last line.",
-      "6. Trigger vs recipient: if event is executive_hire of Person A but POC is Person B, drafts must NOT say your move or congrats on joining the company to Person B. Company-event copy (recent hire news at the company) is required. Same for funding/partnership triggers to a CEO who did not personally move.",
+      "6. Trigger vs recipient (do not invert this):",
+      "- If the POC IS the named hire (Jordan Ellis hired as CRO, emailing Jordan): personal-move copy is required, such as Congrats on your recent move to {company}. Flag needs attention if copy uses company-event framing, the CRO hire at {company}, your CRO hire, or your recent CRO hire at {company} (that treats the hired exec as if they made a hire, or as if they did not join).",
+      "- If the POC is NOT the named hire (Andrew Baker hired, emailing CEO Tom Baldwin): company-event copy is required, such as Noting the {role} hire at {company}. Flag needs attention if copy says your recent move or your move to.",
+      "- looks right: Jordan gets move copy. Tom Baldwin gets company-event copy. Same for funding/partnership triggers to a CEO who did not personally move.",
       "7. Whitelist (prequalified_match / CE-17?CE-20): may Go even if below classic ICP size/revenue; cite whitelist.",
       "",
       "CTA RULES (do not invent contradictions):",
@@ -2606,6 +2609,7 @@ body.is-demo .live-only { display: none !important; }
       "RULES:",
       "- Apply the partner voice rules lightly. Keep greeting FirstName comma, one CTA before sign-off, sign-off last.",
       "- Do not invent company facts or change the core event reason.",
+      "- Do not change trigger-vs-recipient framing. Keep your recent move to {company} when the POC is the person who joined. Never rewrite that to your recent CRO hire, your CRO hire, or the CRO hire at {company}. Keep Noting the {event} at {company} when the POC is not the hire.",
       "- Never use em dashes.",
       "- No markdown fences."
     ].join("\n");
@@ -2951,9 +2955,18 @@ body.is-demo .live-only { display: none !important; }
     function extractHireeFromEvent(ev) {
       var summary = String(ev && ev.event_summary || "").trim();
       if (!summary) return "";
+      // Title-case names only (Jordan Ellis). Do not use the /i flag: it makes
+      // [A-Z] match "new" and captures "new CRO Jordan" instead of the hiree.
+      var namePart = "([A-Z][a-z][A-Za-z.'-]*(?:\\s+[A-Z][a-z][A-Za-z.'-]*){1,2})";
+      var rolePart = "(?:CRO|CEO|CFO|COO|CTO|CHRO|CMO|Founder|President|VP(?:\\s+of)?\\s+[A-Za-z]+|Head of [A-Za-z]+|Chief [A-Za-z]+(?:\\s+(?:and\\s+)?[A-Za-z]+){0,5})";
+      var hired = "(?:[Aa]ppointed|[Hh]ired|[Nn]amed)";
+      var joined = hired + "|[Jj]oins|[Jj]oined|[Jj]oining";
       var patterns = [
-        /(?:appointed|hired|named|joins|joined|joining)\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\s+as\b/i,
-        /(?:appointed|hired|named)\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\b/i
+        new RegExp("(?:" + joined + ")\\s+" + namePart + "\\s+as\\b"),
+        new RegExp(hired + "\\s+(?:(?:[Aa]n?|[Tt]he|[Nn]ew)\\s+)+" + rolePart + "\\s+" + namePart + "\\b"),
+        new RegExp(hired + "\\s+" + rolePart + "\\s+" + namePart + "\\b"),
+        new RegExp("\\b" + rolePart + "\\s+" + namePart + "\\b"),
+        new RegExp(hired + "\\s+" + namePart + "\\b")
       ];
       for (var i = 0; i < patterns.length; i++) {
         var m = summary.match(patterns[i]);
@@ -2964,13 +2977,14 @@ body.is-demo .live-only { display: none !important; }
 
     function pocIsEventHiree(ev, contact) {
       if (String(ev && ev.event_type || "").toLowerCase() !== "executive_hire") return false;
-      var hiree = normalizePersonName(extractHireeFromEvent(ev));
-      if (!hiree) return false;
       var poc = normalizePersonName(
         ((contact && contact.first_name) || "") + " " + ((contact && contact.last_name) || "")
       );
       if (!poc) return false;
-      return poc === hiree || poc.indexOf(hiree) !== -1 || hiree.indexOf(poc) !== -1;
+      var hiree = normalizePersonName(extractHireeFromEvent(ev));
+      if (hiree && (poc === hiree || poc.indexOf(hiree) !== -1 || hiree.indexOf(poc) !== -1)) return true;
+      var summary = normalizePersonName(ev && ev.event_summary);
+      return poc.indexOf(" ") !== -1 && summary.indexOf(poc) !== -1;
     }
 
     function normalizePersonaSheet(name) {
@@ -3005,7 +3019,11 @@ body.is-demo .live-only { display: none !important; }
     function resolveTemplatePersona(ev, contact, agentPersonaUsed) {
       var chosen = normalizePersonaSheet(agentPersonaUsed);
       if (!chosen) chosen = defaultPersonaSheet(ev, contact);
-      if (chosen === "CRO / CEO / Founder" && !pocIsEventHiree(ev, contact)) {
+      if (pocIsEventHiree(ev, contact)) {
+        if (chosen === "CRO / CEO / Founder (company event)") return "CRO / CEO / Founder";
+        return chosen;
+      }
+      if (chosen === "CRO / CEO / Founder") {
         return "CRO / CEO / Founder (company event)";
       }
       return chosen;
@@ -3292,14 +3310,31 @@ body.is-demo .live-only { display: none !important; }
         blob.indexOf("outreach about your move") !== -1;
     }
 
+    function draftHasHybridHireCopy(fields) {
+      if (!fields) return false;
+      var blob = "";
+      for (var n = 1; n <= 4; n++) {
+        blob += " " + String(fields["draft_" + n + "_body"] || "");
+      }
+      blob = blob.toLowerCase();
+      return /your recent .{0,40}hire at/.test(blob) ||
+        blob.indexOf("your cro hire") !== -1 ||
+        blob.indexOf("your recent cro hire") !== -1;
+    }
+
     function enforceCompanyEventTemplates(fields, ev, ctaSession) {
       if (!fields || !ev || !hasGoDecision(fields)) return fields;
       if (String(ev.event_type || "").toLowerCase() !== "executive_hire") return fields;
       var contact = contactFromFields(fields);
-      if (pocIsEventHiree(ev, contact)) return fields;
       var expected = resolveTemplatePersona(ev, contact, fields.persona_used);
+      var hybrid = draftHasHybridHireCopy(fields);
+      if (pocIsEventHiree(ev, contact)) {
+        if (expected !== "CRO / CEO / Founder") return fields;
+        if (fields.persona_used === expected && draftHasMoveCopy(fields) && !hybrid) return fields;
+        return applyBlackGavelSequence(fields, ev, ctaSession);
+      }
       if (expected.indexOf("company event") === -1) return fields;
-      if (fields.persona_used === expected && !draftHasMoveCopy(fields)) return fields;
+      if (fields.persona_used === expected && !draftHasMoveCopy(fields) && !hybrid) return fields;
       return applyBlackGavelSequence(fields, ev, ctaSession);
     }
 
