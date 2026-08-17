@@ -22,15 +22,15 @@ Client names are confidential even when company news is public. The real Black G
 
 **Must wait for a private signed-in tool:** real POC emails, Hunter lookups, Chad’s client list, prior sends, opt-outs, partner-vetted whitelist of real companies, Approve / Edit / Escalate tied to a named person, and Anthropic processing of prospect PII.
 
-The live URL already mixes public company news with real people. It may stay as a class-adjacent demo of public headlines only. It is not production.
+Public GitHub Live (`https://skirotica.github.io/warm-reception/live/`) is a synthetic-only shell. Real company and contact data lives only on the Access-protected Live site (`https://warm-reception-live.pages.dev`).
 
 ## 4. Hunter stays off on public Pages
 
 Hunter Domain Search can load a company email roster, not only the intended POC. Those addresses would appear on a public page and then travel to the model. Hunter stays **off** on GitHub Pages until the tool is private.
 
-## 5. Names already on Pages: freeze
+## 5. GitHub Live is synthetic-only
 
-Discern, Wordsmith AI, Jusfy, Entegrata, Aavalynx, and named people already in the public files (including Tim Dorris and other announcement names) are frozen as public news. Do not add emails. Do not add more people. Do not use Refresh from Exa to grow the public queue. Stripping names this week is optional if Chad wants a cleaner freeze. Leaving public headlines in place is not permission to collect emails.
+The public GitHub Live queue shows synthetic `.example` cases only. It does not list Discern, Wordsmith, Jusfy, Entegrata, Aavalynx, or other real firms. Store extras and Refresh from Exa are off on github.io. The shared `live/index.html` still contains private seeds so Cloudflare Pages keeps the real queue. Those names are not rendered on github.io. Real data stays behind Access.
 
 ## 6. Anthropic as a later processor only
 
@@ -71,7 +71,7 @@ Production security / privacy item 2. These are product rules. The do-not-contac
 
 **Public versus private data.** Once sign-in works, real company and contact data must not stay visible outside login. Everything needs to be behind the login.
 
-**Gap vs GitHub Live (not wiped this turn).** `https://skirotica.github.io/warm-reception/live/` is still public HTML with no login. Page source still includes the seed companies Discern, Wordsmith, Jusfy, Entegrata, and Aavalynx. OPERATOR currently keeps GitHub Pages Live public on purpose. Section 5 of this review froze those names as public news and treated stripping as optional. That freeze no longer matches Courtney’s “everything behind login” rule. Next step (not this turn): make GitHub Live synthetic-only, or take Live off github.io, and keep real company data only on Access-protected pages.dev. Do not treat this gap as permission to add more real data to Pages.
+**GitHub Live (synthetic shell).** `https://skirotica.github.io/warm-reception/live/` stays public HTML with no login. The queue is synthetic-only. The page skips D1 extras and Refresh from Exa. The Worker 403s store, Exa, and Hunter from a github.io Origin. Real company and contact data is only on `https://warm-reception-live.pages.dev` after Access. Do not add more real data to GitHub Pages.
 
 **Existing clients.** Never draft outreach to a company already on the client list. Never send to a client, ever.
 

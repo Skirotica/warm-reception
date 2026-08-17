@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Warm Reception</title>
+  <link rel="icon" href="favicon.png" type="image/png" />
   <style>
 /* ═══════════════════════════════════════════════════════════════════
    AGENTIC AI CAPSTONE — LOCKED DESIGN TOKENS  v0.3
@@ -687,7 +688,7 @@ body.is-demo .live-only { display: none !important; }
           </div>
           <div class="exa-intake" id="exa-intake" hidden>
             <h3>Confirm company and domain</h3>
-            <p class="intake-help">Exa found news. Same company from two articles is one row, not two companies. Confirm the company name and its real website domain (for example discern.com, not a news site). Confirm writes the company to the partner store. Skip if you do not want that name stored. Do not invent a person or an email here.</p>
+            <p class="intake-help">Exa found news. Same company from two articles is one row, not two companies. Confirm the company name and its real website domain (the company site, not a news article). Confirm writes the company to the partner store. Skip if you do not want that name stored. Do not invent a person or an email here.</p>
             <div id="exa-intake-rows"></div>
           </div>
           <div class="run-all-summary" id="run-all-summary"></div>
@@ -851,7 +852,7 @@ body.is-demo .live-only { display: none !important; }
                 <strong>Data contract:</strong> The agent only sees the embedded candidate events, company profiles, ICP contacts, pre-qualified whitelist, and company status in this file’s exact shape. Live CRM, ATS, or free-form paste is not supported.
               </li>
               <li>
-                <strong>Lookups and send:</strong> Event research cites Exa.ai through the production API worker (no Exa key in this page). Hunter.io stays off on public GitHub Pages (privacy review). On private Live after Access login, Hunter can find company emails after Save API and Save code. Skip Jusfy and Aavalynx until Chad accepts extra legal load. Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 at the site root still demos embedded missing-email rules. Nothing leaves without human Approve.
+                <strong>Lookups and send:</strong> Event research cites Exa.ai through the production API worker (no Exa key in this page). Public GitHub Live is synthetic only: Hunter, Exa refresh, and the partner store stay off. On private Live after Access login, Hunter can find company emails after Save API and Save code. Some non-US cases stay out of the real-email path until Chad accepts extra legal load. Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 at the site root still demos embedded missing-email rules. Nothing leaves without human Approve.
               </li>
               <li>
                 <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Capstone demo checks embedded company_contacts (CE-08). Live public GitHub Pages does not run Hunter. Private Live may run Hunter after Save API and Save code. Confirm never invents a person, an email, or a website from the company name.
@@ -931,8 +932,12 @@ body.is-demo .live-only { display: none !important; }
 
     var STORE_RESULTS = {};
 
+    function isGithubIoHost() {
+      return /github\.io$/i.test(String(location.hostname || ""));
+    }
+
     function storeEnabled() {
-      return IS_LIVE && !!prodApiBase() && !!partnerAccessCode();
+      return IS_LIVE && !IS_PUBLIC_GITHUB_LIVE && !!prodApiBase() && !!partnerAccessCode();
     }
 
     function storeFetch(path, method, body) {
@@ -990,6 +995,7 @@ body.is-demo .live-only { display: none !important; }
     }
     var APP_MODE = detectAppMode();
     var IS_LIVE = APP_MODE === "live";
+    var IS_PUBLIC_GITHUB_LIVE = IS_LIVE && isGithubIoHost();
 
     // Five Design PRD eval cases for the Evals view (Prompt 16). Expected text comes from EVAL_CASES.
     const NAMED_EVAL_RUNNER = [
@@ -1378,6 +1384,9 @@ body.is-demo .live-only { display: none !important; }
     ].join("\n");
 
     function loadLiveExtras() {
+      if (IS_PUBLIC_GITHUB_LIVE) {
+        return { events: [], profiles: [], contacts: [], statuses: [], employment: [], attached_sources: {} };
+      }
       try {
         var raw = localStorage.getItem(LIVE_EXTRAS_STORAGE);
         if (!raw) return { events: [], profiles: [], contacts: [], statuses: [], employment: [], attached_sources: {} };
@@ -1396,6 +1405,7 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function saveLiveExtras(bundle) {
+      if (IS_PUBLIC_GITHUB_LIVE) return Promise.resolve(null);
       var payload = bundle || { events: [], profiles: [], contacts: [], statuses: [], employment: [] };
       localStorage.setItem(LIVE_EXTRAS_STORAGE, JSON.stringify(payload));
       return storePutBlob("extras", payload);
@@ -1412,7 +1422,7 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function applyLiveExtrasToWorld(extras) {
-      if (!extras) return;
+      if (!extras || IS_PUBLIC_GITHUB_LIVE) return;
       (extras.events || []).forEach(function (ev) {
         ev.live_exa = true;
         upsertByKey(CANDIDATE_EVENTS, ev, "case_id");
@@ -2100,6 +2110,10 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function rebuildQueueEvents() {
+      if (IS_PUBLIC_GITHUB_LIVE) {
+        QUEUE_EVENTS = CANDIDATE_EVENTS.filter(function (ev) { return !ev.live_exa; });
+        return QUEUE_EVENTS;
+      }
       if (IS_LIVE) {
         var scrub = upgradePlaceholderLiveExtrasFromDomain();
         var extras = loadLiveExtras();
@@ -2351,7 +2365,11 @@ body.is-demo .live-only { display: none !important; }
         out.push(ev);
       }
       CANDIDATE_EVENTS.forEach(function (ev) {
-        if (IS_LIVE && !ev.live_exa) return;
+        if (IS_PUBLIC_GITHUB_LIVE) {
+          if (ev.live_exa) return;
+        } else if (IS_LIVE && !ev.live_exa) {
+          return;
+        }
         add(ev);
       });
       (loadLiveExtras().events || []).forEach(add);
@@ -2941,13 +2959,23 @@ body.is-demo .live-only { display: none !important; }
         if (panelHead) panelHead.textContent = "Chad · Live review queue";
         if (banner) {
           banner.classList.add("visible");
-          var hunterOffPublicPages = IS_LIVE && /github\.io$/i.test(String(location.hostname || ""));
-          var hunterNote = hunterOffPublicPages
-            ? " Hunter stays off on public GitHub Pages."
-            : " Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off.";
-          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Audit log and extras save to the private store after D1 is set up." + hunterNote + " Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+          if (IS_PUBLIC_GITHUB_LIVE) {
+            banner.innerHTML = "<strong>Public GitHub Live is a safe shell.</strong> Synthetic cases only. Real company and contact data is only on the Access-protected Live site at <a href=\"https://warm-reception-live.pages.dev\">https://warm-reception-live.pages.dev</a>. Hunter stays off here. Refresh from Exa is off. Capstone demo stays at the site root. Human Approve / Edit / Escalate still required before any send.";
+          } else {
+            banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Audit log and extras save to the private store after D1 is set up. Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+          }
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
+        if (IS_PUBLIC_GITHUB_LIVE) {
+          var publicRefreshBtn = document.getElementById("btn-refresh-exa");
+          var publicResetBtn = document.getElementById("btn-reset-live-extras");
+          var publicRefreshStatus = document.getElementById("live-refresh-status");
+          if (publicRefreshBtn) publicRefreshBtn.disabled = true;
+          if (publicResetBtn) publicResetBtn.disabled = true;
+          if (publicRefreshStatus) {
+            publicRefreshStatus.textContent = "Refresh from Exa is off on public GitHub Pages. Real intake is on the private Live site.";
+          }
+        }
         activeVoicePartnerId = "partner_c";
       } else {
         document.title = "Warm Reception — Capstone demo";
@@ -3012,8 +3040,7 @@ body.is-demo .live-only { display: none !important; }
     }
 
     async function hunterFetchJson(pathAndQuery) {
-      var hunterOffPublicPages = IS_LIVE && /github\.io$/i.test(String(location.hostname || ""));
-      if (hunterOffPublicPages) {
+      if (IS_PUBLIC_GITHUB_LIVE) {
         return { ok: false, detail: "hunter_off_public_pages", data: null, status: 0 };
       }
       if (IS_LIVE) {
@@ -5864,7 +5891,7 @@ body.is-demo .live-only { display: none !important; }
         resultEl.innerHTML = '<div class="error-note">Partner access required. Paste the access code (not an API key) and click Save code.</div>';
         return { kind: "error", detail: "no_partner_access" };
       }
-      if (IS_LIVE && (liveNeedsDomainConfirm(ev) || !looksLikeRealDomain(ev.domain))) {
+      if (IS_LIVE && !IS_PUBLIC_GITHUB_LIVE && (liveNeedsDomainConfirm(ev) || !looksLikeRealDomain(ev.domain))) {
         resultEl.innerHTML = '<div class="error-note">Confirm the company name and its real website domain in the Exa intake tray before Run. Do not invent a person or email here.</div>';
         return { kind: "error", detail: "domain_not_confirmed" };
       }
@@ -5879,21 +5906,20 @@ body.is-demo .live-only { display: none !important; }
       var skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
       // Privacy review: Hunter stays off on public GitHub Pages.
       // A private host (Cloudflare Pages + Access) may call Hunter once HUNTER_ENABLED is true on the Worker.
-      var hunterOffPublicPages = IS_LIVE && /github\.io$/i.test(String(location.hostname || ""));
       var extraLegalHunterBlock = hunterBlockedExtraLegalLoad(ev);
       var shouldEnrichHunter =
-        !hunterOffPublicPages &&
+        !IS_PUBLIC_GITHUB_LIVE &&
         !extraLegalHunterBlock &&
         !skipHunterForIcp &&
         ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
 
-      if (!icpFieldPresent(resolveIcpNumbers(ev).employee_count) && (IS_LIVE || !!ev.live_exa)) {
+      if (!IS_PUBLIC_GITHUB_LIVE && !icpFieldPresent(resolveIcpNumbers(ev).employee_count) && (IS_LIVE || !!ev.live_exa)) {
         if (metaEl) metaEl.textContent = "Exa ICP lookup " + ev.case_id;
         resultEl.innerHTML = '<span class="thinking">Exa.ai company size enrichment…</span>';
         exaIcpLive = await enrichIcpFieldsViaExa(ev);
         skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
         shouldEnrichHunter =
-          !hunterOffPublicPages &&
+          !IS_PUBLIC_GITHUB_LIVE &&
           !extraLegalHunterBlock &&
           !skipHunterForIcp &&
           ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
@@ -5914,7 +5940,7 @@ body.is-demo .live-only { display: none !important; }
         if (metaEl) metaEl.textContent = "Running " + ev.case_id;
       }
 
-      if (hunterOffPublicPages) {
+      if (IS_PUBLIC_GITHUB_LIVE) {
         hunterLive = {
           live: false,
           status: "skipped_public_pages",
@@ -6418,7 +6444,7 @@ body.is-demo .live-only { display: none !important; }
     remountQueue();
 
     async function hydrateFromStore() {
-      if (!storeEnabled()) return;
+      if (IS_PUBLIC_GITHUB_LIVE || !storeEnabled()) return;
       var packed = await storeFetch("/store/snapshot", "GET");
       if (!packed || !packed.ok || !packed.data) {
         if (prodApiStatus && packed && packed.status === 503) {
@@ -6480,7 +6506,7 @@ body.is-demo .live-only { display: none !important; }
       if (prodApiStatus) prodApiStatus.textContent = "API, code, and store connected";
     }
 
-    if (IS_LIVE) hydrateFromStore();
+    if (IS_LIVE && !IS_PUBLIC_GITHUB_LIVE) hydrateFromStore();
 
     var DEMO_CHIPS = [
       { case_id: "CE-01", label: "Happy path" },
@@ -7004,6 +7030,12 @@ body.is-demo .live-only { display: none !important; }
     if (refreshExaBtn) {
       refreshExaBtn.addEventListener("click", async function () {
         var statusEl = document.getElementById("live-refresh-status");
+        if (IS_PUBLIC_GITHUB_LIVE) {
+          if (statusEl) {
+            statusEl.textContent = "Refresh from Exa is off on public GitHub Pages. Real intake is on the private Live site.";
+          }
+          return;
+        }
         var proxyBase = exaApiBase();
         if (!proxyBase) {
           if (statusEl) statusEl.textContent = "Save the production API URL first (Cloudflare Worker).";
@@ -7068,6 +7100,7 @@ body.is-demo .live-only { display: none !important; }
     var resetLiveBtn = document.getElementById("btn-reset-live-extras");
     if (resetLiveBtn) {
       resetLiveBtn.addEventListener("click", async function () {
+        if (IS_PUBLIC_GITHUB_LIVE) return;
         if (!confirm("Clear Exa-refreshed extras? Seed live cases (CE-L01 to CE-L05) stay. Confirmed Exa cases are removed from this browser and the partner store.")) return;
         var empty = { events: [], profiles: [], contacts: [], statuses: [], employment: [], attached_sources: {} };
         var statusEl = document.getElementById("live-refresh-status");

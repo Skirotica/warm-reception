@@ -1,6 +1,8 @@
 # Warm Reception Live — operator note
 
-Class demo at the site root stays the frozen graded prototype. This note is only for **Live** (`https://skirotica.github.io/warm-reception/live/`).
+Class demo at the site root stays the frozen graded prototype.
+
+**GitHub Live** (`https://skirotica.github.io/warm-reception/live/`) is a public synthetic shell: fake `.example` companies, no D1 extras, no Refresh from Exa, Hunter off. Real company and contact data is only on the Access-protected site (`https://warm-reception-live.pages.dev`).
 
 ## Step 3 (done)
 
@@ -108,7 +110,7 @@ Human confirm, company-website links, and same-company de-duplication are on Git
 
 Access is on. One-time PIN is the Chad / Nick / Courtney login. Hunter is **on** for private Pages only (`https://warm-reception-live.pages.dev`). GitHub Pages Live stays Hunter **off**.
 
-Hunter stays **off** on `https://skirotica.github.io/warm-reception/live/`. That page is still public HTML. The browser refuses Hunter on any `github.io` host. The Worker also 403s Hunter if Origin is github.io, even with `HUNTER_ENABLED=true`.
+Hunter stays **off** on `https://skirotica.github.io/warm-reception/live/`. That page is a public synthetic shell: no real companies in the queue, no store extras, no Exa refresh. The browser refuses Hunter, store, and Exa on any `github.io` host. The Worker also 403s those routes if Origin is github.io, even with `HUNTER_ENABLED=true`.
 
 Class demo at the site root stays public and synthetic. Jusfy (Brazil) and Aavalynx (UK/EU) stay out of the real-email path until Chad accepts that extra legal load.
 
@@ -180,7 +182,7 @@ If Cloudflare asks for a login method, add **One-time PIN**: Zero Trust → Inte
 2. Go to https://warm-reception-live.pages.dev
 3. You should see a Cloudflare login wall, not the Live queue.
 4. Sign in with your allowed email. After the code, you should see Live as before (queue, Save API, Save code, Run).
-5. Leave GitHub Pages Live public: https://skirotica.github.io/warm-reception/live/ still opens with no login, and Hunter stays off there.
+5. Leave GitHub Pages Live public: https://skirotica.github.io/warm-reception/live/ still opens with no login. Queue is synthetic only. Hunter, store extras, and Exa stay off there.
 
 Access passed (login wall + One-time PIN). Hunter is on for this private host.
 
@@ -212,7 +214,7 @@ Do not use the public GitHub Pages Live URL as the working Live for email lookup
 
 1. Incognito: https://warm-reception-live.pages.dev shows a login wall, not the queue.
 2. After login: Live looks as before. Save API and Save code still work. Run still needs Approve / Edit / Escalate. No mailbox send.
-3. GitHub Pages Live still has no login wall and no Hunter.
+3. GitHub Pages Live still has no login wall, a synthetic queue, and no Hunter / store / Exa.
 
 ### Chad / Courtney: prove Hunter (this turn)
 
@@ -223,7 +225,7 @@ A fresh session forgets API URL and partner code. After Access login:
 3. Type the partner access code and click **Save code**.
 4. Pick Discern, Wordsmith AI, or Entegrata. Do not pick Jusfy or Aavalynx.
 5. Click Run. You should see Hunter try (Domain Search / company contacts). Confirm never invents a person, an email, or a `.com` from a company name. Approve / Edit / Escalate still required. No mailbox send.
-6. On https://skirotica.github.io/warm-reception/live/ Hunter must still refuse.
+6. On https://skirotica.github.io/warm-reception/live/ the queue must be synthetic (no Discern / Wordsmith / Jusfy / Entegrata / Aavalynx). Hunter must still refuse. Refresh from Exa must stay off.
 
 ## What not to paste on Live
 

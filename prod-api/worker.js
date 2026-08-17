@@ -10,7 +10,8 @@
  * plus One-time PIN lock private Live (warm-reception-live.pages.dev).
  *
  * Hunter requires HUNTER_ENABLED=true AND a non-github.io Origin.
- * github.io may call Anthropic, Exa, and store. Hunter routes still 403.
+ * github.io may call Anthropic only. Exa, store, and Hunter routes 403
+ * from github.io so public GitHub Live stays synthetic.
  *
  * Routes:
  *   GET  /                 health (no secrets)
@@ -81,6 +82,17 @@ function hunterGithubOrigin(origin) {
   } catch (e) {
     return false;
   }
+}
+
+function githubIoPublicBlocked(cors, feature) {
+  return jsonResponse(
+    {
+      error: feature + " is disabled for GitHub Pages",
+      detail: "Privacy review: real company data stays on the Access-protected Live site. Public GitHub Live is synthetic only."
+    },
+    403,
+    cors
+  );
 }
 
 function partnerCodeConfigured(env) {
@@ -435,6 +447,7 @@ export default {
       if (request.method !== "GET") {
         return jsonResponse({ error: "Use GET /search" }, 405, cors);
       }
+      if (hunterGithubOrigin(origin)) return githubIoPublicBlocked(cors, "Exa");
       return proxyExa(url, env, cors);
     }
 
@@ -446,12 +459,15 @@ export default {
     }
 
     if (path === "/store/snapshot" && request.method === "GET") {
+      if (hunterGithubOrigin(origin)) return githubIoPublicBlocked(cors, "Store");
       return storeSnapshot(env, cors);
     }
     if (path === "/store/audit" && request.method === "POST") {
+      if (hunterGithubOrigin(origin)) return githubIoPublicBlocked(cors, "Store");
       return storeAudit(request, env, cors);
     }
     if (path.indexOf("/store/blob/") === 0 && request.method === "PUT") {
+      if (hunterGithubOrigin(origin)) return githubIoPublicBlocked(cors, "Store");
       var key = path.slice("/store/blob/".length);
       return storePutBlob(request, env, cors, key);
     }
