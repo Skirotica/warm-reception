@@ -90,7 +90,7 @@ Do not set Hunter secrets.
 
 You do **not** need a new product website (no warmreception.ai) for this step. Stay on GitHub Pages and the existing Worker. The domain that matters here is each **company’s** website, such as discern.com.
 
-Refresh from Exa no longer dumps articles into the queue. It opens a confirm tray. Two articles about the same company (same name or same website) become **one row**. Confirm once. That company appears once in the queue. Extra articles stay as extra stories on that case, not a second DeepJudge. If the company is already queued, Confirm adds the stories to the existing card.
+Refresh from Exa no longer dumps articles into the queue. It opens a confirm tray. Two articles about the same company (same name or same website) become **one row**. Confirm once. That company appears once in the queue. Extra articles stay as extra stories on that case, not a second DeepJudge. Refresh skips companies already in the queue even when the article URL is new; those stories attach to the existing card, so you should not get a second Discern or Wordsmith row. Status should say no new companies, not open a confirm tray of duplicates. If Confirm still sees a company already queued, it adds the stories to that card.
 
 For each company, type or correct the name and its real domain, then Confirm or Skip. Confirm writes the company to the partner store. POC name and email stay blank. Run is blocked until that domain is confirmed. Hunter stays off.
 
@@ -118,7 +118,7 @@ From the project folder (the one that contains the `live` folder):
 npx wrangler pages deploy live --project-name warm-reception-live
 ```
 
-Wrangler prints a URL like `https://warm-reception-live.pages.dev`. Do not share it yet.
+Wrangler prints a URL like `https://warm-reception-live.pages.dev` (stable) and sometimes a hashed preview such as `https://5fe9b356.warm-reception-live.pages.dev`. Use the stable URL as Live. Put both on `ALLOWED_ORIGINS` along with GitHub Pages and localhost.
 
 Open `prod-api/wrangler.toml`. Add that Pages URL to `ALLOWED_ORIGINS` (comma, no spaces unless you trim). Example:
 

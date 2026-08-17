@@ -965,7 +965,9 @@ body.is-demo .live-only { display: none !important; }
       var search = String(location.search || "");
       if (/[?&]mode=demo(?:&|$)/i.test(search)) return "demo";
       if (/[?&]mode=live(?:&|$)/i.test(search)) return "live";
-      // Live only when this file lives under a /live/ path segment (not a random substring).
+      var host = String(location.hostname || "").toLowerCase();
+      // Cloudflare Pages deploys the live folder as the site root, so there is no /live/ path.
+      if (/warm-reception-live\.pages\.dev$/i.test(host)) return "live";
       var path = String(location.pathname || "").toLowerCase().replace(/\\/g, "/");
       if (/(?:^|\/)live\/(?:index\.html)?$/.test(path) || /\/live\/?$/.test(path)) return "live";
       return "demo";
@@ -2019,15 +2021,10 @@ body.is-demo .live-only { display: none !important; }
       var changed = false;
       (extras.events || []).forEach(function (ev) {
         if (!ev) return;
-        var d = normalizeDomainKey(ev.domain);
-        var n = normalizeCompanyKey(ev.company_name);
         var match = null;
         keep.forEach(function (k) {
           if (match) return;
-          var kd = normalizeDomainKey(k.domain);
-          var kn = normalizeCompanyKey(k.company_name);
-          if (d && kd && looksLikeRealDomain(d) && looksLikeRealDomain(kd) && d === kd) match = k;
-          else if (n && kn && n.length >= 3 && n === kn) match = k;
+          if (sameQueuedCompany(ev.company_name, ev.domain, k.company_name, k.domain)) match = k;
         });
         if (!match) {
           keep.push(ev);
@@ -2036,7 +2033,7 @@ body.is-demo .live-only { display: none !important; }
         changed = true;
         var urls = eventSourceUrls(match);
         eventSourceUrls(ev).forEach(function (u) {
-          if (urls.indexOf(u) === -1) urls.push(u);
+          if (!urlAlreadyInList(urls, u)) urls.push(u);
         });
         match.source_urls = urls;
         if (!match.source_url && urls[0]) match.source_url = urls[0];
@@ -2207,7 +2204,8 @@ body.is-demo .live-only { display: none !important; }
         .toLowerCase()
         .replace(/^https?:\/\//, "")
         .replace(/^www\./, "")
-        .replace(/\/.*$/, "")
+        .replace(/[:\/].*$/, "")
+        .replace(/\.$/, "")
         .trim();
     }
 
@@ -2215,11 +2213,72 @@ body.is-demo .live-only { display: none !important; }
       return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
     }
 
+    function domainSlugKey(domain) {
+      var d = normalizeDomainKey(domain);
+      if (!d) return "";
+      return d.split(".")[0].replace(/-/g, "");
+    }
+
+    function companyStemKey(name) {
+      var n = normalizeCompanyKey(name);
+      var stripped = n.replace(/(incorporated|corporation|limited|technologies|technology|llc|ltd|inc|corp|legal|tech|ai)$/g, "");
+      return stripped.length >= 4 ? stripped : n;
+    }
+
+    function sameQueuedCompany(nameA, domainA, nameB, domainB) {
+      var da = normalizeDomainKey(domainA);
+      var db = normalizeDomainKey(domainB);
+      var na = normalizeCompanyKey(nameA);
+      var nb = normalizeCompanyKey(nameB);
+      var sa = companyStemKey(nameA);
+      var sb = companyStemKey(nameB);
+      var slugA = domainSlugKey(domainA);
+      var slugB = domainSlugKey(domainB);
+      if (da && db && looksLikeRealDomain(da) && looksLikeRealDomain(db) && da === db) return true;
+      if (na && nb && na.length >= 3 && na === nb) return true;
+      if (sa && sb && sa.length >= 4 && sa === sb) return true;
+      if (slugA && looksLikeRealDomain(da) && slugA.length >= 3) {
+        if (nb && slugA === nb) return true;
+        if (sb && sb.length >= 4 && slugA === sb) return true;
+      }
+      if (slugB && looksLikeRealDomain(db) && slugB.length >= 3) {
+        if (na && slugB === na) return true;
+        if (sa && sa.length >= 4 && slugB === sa) return true;
+      }
+      if (slugA && slugB && slugA.length >= 3 && slugA === slugB && looksLikeRealDomain(da) && looksLikeRealDomain(db)) {
+        return true;
+      }
+      return false;
+    }
+
+    function normalizeSourceUrlKey(url) {
+      var s = String(url || "").trim();
+      if (!s) return "";
+      try {
+        var u = new URL(s);
+        var host = String(u.hostname || "").toLowerCase().replace(/^www\./, "");
+        var path = String(u.pathname || "").replace(/\/+$/, "");
+        return host + path + String(u.search || "");
+      } catch (e) {
+        return s.toLowerCase().replace(/\/+$/, "");
+      }
+    }
+
+    function urlAlreadyInList(urls, url) {
+      var key = normalizeSourceUrlKey(url);
+      if (!key) return true;
+      var i;
+      for (i = 0; i < (urls || []).length; i++) {
+        if (normalizeSourceUrlKey(urls[i]) === key) return true;
+      }
+      return false;
+    }
+
     function eventSourceUrls(ev) {
       var urls = [];
       function add(u) {
         u = String(u || "").trim();
-        if (u && urls.indexOf(u) === -1) urls.push(u);
+        if (u && !urlAlreadyInList(urls, u)) urls.push(u);
       }
       if (!ev) return urls;
       add(ev.source_url);
@@ -2234,15 +2293,36 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function queuedEventForCompany(name, domain) {
-      var d = normalizeDomainKey(domain);
-      var n = normalizeCompanyKey(name);
+      var extras = loadLiveExtras();
+      var lists = [CANDIDATE_EVENTS, extras.events || []];
+      var j;
       var i;
-      for (i = 0; i < CANDIDATE_EVENTS.length; i++) {
-        var ev = CANDIDATE_EVENTS[i];
-        var ed = normalizeDomainKey(ev.domain);
-        var en = normalizeCompanyKey(ev.company_name);
-        if (d && ed && looksLikeRealDomain(d) && looksLikeRealDomain(ed) && d === ed) return ev;
-        if (n && en && n.length >= 3 && n === en) return ev;
+      for (j = 0; j < lists.length; j++) {
+        for (i = 0; i < lists[j].length; i++) {
+          var ev = lists[j][i];
+          if (!ev) continue;
+          if (!sameQueuedCompany(name, domain, ev.company_name, ev.domain)) continue;
+          if (j === 0) return ev;
+          var k;
+          for (k = 0; k < CANDIDATE_EVENTS.length; k++) {
+            if (CANDIDATE_EVENTS[k].case_id === ev.case_id) return CANDIDATE_EVENTS[k];
+          }
+          return ev;
+        }
+      }
+      return null;
+    }
+
+    function queuedEventForIntake(name, domain, articles) {
+      var existing = queuedEventForCompany(name, domain);
+      if (existing) return existing;
+      var i;
+      for (i = 0; i < (articles || []).length; i++) {
+        var host = guessDomainFromUrl(articles[i] && articles[i].url);
+        if (host && looksLikeRealDomain(host)) {
+          existing = queuedEventForCompany("", host);
+          if (existing) return existing;
+        }
       }
       return null;
     }
@@ -2252,7 +2332,7 @@ body.is-demo .live-only { display: none !important; }
       var urls = eventSourceUrls(ev);
       (articles || []).forEach(function (a) {
         var u = String(a && a.url || "").trim();
-        if (u && urls.indexOf(u) === -1) urls.push(u);
+        if (u && !urlAlreadyInList(urls, u)) urls.push(u);
       });
       ev.source_urls = urls;
       if (!ev.source_url && urls[0]) ev.source_url = urls[0];
@@ -2282,7 +2362,7 @@ body.is-demo .live-only { display: none !important; }
     function addIntakeArticle(group, p, article) {
       var exists = false;
       group.articles.forEach(function (a) {
-        if (a.url === article.url) exists = true;
+        if (a.url === article.url || urlAlreadyInList([a.url], article.url)) exists = true;
       });
       if (!exists) group.articles.push(article);
       if (!group.company_guess && p.company_guess) group.company_guess = p.company_guess;
@@ -2296,7 +2376,8 @@ body.is-demo .live-only { display: none !important; }
       (pending || []).forEach(function (p) {
         var article = { title: p.title || "", url: p.url || "", raw: p.raw };
         var d = normalizeDomainKey(p.domain_guess);
-        var n = normalizeCompanyKey(p.company_guess);
+        var n = companyStemKey(p.company_guess);
+        if (n.length < 4) n = normalizeCompanyKey(p.company_guess);
         if (d && looksLikeRealDomain(d)) {
           if (!byDomain[d]) byDomain[d] = makeIntakeGroup(p, article);
           else addIntakeArticle(byDomain[d], p, article);
@@ -2313,9 +2394,9 @@ body.is-demo .live-only { display: none !important; }
         var matchD = "";
         Object.keys(byDomain).forEach(function (d) {
           if (matchD) return;
-          var slug = d.split(".")[0].replace(/-/g, "");
-          var gName = normalizeCompanyKey(byDomain[d].company_guess);
-          if (n === slug || n === gName) matchD = d;
+          if (sameQueuedCompany(byName[n].company_guess, byName[n].domain_guess, byDomain[d].company_guess, d)) {
+            matchD = d;
+          }
         });
         if (!matchD) return;
         byName[n].articles.forEach(function (a) {
@@ -2330,21 +2411,21 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function sourceUrlAlreadyQueued(url) {
-      var u = String(url || "");
+      var u = String(url || "").trim();
       if (!u) return true;
       var extras = loadLiveExtras();
       var i;
       for (i = 0; i < CANDIDATE_EVENTS.length; i++) {
-        if (eventSourceUrls(CANDIDATE_EVENTS[i]).indexOf(u) !== -1) return true;
+        if (urlAlreadyInList(eventSourceUrls(CANDIDATE_EVENTS[i]), u)) return true;
       }
       for (i = 0; i < (extras.events || []).length; i++) {
-        if (eventSourceUrls(extras.events[i]).indexOf(u) !== -1) return true;
+        if (urlAlreadyInList(eventSourceUrls(extras.events[i]), u)) return true;
       }
       var attached = extras.attached_sources || {};
       var caseId;
       for (caseId in attached) {
         if (!attached.hasOwnProperty(caseId)) continue;
-        if ((attached[caseId] || []).indexOf(u) !== -1) return true;
+        if (urlAlreadyInList(attached[caseId] || [], u)) return true;
       }
       return false;
     }
@@ -2430,7 +2511,7 @@ body.is-demo .live-only { display: none !important; }
         confirmBtn.addEventListener("click", function () {
           var articles = intakeArticles(item);
           var statusEl = document.getElementById("live-refresh-status");
-          var existing = queuedEventForCompany(nameIn.value, domainIn.value);
+          var existing = queuedEventForIntake(nameIn.value, domainIn.value, articles);
           if (existing) {
             attachStoriesToEvent(existing, articles);
             remountQueue();
@@ -2499,6 +2580,7 @@ body.is-demo .live-only { display: none !important; }
     function buildExaIntakeList(results) {
       var pending = [];
       var skippedDup = 0;
+      var skippedQueued = 0;
       (results || []).forEach(function (r, idx) {
         var url = String(r.url || "").trim();
         if (!url) return;
@@ -2507,12 +2589,20 @@ body.is-demo .live-only { display: none !important; }
           return;
         }
         var identity = guessCompanyAndDomainFromExa(r.title, r.text, url, idx);
+        var companyGuess = (identity && identity.company_name) || "";
+        var domainGuess = (identity && looksLikeRealDomain(identity.domain) ? identity.domain : "") || "";
+        var existing = queuedEventForIntake(companyGuess, domainGuess, [{ title: r.title || "", url: url, raw: r }]);
+        if (existing) {
+          attachStoriesToEvent(existing, [{ title: r.title || "", url: url, raw: r }]);
+          skippedQueued += 1;
+          return;
+        }
         pending.push({
           raw: r,
           title: r.title || "",
           url: url,
-          company_guess: (identity && identity.company_name) || "",
-          domain_guess: (identity && looksLikeRealDomain(identity.domain) ? identity.domain : "") || ""
+          company_guess: companyGuess,
+          domain_guess: domainGuess
         });
       });
       var domainByCompany = {};
@@ -2540,7 +2630,17 @@ body.is-demo .live-only { display: none !important; }
         if (found) p.domain_guess = found;
       });
       pending = collapseIntakeByCompany(pending);
-      return { pending: pending, skippedDup: skippedDup };
+      var kept = [];
+      pending.forEach(function (item) {
+        var existing = queuedEventForIntake(item.company_guess, item.domain_guess, intakeArticles(item));
+        if (existing) {
+          attachStoriesToEvent(existing, intakeArticles(item));
+          skippedQueued += intakeArticles(item).length;
+          return;
+        }
+        kept.push(item);
+      });
+      return { pending: kept, skippedDup: skippedDup, skippedQueued: skippedQueued };
     }
 
     function clearQueueDom() {
@@ -5297,7 +5397,7 @@ body.is-demo .live-only { display: none !important; }
         resultEl.innerHTML = '<div class="error-note">Partner access required. Paste the access code (not an API key) and click Save code.</div>';
         return { kind: "error", detail: "no_partner_access" };
       }
-      if (liveNeedsDomainConfirm(ev) || !looksLikeRealDomain(ev.domain)) {
+      if (IS_LIVE && (liveNeedsDomainConfirm(ev) || !looksLikeRealDomain(ev.domain))) {
         resultEl.innerHTML = '<div class="error-note">Confirm the company name and its real website domain in the Exa intake tray before Run. Do not invent a person or email here.</div>';
         return { kind: "error", detail: "domain_not_confirmed" };
       }
@@ -6381,19 +6481,30 @@ body.is-demo .live-only { display: none !important; }
           if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
           var intake = buildExaIntakeList((data && data.results) || []);
           PENDING_EXA_INTAKE = intake.pending;
+          if (intake.skippedQueued) remountQueue();
           renderExaIntake();
           if (statusEl) {
+            var skipped = (intake.skippedDup || 0) + (intake.skippedQueued || 0);
             if (PENDING_EXA_INTAKE.length) {
               statusEl.textContent =
                 "Confirm " +
                 PENDING_EXA_INTAKE.length +
                 (PENDING_EXA_INTAKE.length === 1 ? " company" : " companies") +
                 " before they enter the queue. Same company from two stories is one row." +
-                (intake.skippedDup ? " Skipped " + intake.skippedDup + " already queued." : "");
+                (skipped
+                  ? " Skipped " +
+                    skipped +
+                    (skipped === 1 ? " story" : " stories") +
+                    " for companies already in the queue."
+                  : "");
+            } else if (skipped) {
+              statusEl.textContent =
+                "No new companies. " +
+                skipped +
+                (skipped === 1 ? " story was" : " stories were") +
+                " for companies already in the queue.";
             } else {
-              statusEl.textContent = intake.skippedDup
-                ? "No new articles (duplicates skipped)."
-                : "Exa returned no new articles.";
+              statusEl.textContent = "Exa returned no new articles.";
             }
           }
         } catch (err) {
