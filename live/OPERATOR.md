@@ -98,7 +98,77 @@ Do not invent a `.com` from a slug. Do not invent a person. Do not type a real P
 
 Seed cases CE-L01 to CE-L05 stay as they are. They already have domains.
 
-A custom product domain (and taking Live off public Pages) comes later, before Hunter and before more people than you and Chad.
+A custom product domain (and taking Live off public Pages) is step 7, before Hunter.
+
+## Step 6 (done)
+
+Human confirm, company-website links, and same-company de-duplication are on GitHub Pages. One company is one queue card.
+
+## Step 7 (private Live, then Hunter)
+
+Hunter stays **off** on `https://skirotica.github.io/warm-reception/live/`. That page is still public HTML. Step 7 puts Live behind a Cloudflare login, then turns Hunter on as a Worker service (keys never in the browser).
+
+Class demo at the site root stays public and synthetic.
+
+### Courtney: put Live on Cloudflare Pages
+
+From the project folder (the one that contains the `live` folder):
+
+```
+npx wrangler pages deploy live --project-name warm-reception-live
+```
+
+Wrangler prints a URL like `https://warm-reception-live.pages.dev`. Do not share it yet.
+
+Open `prod-api/wrangler.toml`. Add that Pages URL to `ALLOWED_ORIGINS` (comma, no spaces unless you trim). Example:
+
+```
+ALLOWED_ORIGINS = "https://skirotica.github.io,https://warm-reception-live.pages.dev,http://localhost:8765,http://127.0.0.1:8765"
+```
+
+Then from `prod-api`:
+
+```
+npx wrangler deploy
+```
+
+### Courtney: lock the door (Cloudflare Access)
+
+In Cloudflare: Zero Trust → Access → Applications → Add an application → Self-hosted.
+
+- Application name: Warm Reception Live
+- Domain: the Pages hostname (`warm-reception-live.pages.dev`)
+- Policy: Allow, include emails for you and Chad only
+
+Save. Opening the Pages URL should ask for email login. GitHub Pages Live stays as the old public copy. Use the Pages URL as the real Live from here.
+
+### Courtney: turn Hunter on (only after Access works)
+
+Still in `prod-api`:
+
+```
+npx wrangler secret put HUNTER_API_KEY
+```
+
+If Hunter gave you a separate Domain Search key:
+
+```
+npx wrangler secret put HUNTER_DOMAIN_SEARCH_KEY
+```
+
+In `wrangler.toml` set `HUNTER_ENABLED = "true"`, then:
+
+```
+npx wrangler deploy
+```
+
+Do not set `HUNTER_ENABLED` while partners still use the public GitHub Pages Live URL.
+
+### Chad / Courtney: prove the private tool
+
+1. Open the Pages Live URL (not GitHub Pages). Cloudflare email login should appear.
+2. Save API and Save code as before.
+3. Confirm one Exa company, click Run. If Hunter is on, the run should look up emails at that domain. Approve / Edit / Escalate still required. No mailbox send.
 
 ## What not to paste on Live
 

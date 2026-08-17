@@ -5310,8 +5310,9 @@ body.is-demo .live-only { display: none !important; }
       var exaIcpLive = null;
       var seedContact = contactsForCompany(ev.company_id)[0] || null;
       var skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
-      // Privacy review: Hunter stays off on public GitHub Pages until the tool is private (step 4/5).
-      var hunterOffPublicPages = IS_LIVE;
+      // Privacy review: Hunter stays off on public GitHub Pages.
+      // A private host (Cloudflare Pages + Access) may call Hunter once HUNTER_ENABLED is true on the Worker.
+      var hunterOffPublicPages = IS_LIVE && /github\.io$/i.test(String(location.hostname || ""));
       var shouldEnrichHunter =
         !hunterOffPublicPages &&
         !skipHunterForIcp &&
