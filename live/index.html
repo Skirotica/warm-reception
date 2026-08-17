@@ -1525,7 +1525,13 @@ body.is-demo .live-only { display: none !important; }
     }
 
     var COMPANY_NAME_STOP =
-      /^(as|at|to|from|for|with|and|or|of|our|new|the|a|an|its|their|his|her|this|that|us|uk|eu|we|join|joins|joined|joining|names|hires|appoints|announces|raises|raised|ceo|cro|cfo|coo|vp|head|president|chief|officer|team|leadership|message|letter)$/i;
+      /^(as|at|to|from|for|with|and|or|of|our|new|the|a|an|its|their|his|her|this|that|us|uk|eu|we|join|joins|joined|joining|names|hires|appoints|announces|raises|raised|after|before|following|during|while|via|over|into|about|welcome|welcomes|ceo|cro|cfo|coo|vp|head|president|chief|officer|team|leadership|message|letter)$/i;
+
+    function isPublisherBrand(name) {
+      return /^(linkedin|twitter|x|facebook|instagram|youtube|reuters|bloomberg|techcrunch|forbes|yahoo|medium|substack|prnewswire|businesswire|law|pulse2)$/i.test(
+        String(name || "").trim()
+      );
+    }
 
     function looksLikeHeadlineNotCompany(s) {
       var t = String(s || "").trim();
@@ -1622,16 +1628,44 @@ body.is-demo .live-only { display: none !important; }
       return "";
     }
 
-    function extractCompanyNameFromArticle(title, text) {
+    function companyFromTitleSuffix(title) {
+      var parts = String(title || "").split(/\s*[|•·]\s*/);
+      if (parts.length < 2) return "";
+      var last = parts[parts.length - 1].trim();
+      if (isPublisherBrand(last) || /linkedin/i.test(last)) return "";
+      return takeCompanyPhrase(last) || cleanCompanyGuess(last);
+    }
+
+    function linkedinCompanySlugFromUrl(url) {
+      try {
+        var host = new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+        if (host !== "linkedin.com" && !/linkedin\.com$/i.test(host)) return "";
+        var path = new URL(url).pathname || "";
+        var m = path.match(/\/company\/([a-z0-9-]+)/i);
+        if (!m) return "";
+        return String(m[1] || "").replace(/-/g, " ");
+      } catch (e) {
+        return "";
+      }
+    }
+
+    function extractCompanyNameFromArticle(title, text, url) {
       var blob = (String(title || "") + "\n" + String(text || "")).trim();
       var candidates = [];
 
       function push(raw, weight) {
         var cleaned = takeCompanyPhrase(raw) || cleanCompanyGuess(raw);
-        if (!cleaned) return;
+        if (!cleaned || isPublisherBrand(cleaned)) return;
         cleaned = canonicalCompanySpelling(cleaned, blob);
+        if (isPublisherBrand(cleaned)) return;
         candidates.push({ name: cleaned, weight: weight || 1 });
       }
+
+      var pipeCo = companyFromTitleSuffix(title);
+      if (pipeCo) push(pipeCo, 14);
+
+      var liSlug = linkedinCompanySlugFromUrl(url);
+      if (liSlug) push(liSlug, 13);
 
       var joinUs = blob.match(
         /\b(?:joined|joins|joining)\s+(?:us\s+at\s+|the\s+team\s+at\s+)?([A-Za-z][A-Za-z0-9&.\-]{2,}(?:\s+[A-Za-z][A-Za-z0-9&.\-]{2,}){0,3})/i
@@ -1669,7 +1703,11 @@ body.is-demo .live-only { display: none !important; }
       if (appos) push(appos[1], 6);
 
       var titleStr = String(title || "");
-      if (!looksLikeHeadlineNotCompany(titleStr) && !/\b(?:joins|joined|joining|message|letter)\b/i.test(titleStr)) {
+      if (
+        titleStr.indexOf("|") === -1 &&
+        !looksLikeHeadlineNotCompany(titleStr) &&
+        !/\b(?:joins|joined|joining|message|letter)\b/i.test(titleStr)
+      ) {
         var titleLead = titleStr.split(
           / raises | raised | announces | names | appoints | lands | closes | secures | bags | gets | unveils | hires |\| | – | — |: /i
         )[0];
@@ -1697,6 +1735,7 @@ body.is-demo .live-only { display: none !important; }
         if (/^(Ian|John|Jane|Sarah|David|Michael|Chris|Alex|Tim|Hanna|Rafael|Andrew|Robbie|Live|Pascal|Debets)$/i.test(candidates[i].name)) {
           continue;
         }
+        if (isPublisherBrand(candidates[i].name)) continue;
         if (/^live\s*company/i.test(candidates[i].name)) continue;
         return candidates[i].name;
       }
@@ -1705,7 +1744,7 @@ body.is-demo .live-only { display: none !important; }
 
     function guessCompanyAndDomainFromExa(title, text, url, idx) {
       var blob = (String(title || "") + "\n" + String(text || "")).trim();
-      var companyGuess = extractCompanyNameFromArticle(title, text);
+      var companyGuess = extractCompanyNameFromArticle(title, text, url);
       var domain = "";
       if (companyGuess) {
         domain = pickDomainForCompany(companyGuess, blob, url);
@@ -2214,6 +2253,21 @@ body.is-demo .live-only { display: none !important; }
       pending.forEach(function (p) {
         var k = String(p.company_guess || "").toLowerCase();
         if (k && !p.domain_guess && domainByCompany[k]) p.domain_guess = domainByCompany[k];
+      });
+      pending.forEach(function (p) {
+        if (p.domain_guess || !p.company_guess) return;
+        var found = "";
+        pending.forEach(function (other) {
+          if (found) return;
+          var blob =
+            String(other.title || "") +
+            "\n" +
+            String((other.raw && other.raw.text) || "") +
+            "\n" +
+            String(other.url || "");
+          found = domainGuessForCompany(p.company_guess, blob);
+        });
+        if (found) p.domain_guess = found;
       });
       return { pending: pending, skippedDup: skippedDup };
     }
