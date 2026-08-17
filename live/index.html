@@ -836,10 +836,10 @@ body.is-demo .live-only { display: none !important; }
                 <strong>Data contract:</strong> The agent only sees the embedded candidate events, company profiles, ICP contacts, pre-qualified whitelist, and company status in this file’s exact shape. Live CRM, ATS, or free-form paste is not supported.
               </li>
               <li>
-                <strong>Lookups and send:</strong> Event research cites Exa.ai through the production API worker (no Exa key in this page). Hunter.io stays off on public GitHub Pages (privacy review). Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 at the site root still demos embedded missing-email rules. Nothing leaves without human Approve.
+                <strong>Lookups and send:</strong> Event research cites Exa.ai through the production API worker (no Exa key in this page). Hunter.io stays off on public GitHub Pages (privacy review). On private Live after Access login, Hunter can find company emails after Save API and Save code. Skip Jusfy and Aavalynx until Chad accepts extra legal load. Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 at the site root still demos embedded missing-email rules. Nothing leaves without human Approve.
               </li>
               <li>
-                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Capstone demo checks embedded company_contacts (CE-08). Live public Pages does not run Hunter; add a qualified POC in the gate until the tool is private.
+                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Capstone demo checks embedded company_contacts (CE-08). Live public GitHub Pages does not run Hunter. Private Live may run Hunter after Save API and Save code. Confirm never invents a person, an email, or a website from the company name.
               </li>
               <li>
                 <strong>Review agent stretch:</strong> A second agent critiques the worker before the human gate (looks right / needs attention). It adds latency and token cost; the human still makes the final Approve / Edit / Escalate click.
@@ -2922,7 +2922,11 @@ body.is-demo .live-only { display: none !important; }
         if (panelHead) panelHead.textContent = "Chad · Live review queue";
         if (banner) {
           banner.classList.add("visible");
-          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Audit log and extras save to the private store after D1 is set up. Hunter stays off on public Pages. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+          var hunterOffPublicPages = IS_LIVE && /github\.io$/i.test(String(location.hostname || ""));
+          var hunterNote = hunterOffPublicPages
+            ? " Hunter stays off on public GitHub Pages."
+            : " Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off.";
+          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Audit log and extras save to the private store after D1 is set up." + hunterNote + " Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
         activeVoicePartnerId = "partner_c";
@@ -2977,8 +2981,8 @@ body.is-demo .live-only { display: none !important; }
     }
 
     /**
-     * Hunter Email Finder + Domain Search. Kept for a later private deploy (step 4/5).
-     * Live on public GitHub Pages never calls Hunter (privacy review).
+     * Hunter Email Finder + Domain Search via the production Worker on private Live.
+     * Public GitHub Pages never calls Hunter (privacy review).
      */
     function hunterProxyBase() {
       return (localStorage.getItem(HUNTER_PROXY_STORAGE) || "").trim().replace(/\/$/, "");
@@ -2989,9 +2993,37 @@ body.is-demo .live-only { display: none !important; }
     }
 
     async function hunterFetchJson(pathAndQuery) {
-      // Privacy: Hunter stays off on public GitHub Pages. Do not call Hunter or send a key.
-      if (IS_LIVE) {
+      var hunterOffPublicPages = IS_LIVE && /github\.io$/i.test(String(location.hostname || ""));
+      if (hunterOffPublicPages) {
         return { ok: false, detail: "hunter_off_public_pages", data: null, status: 0 };
+      }
+      if (IS_LIVE) {
+        var prod = prodApiBase();
+        if (!prod) {
+          return { ok: false, detail: "no_prod_api", data: null, status: 0 };
+        }
+        try {
+          var liveResponse = await fetch(prod + pathAndQuery, {
+            method: "GET",
+            headers: prodApiHeaders({ Accept: "application/json" })
+          });
+          var liveRaw = await liveResponse.text();
+          var liveData = null;
+          try { liveData = JSON.parse(liveRaw); } catch (e) { liveData = null; }
+          if (!liveResponse.ok) {
+            var liveMsg = (liveData && (liveData.error || liveData.detail)) || liveRaw.slice(0, 160);
+            return {
+              ok: false,
+              detail: "hunter_http_" + liveResponse.status + ": " + liveMsg,
+              data: liveData,
+              status: liveResponse.status
+            };
+          }
+          return { ok: true, detail: "ok", data: liveData, status: liveResponse.status, via: "prod_api" };
+        } catch (liveErr) {
+          var liveErrMsg = liveErr && liveErr.message ? liveErr.message : "exception";
+          return { ok: false, detail: liveErrMsg, data: null, status: 0 };
+        }
       }
       var proxyBase = hunterProxyBase();
       var hunterKey = hunterKeySaved();
@@ -3291,6 +3323,19 @@ body.is-demo .live-only { display: none !important; }
       };
     }
 
+    function hunterBlockedExtraLegalLoad(ev) {
+      var name = String((ev && ev.company_name) || "").trim().toLowerCase();
+      var domain = String((ev && ev.domain) || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .replace(/\/.*$/, "");
+      if (name === "jusfy" || domain === "jusfy.com.br") return "jusfy_brazil";
+      if (name === "aavalynx" || domain === "aavalynx.ai") return "aavalynx_uk_eu";
+      return "";
+    }
+
     async function enrichCaseContactsForRun(ev) {
       var preferred = contactsForCompany(ev.company_id)[0] || null;
       var summary = {
@@ -3299,6 +3344,11 @@ body.is-demo .live-only { display: none !important; }
         live_discovery: false,
         identity_renamed: false
       };
+      if (hunterBlockedExtraLegalLoad(ev)) {
+        summary.preferred = { ok: false, detail: "skipped_extra_legal_load", skipped: true };
+        summary.domain_search = { ran: false, skipped_reason: "extra_legal_load", added: [], all_with_email: [] };
+        return summary;
+      }
       var allowDiscovery = IS_LIVE || !!ev.live_exa;
       if (isPlaceholderCompanyName(ev.company_name) || isSyntheticExampleDomain(ev.domain)) {
         var fromStory = extractCompanyNameFromArticle("", String(ev.event_summary || ""));
@@ -5585,8 +5635,10 @@ body.is-demo .live-only { display: none !important; }
       // Privacy review: Hunter stays off on public GitHub Pages.
       // A private host (Cloudflare Pages + Access) may call Hunter once HUNTER_ENABLED is true on the Worker.
       var hunterOffPublicPages = IS_LIVE && /github\.io$/i.test(String(location.hostname || ""));
+      var extraLegalHunterBlock = hunterBlockedExtraLegalLoad(ev);
       var shouldEnrichHunter =
         !hunterOffPublicPages &&
+        !extraLegalHunterBlock &&
         !skipHunterForIcp &&
         ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
 
@@ -5597,6 +5649,7 @@ body.is-demo .live-only { display: none !important; }
         skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
         shouldEnrichHunter =
           !hunterOffPublicPages &&
+          !extraLegalHunterBlock &&
           !skipHunterForIcp &&
           ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
         if (exaIcpLive && !exaIcpLive.skipped) {
@@ -5628,6 +5681,23 @@ body.is-demo .live-only { display: none !important; }
           case_id: ev.case_id,
           company_name: ev.company_name,
           agent_decision: "hunter/skipped_public_pages",
+          human_action: "_system",
+          detail: hunterLive.detail
+        });
+      } else if (extraLegalHunterBlock) {
+        hunterLive = {
+          live: false,
+          status: "skipped_extra_legal_load",
+          detail: extraLegalHunterBlock === "jusfy_brazil"
+            ? "Hunter stays off for Jusfy (Brazil) until Chad accepts extra legal load. Add a POC email in the human gate only if Chad already approved that path."
+            : "Hunter stays off for Aavalynx (UK/EU) until Chad accepts extra legal load. Add a POC email in the human gate only if Chad already approved that path.",
+          domain_search: { ran: false, skipped_reason: extraLegalHunterBlock }
+        };
+        appendRunLog({
+          time: new Date().toLocaleTimeString(),
+          case_id: ev.case_id,
+          company_name: ev.company_name,
+          agent_decision: "hunter/skipped_extra_legal_load",
           human_action: "_system",
           detail: hunterLive.detail
         });

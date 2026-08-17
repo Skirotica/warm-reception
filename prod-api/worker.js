@@ -6,18 +6,18 @@
  *
  * Step 4: PARTNER_ACCESS_CODE is a Worker secret. Partners type it in Live.
  * It is not in the HTML. GET / (health) stays open. Run, Exa, and Hunter
- * require the code. The Live HTML is still a public GitHub Pages file
- * (queue names visible). Cloudflare Access is the stronger follow-on.
+ * require the code. GitHub Pages Live stays public HTML. Cloudflare Access
+ * plus One-time PIN lock private Live (warm-reception-live.pages.dev).
  *
- * Hunter stays disabled while HUNTER_ENABLED is not "true". Privacy review:
- * Hunter stays off on public Pages until the tool is private.
+ * Hunter requires HUNTER_ENABLED=true AND a non-github.io Origin.
+ * github.io may call Anthropic, Exa, and store. Hunter routes still 403.
  *
  * Routes:
  *   GET  /                 health (no secrets)
  *   POST /v1/messages      Anthropic Messages proxy
  *   GET  /search           Exa search proxy
- *   GET  /domain-search    Hunter (disabled unless HUNTER_ENABLED=true)
- *   GET  /email-finder     Hunter (disabled unless HUNTER_ENABLED=true)
+ *   GET  /domain-search    Hunter (HUNTER_ENABLED=true; 403 if Origin is github.io)
+ *   GET  /email-finder     Hunter (HUNTER_ENABLED=true; 403 if Origin is github.io)
  */
 
 function parseAllowedOrigins(env) {
@@ -57,6 +57,14 @@ function jsonResponse(body, status, cors) {
 
 function hunterEnabled(env) {
   return String((env && env.HUNTER_ENABLED) || "").toLowerCase() === "true";
+}
+
+function hunterGithubOrigin(origin) {
+  try {
+    return /github\.io$/i.test(new URL(origin).hostname);
+  } catch (e) {
+    return false;
+  }
 }
 
 function partnerCodeConfigured(env) {
@@ -178,19 +186,24 @@ async function proxyExa(url, env, cors) {
   return jsonResponse({ query: q, results: results }, 200, cors);
 }
 
-function hunterDisabledResponse(cors) {
+function hunterDisabledResponse(cors, reason) {
+  var github = reason === "github_io";
   return jsonResponse(
     {
-      error: "Hunter is disabled on the public live page",
-      detail:
-        "Privacy review: Hunter stays off on GitHub Pages until the tool is private (Cloudflare Access or partner sign-in). Set HUNTER_ENABLED=true only after that."
+      error: github
+        ? "Hunter is disabled for GitHub Pages"
+        : "Hunter is disabled on the public live page",
+      detail: github
+        ? "Privacy review: Hunter stays off on github.io even when HUNTER_ENABLED is true. Use the private Cloudflare Pages Live URL."
+        : "Privacy review: Hunter stays off until HUNTER_ENABLED=true on the Worker after Cloudflare Access."
     },
     403,
     cors
   );
 }
 
-async function proxyHunter(url, path, env, cors) {
+async function proxyHunter(url, path, env, cors, origin) {
+  if (hunterGithubOrigin(origin)) return hunterDisabledResponse(cors, "github_io");
   if (!hunterEnabled(env)) return hunterDisabledResponse(cors);
   if (url.searchParams.get("api_key")) {
     return jsonResponse({ error: "Do not send provider keys to this worker" }, 400, cors);
@@ -408,7 +421,7 @@ export default {
       if (request.method !== "GET") {
         return jsonResponse({ error: "Use GET " + path }, 405, cors);
       }
-      return proxyHunter(url, path, env, cors);
+      return proxyHunter(url, path, env, cors, origin);
     }
 
     if (path === "/store/snapshot" && request.method === "GET") {

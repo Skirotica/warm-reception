@@ -106,11 +106,9 @@ Human confirm, company-website links, and same-company de-duplication are on Git
 
 ## Step 7 (private Live, then Hunter)
 
-Two parts. Access first. Hunter later. Do not mix them.
+Access is on. One-time PIN is the Chad / Nick / Courtney login. Hunter is **on** for private Pages only (`https://warm-reception-live.pages.dev`). GitHub Pages Live stays Hunter **off**.
 
-Hunter stays **off** on `https://skirotica.github.io/warm-reception/live/`. That page is still public HTML. The browser also refuses Hunter on any `github.io` host even if someone later sets `HUNTER_ENABLED=true` on the Worker.
-
-This turn is the login wall on private Live: `https://warm-reception-live.pages.dev`. Leave `HUNTER_ENABLED` as `false`. Do not run the Hunter commands below until Courtney confirms Access passed (incognito hits a login wall).
+Hunter stays **off** on `https://skirotica.github.io/warm-reception/live/`. That page is still public HTML. The browser refuses Hunter on any `github.io` host. The Worker also 403s Hunter if Origin is github.io, even with `HUNTER_ENABLED=true`.
 
 Class demo at the site root stays public and synthetic. Jusfy (Brazil) and Aavalynx (UK/EU) stay out of the real-email path until Chad accepts that extra legal load.
 
@@ -138,7 +136,7 @@ npx wrangler deploy
 
 ### Courtney: lock the door (Cloudflare Access)
 
-Do this in the Cloudflare dashboard. You cannot finish this from Wrangler. Do not turn Hunter on yet.
+Access is already on. Keep this click path if you need to re-check the wall. You cannot finish Access from Wrangler.
 
 GitHub Pages Live stays public on purpose. Do not put Access on `skirotica.github.io`. The private copy is `https://warm-reception-live.pages.dev`.
 
@@ -184,13 +182,13 @@ If Cloudflare asks for a login method, add **One-time PIN**: Zero Trust → Inte
 4. Sign in with your allowed email. After the code, you should see Live as before (queue, Save API, Save code, Run).
 5. Leave GitHub Pages Live public: https://skirotica.github.io/warm-reception/live/ still opens with no login, and Hunter stays off there.
 
-**Stop here.** Reply that Access passed. Do not set `HUNTER_ENABLED=true` until that reply.
+Access passed (login wall + One-time PIN). Hunter is on for this private host.
 
-### Courtney: turn Hunter on (later turn only)
+### Courtney: Hunter on (this turn)
 
-Skip this whole block until Access passed. `HUNTER_ENABLED` is currently `"false"` in `prod-api/wrangler.toml`. Leave it.
+`HUNTER_ENABLED` is `"true"` in `prod-api/wrangler.toml`. GitHub Pages Live stays Hunter-off in the browser and on Hunter Worker routes.
 
-Still in `prod-api` (next turn, after Access):
+If Hunter secrets are not set yet, still in `prod-api`:
 
 ```
 npx wrangler secret put HUNTER_API_KEY
@@ -202,23 +200,30 @@ If Hunter gave you a separate Domain Search key:
 npx wrangler secret put HUNTER_DOMAIN_SEARCH_KEY
 ```
 
-In `wrangler.toml` set `HUNTER_ENABLED = "true"`, then:
+Then:
 
 ```
 npx wrangler deploy
 ```
 
-Do not set `HUNTER_ENABLED` while partners still use the public GitHub Pages Live URL as the working Live. GitHub Pages Live stays Hunter-off in the browser even after this Worker flag is on.
+Do not use the public GitHub Pages Live URL as the working Live for email lookup.
 
-### Chad / Courtney: prove Access (this turn)
+### Chad / Courtney: prove Access (already done)
 
 1. Incognito: https://warm-reception-live.pages.dev shows a login wall, not the queue.
 2. After login: Live looks as before. Save API and Save code still work. Run still needs Approve / Edit / Escalate. No mailbox send.
 3. GitHub Pages Live still has no login wall and no Hunter.
 
-### Chad / Courtney: prove Hunter (later turn only)
+### Chad / Courtney: prove Hunter (this turn)
 
-After Access passed and Hunter is on: open the Pages Live URL (not GitHub Pages), confirm one Exa company, click Run. Email lookup may run at that domain. Skip Jusfy and Aavalynx until Chad accepts extra legal load. Approve / Edit / Escalate still required. No mailbox send.
+A fresh session forgets API URL and partner code. After Access login:
+
+1. Open https://warm-reception-live.pages.dev (not GitHub Pages).
+2. Paste `https://warm-reception-prod-api.cryandean.workers.dev` and click **Save API**.
+3. Type the partner access code and click **Save code**.
+4. Pick Discern, Wordsmith AI, or Entegrata. Do not pick Jusfy or Aavalynx.
+5. Click Run. You should see Hunter try (Domain Search / company contacts). Confirm never invents a person, an email, or a `.com` from a company name. Approve / Edit / Escalate still required. No mailbox send.
+6. On https://skirotica.github.io/warm-reception/live/ Hunter must still refuse.
 
 ## What not to paste on Live
 

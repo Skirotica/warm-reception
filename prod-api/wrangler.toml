@@ -3,10 +3,11 @@ main = "worker.js"
 compatibility_date = "2026-08-01"
 
 # Origin allowlist is friction, not a lock. Step 4: PARTNER_ACCESS_CODE secret.
-# Partners type the code in Live. It is not in the HTML. Hunter stays off on Pages.
+# Partners type the code in Live. It is not in the HTML.
+# Hunter is on for private Cloudflare Pages. github.io is still refused on Hunter routes.
 [vars]
 ALLOWED_ORIGINS = "https://skirotica.github.io,https://warm-reception-live.pages.dev,https://5fe9b356.warm-reception-live.pages.dev,http://localhost:8765,http://127.0.0.1:8765"
-HUNTER_ENABLED = "false"
+HUNTER_ENABLED = "true"
 
 # Secrets (set after deploy, never commit):
 #   npx wrangler secret put ANTHROPIC_API_KEY
@@ -21,8 +22,6 @@ binding = "DB"
 database_name = "warm-reception"
 database_id = "a95e087a-1723-4252-b593-7c6ad08794a6"
 
-# Do not set Hunter secrets while HUNTER_ENABLED is false (public Pages).
-# After the tool is private (step 4/5):
+# Hunter secrets (set once, never commit). Worker still 403s Hunter if Origin is github.io:
 #   npx wrangler secret put HUNTER_API_KEY
 #   npx wrangler secret put HUNTER_DOMAIN_SEARCH_KEY
-#   then set HUNTER_ENABLED = "true" in this file and redeploy.
