@@ -148,6 +148,13 @@ body {
 }
 .queue-summary:hover { background: var(--bg-inset); }
 .queue-summary .q-company { font-weight: 600; color: var(--ink); min-width: 0; }
+.queue-summary .q-company a.q-site {
+  color: var(--accent);
+  font-weight: 600;
+  margin-left: var(--sp-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .queue-summary .q-poc,
 .queue-summary .q-decision {
   color: var(--ink-2); font-size: var(--fs-0); min-width: 0;
@@ -557,6 +564,60 @@ body {
   margin: 0 0 var(--sp-3);
 }
 .live-toolbar.visible { display: flex; }
+.exa-intake {
+  display: none;
+  width: 100%;
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--bg-inset);
+  border: var(--border-w) solid var(--line);
+  border-radius: var(--radius);
+}
+.exa-intake.visible { display: block; }
+.exa-intake h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-2);
+  color: var(--ink);
+}
+.exa-intake .intake-help {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+}
+.exa-intake-row {
+  display: grid;
+  grid-template-columns: 1fr 10rem 12rem auto auto auto;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-bottom: var(--sp-2);
+}
+.exa-intake-row .intake-title {
+  font-size: var(--fs-1);
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exa-intake-row .intake-title a { color: var(--accent); }
+.exa-intake-row input {
+  width: 100%;
+  background: var(--bg-raise);
+  color: var(--ink);
+  border: var(--border-w) solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-family: var(--font-body);
+  font-size: var(--fs-0);
+}
+.exa-intake-row a.open-site {
+  color: var(--accent);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
 body.is-live .demo-only { display: none !important; }
 body.is-demo .live-only { display: none !important; }
 
@@ -595,6 +656,11 @@ body.is-demo .live-only { display: none !important; }
             <button type="button" class="btn primary" id="btn-refresh-exa">Refresh from Exa</button>
             <button type="button" class="btn" id="btn-reset-live-extras">Clear refreshed extras</button>
             <span class="meta" id="live-refresh-status"></span>
+          </div>
+          <div class="exa-intake" id="exa-intake" hidden>
+            <h3>Confirm company and domain</h3>
+            <p class="intake-help">Exa found news. Nothing is queued for a draft until you confirm the company name and its real website domain (for example discern.com, not a news site). Confirm writes the company to the partner store. Skip if you do not want that name stored. Do not invent a person or an email here.</p>
+            <div id="exa-intake-rows"></div>
           </div>
           <div class="run-all-summary" id="run-all-summary"></div>
           <div class="demo-chips demo-only" id="demo-chips" aria-label="One-click demo cases"></div>
@@ -1369,6 +1435,48 @@ body.is-demo .live-only { display: none !important; }
       return /^livecompany\d+\.example$/.test(d) || /^unknown\d+\.example$/.test(d);
     }
 
+    function looksLikeRealDomain(domain) {
+      var d = String(domain || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").trim();
+      if (!d || isFillerLiveDomain(d) || isSyntheticExampleDomain(d) || isPublisherHost(d)) return false;
+      return /^[a-z0-9][a-z0-9.-]{1,60}\.[a-z]{2,}$/.test(d);
+    }
+
+    function safeHttpHref(raw) {
+      var s = String(raw || "").trim();
+      if (!s || /^javascript:/i.test(s) || /^data:/i.test(s)) return "";
+      if (/^https?:\/\//i.test(s)) {
+        try {
+          var u = new URL(s);
+          if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+          return u.href;
+        } catch (e) {
+          return "";
+        }
+      }
+      if (!looksLikeRealDomain(s)) return "";
+      var host = s.toLowerCase().replace(/^www\./, "").replace(/\/.*$/, "");
+      return "https://" + host;
+    }
+
+    function appendSafeLink(parent, raw, label) {
+      var href = safeHttpHref(raw);
+      if (!href) return false;
+      var a = document.createElement("a");
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = label || String(raw || href);
+      parent.appendChild(a);
+      return true;
+    }
+
+    function liveNeedsDomainConfirm(ev) {
+      if (!ev || !IS_LIVE) return false;
+      if (!ev.live_exa) return false;
+      if (String(ev.case_id || "").indexOf("CE-LX-") !== 0) return false;
+      return String(ev.entity_note || "").indexOf("human_confirmed_domain") === -1;
+    }
+
     function isUnresolvedLiveExtra(ev) {
       if (!ev) return true;
       if (isPlaceholderCompanyName(ev.company_name)) return true;
@@ -1542,10 +1650,38 @@ body.is-demo .live-only { display: none !important; }
       if (!companyGuess) {
         return { company_name: "", domain: domain || "", unresolved: true };
       }
-      if (!domain) {
-        domain = slugifyToken(companyGuess).replace(/-/g, "") + ".com";
+      return { company_name: companyGuess, domain: domain || "", unresolved: false };
+    }
+
+    function fillCompanyQueueLabel(companyEl, ev) {
+      if (!companyEl || !ev) return;
+      companyEl.innerHTML = "";
+      var caseSpan = document.createElement("span");
+      caseSpan.className = "q-case";
+      caseSpan.textContent = ev.case_id;
+      companyEl.appendChild(caseSpan);
+      companyEl.appendChild(document.createTextNode(ev.company_name || ""));
+      if (ev.live_exa) {
+        companyEl.appendChild(document.createTextNode(" "));
+        var badge = document.createElement("span");
+        badge.className = "badge warn";
+        badge.textContent = "Live";
+        companyEl.appendChild(badge);
       }
-      return { company_name: companyGuess, domain: domain, unresolved: false };
+      var siteHref = safeHttpHref(ev.domain);
+      if (siteHref) {
+        companyEl.appendChild(document.createTextNode(" "));
+        var site = document.createElement("a");
+        site.className = "q-site";
+        site.href = siteHref;
+        site.target = "_blank";
+        site.rel = "noopener noreferrer";
+        site.textContent = String(ev.domain || "").replace(/^https?:\/\//, "").replace(/^www\./, "");
+        site.addEventListener("click", function (e) {
+          e.stopPropagation();
+        });
+        companyEl.appendChild(site);
+      }
     }
 
     function refreshQueueCompanyLabel(ev) {
@@ -1553,12 +1689,7 @@ body.is-demo .live-only { display: none !important; }
       if (!ui || !ui.rowEl) return;
       var companyEl = ui.rowEl.querySelector(".q-company");
       if (!companyEl) return;
-      companyEl.innerHTML =
-        '<span class="q-case">' +
-        escapeHtml(ev.case_id) +
-        "</span>" +
-        escapeHtml(ev.company_name) +
-        (ev.live_exa ? ' <span class="badge warn">Live</span>' : "");
+      fillCompanyQueueLabel(companyEl, ev);
     }
 
     function persistLiveCompanyIdentity(ev, newName, newDomain) {
@@ -1680,8 +1811,13 @@ body.is-demo .live-only { display: none !important; }
             var oldName = ev.company_name;
             var oldDomain = ev.domain;
             var domain =
-              (domains[0] && !isPublisherHost(domains[0]) ? domains[0] : "") ||
-              slugifyToken(fromArticle).replace(/-/g, "") + ".com";
+              (domains[0] && looksLikeRealDomain(domains[0]) ? domains[0] : "");
+            if (!domain) {
+              removedIds[ev.company_id] = true;
+              removedIds[ev.case_id] = true;
+              changed = true;
+              return;
+            }
             ev.company_name = fromArticle;
             ev.domain = domain;
             if (String(ev.entity_note || "").indexOf("renamed from placeholder") === -1) {
@@ -1781,52 +1917,30 @@ body.is-demo .live-only { display: none !important; }
       return QUEUE_EVENTS;
     }
 
-    function parseExaResultToBundle(result, idx) {
+    function parseExaResultToBundle(result, idx, overrides) {
       var title = String(result.title || "").trim();
       var url = String(result.url || "").trim();
       var text = String(result.text || "").trim();
       var published = String(result.publishedDate || "").slice(0, 10);
       if (!published) published = new Date().toISOString().slice(0, 10);
       var identity = guessCompanyAndDomainFromExa(title, text, url, idx);
-      if (!identity || identity.unresolved || !identity.company_name) {
+      var companyGuess = (overrides && overrides.company_name) || (identity && identity.company_name) || "";
+      var domain = (overrides && overrides.domain) || (identity && identity.domain) || "";
+      companyGuess = String(companyGuess || "").trim();
+      domain = String(domain || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").trim();
+      if (!companyGuess || !looksLikeRealDomain(domain)) {
         return null;
       }
-      var companyGuess = identity.company_name;
-      var domain = identity.domain;
       var eventType = /hire|appoint|joins|joined|named|names/i.test(title + " " + text)
         ? "executive_hire"
         : "funding_round";
-      var slug = slugifyToken(companyGuess).toUpperCase().replace(/-/g, "").slice(0, 10) || ("X" + idx);
-      var caseId = "CE-LX-" + slug + "-" + String(idx + 1);
-      var companyId = "CO-LX-" + slug;
-      var contactId = "CT-LX-" + slug;
+      var slug = slugifyToken(companyGuess).toUpperCase().replace(/-/g, "").slice(0, 10) || "X";
+      var stamp = Date.now().toString(36);
+      var caseId = "CE-LX-" + slug + "-" + stamp;
+      var companyId = "CO-LX-" + slug + "-" + stamp;
+      var contactId = "CT-LX-" + slug + "-" + stamp;
       var summary = (text || title).replace(/\s+/g, " ").trim().slice(0, 280);
-      var first = "Unknown";
-      var last = "Contact";
-      var titleRole = eventType === "executive_hire" ? "Executive" : "CEO";
-      var blob = title + "\n" + text;
-      var nameMatch = blob.match(
-        /([A-Z][a-z]+)\s+([A-Z][a-z]+)\s+(?:joined|joins|joining)\s+/i
-      );
-      if (!nameMatch) nameMatch = blob.match(/(?:CEO|CRO|CFO|VP Sales|Founder)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
-      if (!nameMatch) nameMatch = blob.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+),\s+(?:CEO|CRO|Founder)/);
-      if (!nameMatch) {
-        nameMatch = blob.match(
-          /(?:names|appoints|hires|welcomes|taps)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i
-        );
-      }
-      if (nameMatch) {
-        first = nameMatch[1];
-        last = nameMatch[2];
-      }
-      if (/Chief Revenue Officer|\bCRO\b/i.test(blob)) titleRole = "CRO";
-      else if (/Chief Executive Officer|\bCEO\b/i.test(blob)) titleRole = "CEO";
-      else if (/Chief Financial Officer|\bCFO\b/i.test(blob)) titleRole = "CFO";
-      else if (/VP(?:\s+of)?\s+Sales|Head of Sales/i.test(blob)) titleRole = "VP Sales";
-      else {
-        var roleBit = blob.match(/\bas\s+(CRO|CEO|CFO|COO|Founder|VP(?:\s+of)?\s+[A-Za-z]+|Head of [A-Za-z]+)/i);
-        if (roleBit) titleRole = roleBit[1];
-      }
+      var confirmed = !!(overrides && overrides.confirmed);
       return {
         event: {
           case_id: caseId,
@@ -1842,7 +1956,9 @@ body.is-demo .live-only { display: none !important; }
           revenue_estimate_mm: null,
           vc_pe_backed: "yes",
           ta_headcount: null,
-          entity_note: "live_exa_refresh; company name extracted from Exa article — verify domain before Approve",
+          entity_note: confirmed
+            ? "live_exa_refresh; human_confirmed_domain"
+            : "live_exa_refresh; company name extracted from Exa article — verify domain before Approve",
           live_exa: true
         },
         profile: {
@@ -1855,16 +1971,16 @@ body.is-demo .live-only { display: none !important; }
           vc_pe_backed: "yes",
           ta_headcount: null,
           status: "no_prior_contact",
-          notes: "Added via Exa refresh for Chad live queue"
+          notes: "Added via Exa refresh after partner confirmed company and domain"
         },
         contact: {
           contact_id: contactId,
           company_id: companyId,
-          first_name: first,
-          last_name: last,
-          title: titleRole,
+          first_name: "",
+          last_name: "",
+          title: "",
           email: "",
-          employment_confirmed: "yes",
+          employment_confirmed: "no",
           linkedin_url: ""
         },
         status: {
@@ -1873,46 +1989,157 @@ body.is-demo .live-only { display: none !important; }
           status: "no_prior_contact",
           last_interaction_date: "",
           partner_id: "partner_c",
-          notes: "Live Exa refresh"
+          notes: "Live Exa refresh; domain confirmed by partner"
         },
-        employment: { company_id: companyId, contact_id: contactId, works_at_company: true }
+        employment: { company_id: companyId, contact_id: contactId, works_at_company: false }
       };
     }
 
-    function mergeExaResultsIntoLiveExtras(results) {
+    function sourceUrlAlreadyQueued(url) {
+      var u = String(url || "");
+      if (!u) return true;
       var extras = loadLiveExtras();
-      var added = 0;
-      var skippedUnresolved = 0;
+      var i;
+      for (i = 0; i < CANDIDATE_EVENTS.length; i++) {
+        if (CANDIDATE_EVENTS[i].source_url === u) return true;
+      }
+      for (i = 0; i < (extras.events || []).length; i++) {
+        if (extras.events[i].source_url === u) return true;
+      }
+      return false;
+    }
+
+    function mergeConfirmedExaBundle(bundle) {
+      if (!bundle || !bundle.event || !bundle.event.source_url) return false;
+      if (sourceUrlAlreadyQueued(bundle.event.source_url)) return false;
+      var extras = loadLiveExtras();
+      extras.events.push(bundle.event);
+      extras.profiles.push(bundle.profile);
+      extras.contacts.push(bundle.contact);
+      extras.statuses.push(bundle.status);
+      extras.employment.push(bundle.employment);
+      saveLiveExtras(extras);
+      return true;
+    }
+
+    var PENDING_EXA_INTAKE = [];
+
+    function renderExaIntake() {
+      var wrap = document.getElementById("exa-intake");
+      var rows = document.getElementById("exa-intake-rows");
+      if (!wrap || !rows) return;
+      rows.innerHTML = "";
+      if (!PENDING_EXA_INTAKE.length) {
+        wrap.classList.remove("visible");
+        wrap.hidden = true;
+        return;
+      }
+      wrap.hidden = false;
+      wrap.classList.add("visible");
+      PENDING_EXA_INTAKE.forEach(function (item, idx) {
+        var row = document.createElement("div");
+        row.className = "exa-intake-row";
+        var title = document.createElement("div");
+        title.className = "intake-title";
+        var link = document.createElement("a");
+        link.href = item.url || "#";
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = item.title || item.url || "Untitled";
+        title.appendChild(link);
+        var nameIn = document.createElement("input");
+        nameIn.type = "text";
+        nameIn.placeholder = "Company name";
+        nameIn.value = item.company_guess || "";
+        nameIn.setAttribute("aria-label", "Company name");
+        var domainIn = document.createElement("input");
+        domainIn.type = "text";
+        domainIn.placeholder = "company.com";
+        domainIn.value = item.domain_guess || "";
+        domainIn.setAttribute("aria-label", "Company domain");
+        var openSite = document.createElement("a");
+        openSite.className = "open-site";
+        openSite.target = "_blank";
+        openSite.rel = "noopener noreferrer";
+        openSite.textContent = "Open site";
+        function syncOpenSite() {
+          var href = safeHttpHref(domainIn.value);
+          if (href) {
+            openSite.href = href;
+            openSite.hidden = false;
+          } else {
+            openSite.removeAttribute("href");
+            openSite.hidden = true;
+          }
+        }
+        domainIn.addEventListener("input", syncOpenSite);
+        syncOpenSite();
+        var confirmBtn = document.createElement("button");
+        confirmBtn.type = "button";
+        confirmBtn.className = "btn primary";
+        confirmBtn.textContent = "Confirm";
+        confirmBtn.addEventListener("click", function () {
+          var bundle = parseExaResultToBundle(item.raw, Date.now() % 100000, {
+            company_name: nameIn.value,
+            domain: domainIn.value,
+            confirmed: true
+          });
+          var statusEl = document.getElementById("live-refresh-status");
+          if (!bundle) {
+            if (statusEl) statusEl.textContent = "Confirm needs a company name and a real domain (not a news site).";
+            return;
+          }
+          if (!mergeConfirmedExaBundle(bundle)) {
+            if (statusEl) statusEl.textContent = "Already in the queue.";
+          } else {
+            remountQueue();
+            if (statusEl) statusEl.textContent = "Queued " + bundle.event.company_name + " (" + bundle.event.domain + "). POC and email still empty until you add them in the gate.";
+          }
+          PENDING_EXA_INTAKE = PENDING_EXA_INTAKE.filter(function (row) {
+            return row.url !== item.url;
+          });
+          renderExaIntake();
+        });
+        var skipBtn = document.createElement("button");
+        skipBtn.type = "button";
+        skipBtn.className = "btn";
+        skipBtn.textContent = "Skip";
+        skipBtn.addEventListener("click", function () {
+          PENDING_EXA_INTAKE = PENDING_EXA_INTAKE.filter(function (row) {
+            return row.url !== item.url;
+          });
+          renderExaIntake();
+        });
+        row.appendChild(title);
+        row.appendChild(nameIn);
+        row.appendChild(domainIn);
+        row.appendChild(openSite);
+        row.appendChild(confirmBtn);
+        row.appendChild(skipBtn);
+        rows.appendChild(row);
+      });
+    }
+
+    function buildExaIntakeList(results) {
+      var pending = [];
+      var skippedDup = 0;
       (results || []).forEach(function (r, idx) {
-        var bundle = parseExaResultToBundle(r, extras.events.length + idx);
-        if (!bundle) {
-          skippedUnresolved += 1;
+        var url = String(r.url || "").trim();
+        if (!url) return;
+        if (sourceUrlAlreadyQueued(url)) {
+          skippedDup += 1;
           return;
         }
-        if (!bundle.event.source_url) return;
-        var dup = false;
-        for (var i = 0; i < CANDIDATE_EVENTS.length; i++) {
-          if (CANDIDATE_EVENTS[i].source_url === bundle.event.source_url) {
-            dup = true;
-            break;
-          }
-        }
-        for (var j = 0; j < extras.events.length; j++) {
-          if (extras.events[j].source_url === bundle.event.source_url) {
-            dup = true;
-            break;
-          }
-        }
-        if (dup) return;
-        extras.events.push(bundle.event);
-        extras.profiles.push(bundle.profile);
-        extras.contacts.push(bundle.contact);
-        extras.statuses.push(bundle.status);
-        extras.employment.push(bundle.employment);
-        added += 1;
+        var identity = guessCompanyAndDomainFromExa(r.title, r.text, url, idx);
+        pending.push({
+          raw: r,
+          title: r.title || "",
+          url: url,
+          company_guess: (identity && identity.company_name) || "",
+          domain_guess: (identity && looksLikeRealDomain(identity.domain) ? identity.domain : "") || ""
+        });
       });
-      saveLiveExtras(extras);
-      return { added: added, skipped_unresolved: skippedUnresolved };
+      return { pending: pending, skippedDup: skippedDup };
     }
 
     function clearQueueDom() {
@@ -1936,10 +2163,7 @@ body.is-demo .live-only { display: none !important; }
         summary.className = "queue-summary";
         var companyEl = document.createElement("div");
         companyEl.className = "q-company";
-        companyEl.innerHTML =
-          '<span class="q-case">' + escapeHtml(ev.case_id) + "</span>" +
-          escapeHtml(ev.company_name) +
-          (ev.live_exa ? ' <span class="badge warn">Live</span>' : "");
+        fillCompanyQueueLabel(companyEl, ev);
         var pocEl = document.createElement("div");
         pocEl.className = "q-poc";
         pocEl.textContent = initialPocName(ev);
@@ -2409,9 +2633,8 @@ body.is-demo .live-only { display: none !important; }
           String(ev.event_summary || "") + "\n" + String(ev.source_url || "")
         );
         var hintDomain =
-          (!isSyntheticExampleDomain(ev.domain) && ev.domain) ||
-          hintDomains[0] ||
-          (fromStory ? slugifyToken(fromStory).replace(/-/g, "") + ".com" : "");
+          (looksLikeRealDomain(ev.domain) ? ev.domain : "") ||
+          (hintDomains[0] && looksLikeRealDomain(hintDomains[0]) ? hintDomains[0] : "");
         if (fromStory || hintDomain) {
           summary.identity_renamed = resolvePlaceholderCompanyIdentity(ev, {
             company_name: fromStory,
@@ -4160,7 +4383,13 @@ body.is-demo .live-only { display: none !important; }
           if (key === "why" || key === "reason_or_ambiguity") {
             v.style.whiteSpace = "pre-wrap";
           }
-          v.textContent = parsed.fields[key];
+          if (key === "domain" || key === "event_source_url") {
+            if (!appendSafeLink(v, parsed.fields[key], parsed.fields[key])) {
+              v.textContent = parsed.fields[key];
+            }
+          } else {
+            v.textContent = parsed.fields[key];
+          }
           row.appendChild(k);
           row.appendChild(v);
           dl.appendChild(row);
@@ -4666,6 +4895,10 @@ body.is-demo .live-only { display: none !important; }
       if (!partnerAccessCode()) {
         resultEl.innerHTML = '<div class="error-note">Partner access required. Paste the access code (not an API key) and click Save code.</div>';
         return { kind: "error", detail: "no_partner_access" };
+      }
+      if (liveNeedsDomainConfirm(ev) || !looksLikeRealDomain(ev.domain)) {
+        resultEl.innerHTML = '<div class="error-note">Confirm the company name and its real website domain in the Exa intake tray before Run. Do not invent a person or email here.</div>';
+        return { kind: "error", detail: "domain_not_confirmed" };
       }
       buttonEl.disabled = true;
       resultEl.innerHTML = '<span class="thinking">Running…</span>';
@@ -5744,17 +5977,20 @@ body.is-demo .live-only { display: none !important; }
           var res = await fetch(proxyBase + "/search?num=6&q=" + q, { method: "GET", headers: prodApiHeaders({ Accept: "application/json" }) });
           var data = await res.json().catch(function () { return null; });
           if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
-          var mergeStats = mergeExaResultsIntoLiveExtras((data && data.results) || []);
-          remountQueue();
+          var intake = buildExaIntakeList((data && data.results) || []);
+          PENDING_EXA_INTAKE = intake.pending;
+          renderExaIntake();
           if (statusEl) {
-            var parts = [];
-            if (mergeStats.added) parts.push("Added " + mergeStats.added + " new live case(s)");
-            if (mergeStats.skipped_unresolved) {
-              parts.push("skipped " + mergeStats.skipped_unresolved + " with no extractable company name");
+            if (PENDING_EXA_INTAKE.length) {
+              statusEl.textContent =
+                "Confirm company and domain for " + PENDING_EXA_INTAKE.length +
+                " article(s) before they enter the queue." +
+                (intake.skippedDup ? " Skipped " + intake.skippedDup + " already queued." : "");
+            } else {
+              statusEl.textContent = intake.skippedDup
+                ? "No new articles (duplicates skipped)."
+                : "Exa returned no new articles.";
             }
-            statusEl.textContent = parts.length
-              ? parts.join("; ") + "."
-              : "No new URLs (duplicates skipped).";
           }
         } catch (err) {
           if (statusEl) statusEl.textContent = "Exa refresh failed: " + (err && err.message ? err.message : "unknown");
@@ -5766,12 +6002,17 @@ body.is-demo .live-only { display: none !important; }
 
     var resetLiveBtn = document.getElementById("btn-reset-live-extras");
     if (resetLiveBtn) {
-      resetLiveBtn.addEventListener("click", function () {
-        if (!confirm("Clear Exa-refreshed extras from this browser? Seed live cases (CE-L01+) stay.")) return;
-        localStorage.removeItem(LIVE_EXTRAS_STORAGE);
-        remountQueue();
+      resetLiveBtn.addEventListener("click", async function () {
+        if (!confirm("Clear Exa-refreshed extras? Seed live cases (CE-L01 to CE-L05) stay. Confirmed Exa cases are removed from this browser and the partner store.")) return;
+        var empty = { events: [], profiles: [], contacts: [], statuses: [], employment: [] };
         var statusEl = document.getElementById("live-refresh-status");
-        if (statusEl) statusEl.textContent = "Cleared refreshed extras.";
+        localStorage.setItem(LIVE_EXTRAS_STORAGE, JSON.stringify(empty));
+        if (statusEl) statusEl.textContent = "Clearing extras…";
+        if (storeEnabled()) {
+          await storeFetch("/store/blob/extras", "PUT", empty);
+        }
+        remountQueue();
+        if (statusEl) statusEl.textContent = "Cleared refreshed extras. Five seed cases remain.";
       });
     }
 

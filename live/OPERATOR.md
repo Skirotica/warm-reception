@@ -86,6 +86,18 @@ Do not set Hunter secrets.
 3. Run a case. Approve or Escalate.
 4. Refresh the page, Save code again, and check the run log. The action should still be there.
 
+## Step 6 (Exa intake with human confirm)
+
+You do **not** need a new product website (no warmreception.ai) for this step. Stay on GitHub Pages and the existing Worker. The domain that matters here is each **company’s** website, such as discern.com.
+
+Refresh from Exa no longer dumps articles into the queue. It opens a confirm tray. For each article, type or correct the company name and its real domain, then Confirm or Skip. Confirm writes the company to the partner store. POC name and email stay blank. Run is blocked until that domain is confirmed. Hunter stays off.
+
+Do not invent a `.com` from a slug. Do not invent a person. Do not type a real POC email into the public Live page.
+
+Seed cases CE-L01 to CE-L05 stay as they are. They already have domains.
+
+A custom product domain (and taking Live off public Pages) comes later, before Hunter and before more people than you and Chad.
+
 ## What not to paste on Live
 
 - Anthropic API key
