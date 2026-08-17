@@ -3,6 +3,7 @@
 **Date:** 17 Aug 2026  
 **Verdict:** **No-go** for production PII on the current live URL (`https://skirotica.github.io/warm-reception/live/`).  
 **Owner:** Chad decides. Courtney operates.  
+**Partner answers (17 Aug 2026):** production item 2 is recorded in section 11. Those answers are the current product rules for public vs private, existing clients, and do-not-contact.  
 **PII** means names, titles, and emails of real people.
 
 Faculty and this review agree: do not put more real-people data into today’s public GitHub Pages live tool. That includes real POC emails, Chad’s client book, real prior-sends, and any do-not-contact list. Combining a real person with a work title, an email, and an outreach draft is a targeted contact file. A public page with no sign-in is not a safe place for that file.
@@ -63,3 +64,17 @@ Chad must accept each, or block going further.
 ## 10. Verdict
 
 **No-go** for production PII on the current live URL. Keep the synthetic class demo public. Move live work to a private signed-in tool before any real emails, clients, or opt-out list enter the product. Do not connect a real mailbox, and do not turn Hunter on for production, until steps 3 through 5 are true (secrets off the browser, sign-in, private store).
+
+## 11. Courtney answers (17 Aug 2026)
+
+Production security / privacy item 2. These are product rules. The do-not-contact button is not built this turn.
+
+**Public versus private data.** Once sign-in works, real company and contact data must not stay visible outside login. Everything needs to be behind the login.
+
+**Gap vs GitHub Live (not wiped this turn).** `https://skirotica.github.io/warm-reception/live/` is still public HTML with no login. Page source still includes the seed companies Discern, Wordsmith, Jusfy, Entegrata, and Aavalynx. OPERATOR currently keeps GitHub Pages Live public on purpose. Section 5 of this review froze those names as public news and treated stripping as optional. That freeze no longer matches Courtney’s “everything behind login” rule. Next step (not this turn): make GitHub Live synthetic-only, or take Live off github.io, and keep real company data only on Access-protected pages.dev. Do not treat this gap as permission to add more real data to Pages.
+
+**Existing clients.** Never draft outreach to a company already on the client list. Never send to a client, ever.
+
+**How to protect that list (coaching note).** Courtney’s product answer is the never-outreach rule above. The second half of the question was about *where the list lives* if the page or store is stolen, not whether to contact clients. Do not put the client list in the public page, in GitHub, or in the browser page source. Keep it in the private store behind login (Worker / D1). If someone steals that store they could still see who the clients are, so the list should live only there, not also in HTML anyone can download. Courtney did not need to design the theft case; Chad owns that later.
+
+**Opt-out / do-not-contact.** Respect stop requests. A human adds the person to a do-not-contact list via a button (not built this turn). Block future sends to that person. Person-level DNC from “do not contact me” replies. Company-wide DNC is still undecided; use person-level until Chad says otherwise. Duration: hold until a partner removes them (indefinite). She did not specify a time limit.
