@@ -1524,25 +1524,102 @@ body.is-demo .live-only { display: none !important; }
       return found;
     }
 
+    var COMPANY_NAME_STOP =
+      /^(as|at|to|from|for|with|and|or|of|our|new|the|a|an|its|their|his|her|this|that|us|uk|eu|we|join|joins|joined|joining|names|hires|appoints|announces|raises|raised|ceo|cro|cfo|coo|vp|head|president|chief|officer|team|leadership|message|letter)$/i;
+
+    function looksLikeHeadlineNotCompany(s) {
+      var t = String(s || "").trim();
+      if (!t) return true;
+      if (/\b(message from|letter from|join us|why |how |what |announcing that)\b/i.test(t)) return true;
+      if (/^(a|an|the)\s+/i.test(t) && t.split(/\s+/).length > 2) return true;
+      if (t.split(/\s+/).length > 6) return true;
+      return false;
+    }
+
     function cleanCompanyGuess(raw) {
       var name = String(raw || "")
         .replace(/[“”"']/g, "")
         .replace(/\s+/g, " ")
         .trim();
-      name = name.replace(/^(Legaltech|Legal AI startup|Legal AI|Big news\.?|Exclusive:?|Breaking:?)\s+/i, "").trim();
+      name = name.replace(/^(Legaltech|Legal AI startup|Legal AI|Big news\.?|Exclusive:?|Breaking:?|A message from|A letter from|Join us(?: at)?)\s+/i, "").trim();
+      name = name.replace(/['’‘]s\s+(CEO|CRO|CFO|COO|founder|leadership|team|board).*$/i, "").trim();
+      name = name.replace(/\s+as\s+(our|the|a|an|new|its|their|Chief|CRO|CEO|CFO|COO|VP|Head|President)\b.*$/i, "").trim();
       name = name.replace(/\s*[-–—|:].*$/, "").trim();
       name = name.replace(/\s+(Inc\.?|LLC|Ltd\.?|Corp\.?|Co\.?)$/i, function (m) {
         return m.replace(/\.$/, "");
       }).trim();
       if (/^live\s*company\s*\d+$/i.test(name)) return "";
       if (/^unresolved\b/i.test(name)) return "";
-      if (name.length < 2 || name.length > 60) return "";
-      if (/^(the|a|an|new|its|their)$/i.test(name)) return "";
-      // Reject bare person-looking "First Last" when it is clearly a person hire headline fragment.
-      if (/^[A-Z][a-z]+\s+[A-Z][a-z]+$/.test(name) && !/(Legal|Tech|AI|Soft|Data|Cloud|Law|Matter|Doc|Contract)/i.test(name)) {
+      if (COMPANY_NAME_STOP.test(name)) return "";
+      if (name.length < 3 || name.length > 48) return "";
+      if (/^(the|a|an|new|its|their|us|uk|eu|ai|pr)$/i.test(name)) return "";
+      if (/\b(message|letter|announcement|update|join us|excited|thrilled)\b/i.test(name)) return "";
+      if (/^(a|an|the)\s+/i.test(name) && name.split(/\s+/).length > 3) return "";
+      if (name.split(/\s+/).length > 4) return "";
+      if (/^[A-Z][a-z]+\s+[A-Z][a-z]+$/.test(name) && !/(Legal|Tech|AI|Soft|Data|Cloud|Law|Matter|Doc|Contract|Judge|Works)/i.test(name)) {
         return "";
       }
       return name;
+    }
+
+    function takeCompanyPhrase(raw) {
+      var words = String(raw || "").trim().split(/\s+/);
+      var kept = [];
+      var i;
+      for (i = 0; i < words.length && kept.length < 4; i++) {
+        var token = words[i].replace(/[,.;:!?()]+/g, "");
+        var core = token.replace(/['’‘]s$/i, "").replace(/['’‘]$/g, "");
+        if (!core) break;
+        if (COMPANY_NAME_STOP.test(core)) break;
+        if (kept.length && !/^[A-Za-z]/.test(core)) break;
+        kept.push(core);
+        if (/['’‘]s$/i.test(token)) break;
+      }
+      return cleanCompanyGuess(kept.join(" "));
+    }
+
+    function canonicalCompanySpelling(name, blob) {
+      if (!name) return "";
+      var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      var re = new RegExp("\\b" + escaped + "\\b", "i");
+      var m = String(blob || "").match(re);
+      if (m && m[0] && /[A-Z]/.test(m[0].slice(1))) return m[0];
+      if (/^[a-z0-9]+$/.test(name)) {
+        return name.charAt(0).toUpperCase() + name.slice(1);
+      }
+      return name;
+    }
+
+    function domainGuessForCompany(name, blob) {
+      var slug = slugifyToken(name).replace(/-/g, "");
+      if (slug.length < 3) return "";
+      var re = new RegExp(
+        "\\b(?:https?:\\/\\/)?(?:www\\.)?(" +
+          slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+          "\\.(?:ai|io|com|co|app|so|dev|tech|legal|com\\.br))\\b",
+        "i"
+      );
+      var m = String(blob || "").match(re);
+      if (!m) return "";
+      var host = String(m[1] || "").toLowerCase();
+      return looksLikeRealDomain(host) ? host : "";
+    }
+
+    function pickDomainForCompany(name, blob, url) {
+      var fromName = domainGuessForCompany(name, blob);
+      if (fromName) return fromName;
+      var fromUrl = guessDomainFromUrl(url);
+      var nameSlug = slugifyToken(name).replace(/-/g, "");
+      if (fromUrl && looksLikeRealDomain(fromUrl)) {
+        var urlSlug = fromUrl.split(".")[0].replace(/-/g, "");
+        if (!nameSlug || urlSlug === nameSlug) return fromUrl;
+      }
+      var fromText = extractDomainsFromText(blob);
+      var i;
+      for (i = 0; i < fromText.length; i++) {
+        if (fromText[i].split(".")[0].replace(/-/g, "") === nameSlug) return fromText[i];
+      }
+      return "";
     }
 
     function extractCompanyNameFromArticle(title, text) {
@@ -1550,36 +1627,32 @@ body.is-demo .live-only { display: none !important; }
       var candidates = [];
 
       function push(raw, weight) {
-        var cleaned = cleanCompanyGuess(raw);
+        var cleaned = takeCompanyPhrase(raw) || cleanCompanyGuess(raw);
         if (!cleaned) return;
+        cleaned = canonicalCompanySpelling(cleaned, blob);
         candidates.push({ name: cleaned, weight: weight || 1 });
       }
 
-      // Hire / join stories: "Ian Kujawa joined LegalMation as CRO"
-      var joinedAs = blob.match(
-        /\b(?:joined|joins|joining)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})\s+as\s+(?:Chief|CRO|CEO|CFO|COO|VP|Head|President)/i
+      var joinUs = blob.match(
+        /\b(?:joined|joins|joining)\s+(?:us\s+at\s+|the\s+team\s+at\s+)?([A-Za-z][A-Za-z0-9&.\-]{2,}(?:\s+[A-Za-z][A-Za-z0-9&.\-]{2,}){0,3})/i
       );
-      if (joinedAs) push(joinedAs[1], 10);
+      if (joinUs) push(joinUs[1], 12);
 
-      // "joined LegalMation's leadership" / "joins LegalMation"
-      var joinedCo = blob.match(
-        /\b(?:joined|joins|joining)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})(?:'s|\s+to\s+|\s+from\s+)/i
+      var fromCeo = blob.match(
+        /\bfrom\s+([A-Za-z][A-Za-z0-9&.\-]{2,}(?:\s+[A-Za-z][A-Za-z0-9&.\-]{2,}){0,2})['’‘]s\s+(?:CEO|CRO|CFO|COO|founder)/i
       );
-      if (joinedCo) push(joinedCo[1], 9);
+      if (fromCeo) push(fromCeo[1], 11);
 
-      // "LegalMation names/appoints/hires Ian … as CRO"
       var coNames = blob.match(
         /\b([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})\s+(?:names|appoints|hires|welcomes|taps)\s+[A-Z][a-z]+/i
       );
       if (coNames) push(coNames[1], 9);
 
-      // "CRO of LegalMation" / "at LegalMation"
       var roleAt = blob.match(
-        /\b(?:CRO|CEO|CFO|COO|Chief Revenue Officer|Chief Executive Officer|VP Sales|Head of Sales)\s+(?:of|at)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})/i
+        /\b(?:CRO|CEO|CFO|COO|Chief Revenue Officer|Chief Executive Officer|VP Sales|Head of Sales)\s+(?:of|at)\s+([A-Za-z][A-Za-z0-9&.\-]{2,}(?:\s+[A-Za-z][A-Za-z0-9&.\-]{2,}){0,3})/i
       );
       if (roleAt) push(roleAt[1], 8);
 
-      // Funding: "LegalMation raises Series B"
       var raises = blob.match(
         /\b([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})\s+(?:raises|raised|secures|closes|lands|announces)\s+(?:a\s+|an\s+)?(?:\$|Series|seed|growth|funding)/i
       );
@@ -1591,34 +1664,27 @@ body.is-demo .live-only { display: none !important; }
       if (startupMatch) push(startupMatch[1], 7);
 
       var appos = blob.match(
-        /\b([A-Z][A-Za-z0-9&.\-]{1,40}),\s+(?:a|an|the)\s+(?:legal|AI|artificial|enterprise|revenue)/i
+        /\b([A-Z][A-Za-z0-9&.\-]{3,40}),\s+(?:a|an|the)\s+(?:legal|AI|artificial|enterprise|revenue)/i
       );
       if (appos) push(appos[1], 6);
 
-      // Title lead only if it is not a person-first hire headline
-      var title = String(title || "");
-      if (!/\b(?:joins|joined|joining)\b/i.test(title)) {
-        var titleLead = title.split(
+      var titleStr = String(title || "");
+      if (!looksLikeHeadlineNotCompany(titleStr) && !/\b(?:joins|joined|joining|message|letter)\b/i.test(titleStr)) {
+        var titleLead = titleStr.split(
           / raises | raised | announces | names | appoints | lands | closes | secures | bags | gets | unveils | hires |\| | – | — |: /i
         )[0];
-        push(titleLead, 3);
-      } else {
-        // "Person joins Company …" → take after joins
-        var afterJoins = title.match(
-          /\b(?:joins|joined|joining)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})/i
-        );
-        if (afterJoins) push(afterJoins[1], 10);
+        if (!looksLikeHeadlineNotCompany(titleLead)) push(titleLead, 3);
       }
 
-      // Prefer known legaltech-style brand tokens in the story (e.g. LegalMation).
-      var brandHits = blob.match(
-        /\b([A-Z][A-Za-z0-9]*(?:mation|Mation|Legal|Tech|Works|Labs|Soft|AI|Law|Doc|Contract)[A-Za-z0-9]*)\b/g
-      );
-      if (brandHits) {
-        brandHits.forEach(function (b) {
-          push(b, 8);
+      var camel = blob.match(/\b([A-Z][a-z]+[A-Z][A-Za-z0-9]*)\b/g);
+      if (camel) {
+        camel.forEach(function (b) {
+          if (!COMPANY_NAME_STOP.test(b) && b.length >= 5) push(b, 8);
         });
       }
+
+      var atBrand = blob.match(/\bat\s+([A-Z][A-Za-z0-9&.\-]{2,})\b/);
+      if (atBrand) push(atBrand[1], 7);
 
       candidates.sort(function (a, b) {
         return b.weight - a.weight || a.name.length - b.name.length;
@@ -1628,7 +1694,7 @@ body.is-demo .live-only { display: none !important; }
         var key = candidates[i].name.toLowerCase();
         if (seen[key]) continue;
         seen[key] = true;
-        if (/^(Ian|John|Jane|Sarah|David|Michael|Chris|Alex|Tim|Hanna|Rafael|Andrew|Robbie|Live)$/i.test(candidates[i].name)) {
+        if (/^(Ian|John|Jane|Sarah|David|Michael|Chris|Alex|Tim|Hanna|Rafael|Andrew|Robbie|Live|Pascal|Debets)$/i.test(candidates[i].name)) {
           continue;
         }
         if (/^live\s*company/i.test(candidates[i].name)) continue;
@@ -1639,14 +1705,15 @@ body.is-demo .live-only { display: none !important; }
 
     function guessCompanyAndDomainFromExa(title, text, url, idx) {
       var blob = (String(title || "") + "\n" + String(text || "")).trim();
-      var domain = guessDomainFromUrl(url);
-      var textDomains = extractDomainsFromText(blob);
-      if (!domain && textDomains.length) domain = textDomains[0];
-
       var companyGuess = extractCompanyNameFromArticle(title, text);
-      if (!companyGuess && domain) companyGuess = displayNameFromDomain(domain);
-
-      // Do not invent "Live company N". Caller should skip unresolvable Exa hits.
+      var domain = "";
+      if (companyGuess) {
+        domain = pickDomainForCompany(companyGuess, blob, url);
+      } else {
+        domain = guessDomainFromUrl(url);
+        if (!looksLikeRealDomain(domain)) domain = "";
+        if (domain) companyGuess = displayNameFromDomain(domain);
+      }
       if (!companyGuess) {
         return { company_name: "", domain: domain || "", unresolved: true };
       }
@@ -2138,6 +2205,15 @@ body.is-demo .live-only { display: none !important; }
           company_guess: (identity && identity.company_name) || "",
           domain_guess: (identity && looksLikeRealDomain(identity.domain) ? identity.domain : "") || ""
         });
+      });
+      var domainByCompany = {};
+      pending.forEach(function (p) {
+        var k = String(p.company_guess || "").toLowerCase();
+        if (k && p.domain_guess && !domainByCompany[k]) domainByCompany[k] = p.domain_guess;
+      });
+      pending.forEach(function (p) {
+        var k = String(p.company_guess || "").toLowerCase();
+        if (k && !p.domain_guess && domainByCompany[k]) p.domain_guess = domainByCompany[k];
       });
       return { pending: pending, skippedDup: skippedDup };
     }
