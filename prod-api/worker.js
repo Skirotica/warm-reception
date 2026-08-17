@@ -4,10 +4,10 @@
  * Holds provider keys as Cloudflare Worker secrets. Never returns keys.
  * live/index.html calls this worker. The class demo at site root does not.
  *
- * Honest limit: Origin allowlist only stops other websites from using this
- * with zero friction. Anyone who can load https://skirotica.github.io can
- * present that Origin. A shared gate secret in the page would be visible
- * in View Source. Real lock is Cloudflare Access or partner sign-in (step 4).
+ * Step 4: PARTNER_ACCESS_CODE is a Worker secret. Partners type it in Live.
+ * It is not in the HTML. GET / (health) stays open. Run, Exa, and Hunter
+ * require the code. The Live HTML is still a public GitHub Pages file
+ * (queue names visible). Cloudflare Access is the stronger follow-on.
  *
  * Hunter stays disabled while HUNTER_ENABLED is not "true". Privacy review:
  * Hunter stays off on public Pages until the tool is private.
@@ -31,7 +31,7 @@ function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, X-Partner-Access",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin"
   };
@@ -46,6 +46,45 @@ function jsonResponse(body, status, cors) {
 
 function hunterEnabled(env) {
   return String((env && env.HUNTER_ENABLED) || "").toLowerCase() === "true";
+}
+
+function partnerCodeConfigured(env) {
+  return String((env && env.PARTNER_ACCESS_CODE) || "").length > 0;
+}
+
+function partnerCodeMatches(request, env) {
+  const expected = String((env && env.PARTNER_ACCESS_CODE) || "");
+  const got = String(request.headers.get("X-Partner-Access") || "");
+  if (!expected || !got || expected.length !== got.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ got.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+function requirePartnerAccess(request, env, cors) {
+  if (!partnerCodeConfigured(env)) {
+    return jsonResponse(
+      {
+        error: "Partner access code not set on worker",
+        detail: "Run: npx wrangler secret put PARTNER_ACCESS_CODE"
+      },
+      503,
+      cors
+    );
+  }
+  if (!partnerCodeMatches(request, env)) {
+    return jsonResponse(
+      {
+        error: "Partner access required",
+        detail: "Paste the partner access code in Live and click Save code. Do not paste Anthropic keys."
+      },
+      401,
+      cors
+    );
+  }
+  return null;
 }
 
 async function proxyAnthropic(request, env, cors) {
@@ -211,12 +250,16 @@ export default {
           ok: true,
           service: "warm-reception-prod-api",
           hunter: hunterEnabled(env) ? "enabled" : "disabled",
+          partner_gate: partnerCodeConfigured(env) ? "required" : "not_configured",
           routes: ["/v1/messages", "/search", "/domain-search", "/email-finder"]
         },
         200,
         cors
       );
     }
+
+    const gate = requirePartnerAccess(request, env, cors);
+    if (gate) return gate;
 
     if (path === "/v1/messages") {
       if (request.method !== "POST") {

@@ -574,6 +574,9 @@ body.is-demo .live-only { display: none !important; }
       <input id="prod-api-url" type="url" autocomplete="off" aria-label="Production API base URL" placeholder="Production API URL (Cloudflare Worker)" />
       <button type="button" class="btn" id="save-prod-api">Save API</button>
       <button type="button" class="btn" id="clear-prod-api">Clear API</button>
+      <input id="partner-access" type="password" autocomplete="off" aria-label="Partner access code" placeholder="Partner access code" />
+      <button type="button" class="btn" id="save-partner-access">Save code</button>
+      <button type="button" class="btn" id="clear-partner-access">Clear code</button>
       <span class="key-status" id="prod-api-status">No production API URL</span>
     </div>
   </header>
@@ -787,6 +790,7 @@ body.is-demo .live-only { display: none !important; }
     const HUNTER_PROXY_STORAGE = "warm_reception_hunter_proxy_url";
     const EXA_PROXY_STORAGE = "warm_reception_exa_proxy_url";
     const PROD_API_STORAGE = "warm_reception_prod_api_url";
+    const PARTNER_ACCESS_STORAGE = "warm_reception_partner_access";
 
     function normalizeWorkerBase(raw) {
       var base = String(raw || "").trim();
@@ -812,13 +816,23 @@ body.is-demo .live-only { display: none !important; }
       return normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
     }
 
+    function partnerAccessCode() {
+      return String(sessionStorage.getItem(PARTNER_ACCESS_STORAGE) || "").trim();
+    }
+
+    function prodApiHeaders(extra) {
+      var headers = extra ? Object.assign({}, extra) : {};
+      var code = partnerAccessCode();
+      if (code) headers["X-Partner-Access"] = code;
+      return headers;
+    }
+
     function anthropicMessagesUrl() {
       return prodApiBase() + "/v1/messages";
     }
 
     function anthropicHeaders() {
-      // Worker holds ANTHROPIC_API_KEY. Do not send x-api-key or browser-access headers.
-      return { "content-type": "application/json" };
+      return prodApiHeaders({ "content-type": "application/json" });
     }
     const LIVE_EXTRAS_STORAGE = "warm_reception_live_extras_v1";
     const EVAL_RESULTS_STORAGE = "warm_reception_eval_results_v3";
@@ -1973,7 +1987,7 @@ body.is-demo .live-only { display: none !important; }
         if (panelHead) panelHead.textContent = "Chad · Live review queue";
         if (banner) {
           banner.classList.add("visible");
-          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker, not in this page. Hunter stays off on public Pages. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Hunter stays off on public Pages. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
         activeVoicePartnerId = "partner_c";
@@ -3467,7 +3481,7 @@ body.is-demo .live-only { display: none !important; }
       try {
         var res = await fetch(proxyBase + "/search?num=3&q=" + q, {
           method: "GET",
-          headers: { Accept: "application/json" }
+          headers: prodApiHeaders({ Accept: "application/json" })
         });
         var data = await res.json().catch(function () {
           return null;
@@ -3717,8 +3731,14 @@ body.is-demo .live-only { display: none !important; }
       var text = (responseText || "") + " " + (err && err.message ? err.message : "");
       var lower = text.toLowerCase();
       if (!navigator.onLine) return "You appear offline. Check your internet connection and try again.";
-      if (statusCode === 401 || (lower.indexOf("invalid") !== -1 && lower.indexOf("key") !== -1) || lower.indexOf("authentication") !== -1) {
-        return "The production API worker rejected the stored Anthropic key. Chad should update ANTHROPIC_API_KEY with wrangler secret put, then try again. Do not paste a key into this page.";
+      if (statusCode === 401 || lower.indexOf("partner access") !== -1) {
+        return "Partner access required. Paste the access code (not an API key) and click Save code.";
+      }
+      if ((lower.indexOf("invalid") !== -1 && lower.indexOf("key") !== -1) || lower.indexOf("authentication") !== -1) {
+        return "The production API worker rejected the stored Anthropic key. Update ANTHROPIC_API_KEY with wrangler secret put, then try again. Do not paste a key into this page.";
+      }
+      if (statusCode === 503 && lower.indexOf("access code not set") !== -1) {
+        return "The Worker needs a partner access code. In prod-api run: npx wrangler secret put PARTNER_ACCESS_CODE";
       }
       if (statusCode === 402 || lower.indexOf("credit") !== -1 || lower.indexOf("billing") !== -1 || lower.indexOf("quota") !== -1) {
         return "No API credit or billing issue on the Anthropic account tied to the worker.";
@@ -4590,8 +4610,12 @@ body.is-demo .live-only { display: none !important; }
 
     async function runAgentForCase(ev, resultEl, buttonEl) {
       if (!prodApiBase()) {
-        resultEl.innerHTML = '<div class="error-note">No production API URL saved. Paste the Cloudflare Worker URL in Settings and click Save API. Do not paste Anthropic or Hunter keys here.</div>';
+        resultEl.innerHTML = '<div class="error-note">No production API URL saved. Paste the Cloudflare Worker URL and click Save API. Do not paste Anthropic or Hunter keys here.</div>';
         return { kind: "error", detail: "no_prod_api" };
+      }
+      if (!partnerAccessCode()) {
+        resultEl.innerHTML = '<div class="error-note">Partner access required. Paste the access code (not an API key) and click Save code.</div>';
+        return { kind: "error", detail: "no_partner_access" };
       }
       buttonEl.disabled = true;
       resultEl.innerHTML = '<span class="thinking">Running…</span>';
@@ -5507,14 +5531,40 @@ body.is-demo .live-only { display: none !important; }
 
     function refreshProdApiStatus() {
       var saved = prodApiBase();
+      var codeOn = !!partnerAccessCode();
       if (prodApiStatus) {
-        prodApiStatus.textContent = saved ? "Production API saved" : "No production API URL";
+        if (!saved) prodApiStatus.textContent = "No production API URL";
+        else if (!codeOn) prodApiStatus.textContent = "API saved. Partner code needed";
+        else prodApiStatus.textContent = "API and partner code saved";
       }
       if (prodApiInput && saved) prodApiInput.value = saved;
       else if (prodApiInput && !saved) {
         var legacyExa = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
         if (legacyExa) prodApiInput.placeholder = "Old Exa URL found. Save the prod-api worker URL instead.";
       }
+    }
+
+    var partnerAccessInput = document.getElementById("partner-access");
+    var savePartnerBtn = document.getElementById("save-partner-access");
+    if (savePartnerBtn) {
+      savePartnerBtn.addEventListener("click", function () {
+        var code = String(partnerAccessInput && partnerAccessInput.value ? partnerAccessInput.value : "").trim();
+        if (!code) {
+          if (prodApiStatus) prodApiStatus.textContent = "Paste the partner access code first";
+          return;
+        }
+        sessionStorage.setItem(PARTNER_ACCESS_STORAGE, code);
+        if (partnerAccessInput) partnerAccessInput.value = "";
+        refreshProdApiStatus();
+      });
+    }
+    var clearPartnerBtn = document.getElementById("clear-partner-access");
+    if (clearPartnerBtn) {
+      clearPartnerBtn.addEventListener("click", function () {
+        sessionStorage.removeItem(PARTNER_ACCESS_STORAGE);
+        if (partnerAccessInput) partnerAccessInput.value = "";
+        refreshProdApiStatus();
+      });
     }
 
     var saveProdApiBtn = document.getElementById("save-prod-api");
@@ -5550,11 +5600,15 @@ body.is-demo .live-only { display: none !important; }
           if (statusEl) statusEl.textContent = "Save the production API URL first (Cloudflare Worker).";
           return;
         }
+        if (!partnerAccessCode()) {
+          if (statusEl) statusEl.textContent = "Save the partner access code first.";
+          return;
+        }
         refreshExaBtn.disabled = true;
         if (statusEl) statusEl.textContent = "Refreshing from Exa…";
         try {
           var q = encodeURIComponent("Legaltech Series A Series B funding OR CRO VP Sales executive hire announcement 2026");
-          var res = await fetch(proxyBase + "/search?num=6&q=" + q, { method: "GET", headers: { Accept: "application/json" } });
+          var res = await fetch(proxyBase + "/search?num=6&q=" + q, { method: "GET", headers: prodApiHeaders({ Accept: "application/json" }) });
           var data = await res.json().catch(function () { return null; });
           if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
           var mergeStats = mergeExaResultsIntoLiveExtras((data && data.results) || []);

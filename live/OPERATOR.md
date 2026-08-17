@@ -1,64 +1,57 @@
-# Warm Reception Live — operator note (step 3)
+# Warm Reception Live — operator note
 
-Class demo at the site root stays the frozen graded prototype. Chad can still paste an Anthropic key in Settings there. This note is only for **Live** (`/live/` or https://skirotica.github.io/warm-reception/live/).
+Class demo at the site root stays the frozen graded prototype. This note is only for **Live** (`https://skirotica.github.io/warm-reception/live/`).
 
-## What changed
+## Step 3 (done)
 
-Provider keys no longer live in the Live page. Anthropic and Exa run through one Cloudflare Worker (`prod-api/`). The worker never returns those keys.
+Provider keys live on the Cloudflare Worker (`prod-api`). Live Settings only stores the Worker URL. Hunter stays **off** on public GitHub Pages.
 
-Hunter stays **off** on public GitHub Pages (privacy review). Partners can still type a POC email in the human gate (Approve / Edit / Escalate) to move a No-go to Go. Turning Hunter on is a later step, after the tool is private.
-
-Origin allowlist on the worker is friction, not a lock. Anyone who can open the GitHub Pages site can present that origin. Do not put a shared gate secret in the Live page. It would be visible in View Source. Real lock is Cloudflare Access or partner sign-in (step 4).
-
-## Cloudflare secrets to set
-
-From the `prod-api/` folder, after you are logged into Wrangler:
+Secrets already set:
 
 ```
-npx wrangler deploy
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put EXA_API_KEY
 ```
 
-Paste Chad’s Anthropic key and the Exa key when prompted. Never paste those keys into Live Settings, into `index.html`, or into chat.
+Live Production API URL:
 
-Do **not** set Hunter secrets on this worker while the Live page is public. `HUNTER_ENABLED` stays `false` in `prod-api/wrangler.toml`.
+`https://warm-reception-prod-api.cryandean.workers.dev`
 
-## Existing Hunter and Exa workers
+## Step 4 (partner access)
 
-Redeploy so they stop echoing any Origin:
+Run and Refresh from Exa require a **partner access code**. That code is a Worker secret. It is not in the HTML. Partners type it in Live and click Save code. Closing the tab clears it (session only).
+
+Hunter stays off. The Live HTML is still a public GitHub page (queue names are visible). The code only locks **Run / Exa / Anthropic**. Cloudflare Access on a private host is the stronger follow-on.
+
+### Courtney: deploy the gate
+
+From the `prod-api` folder:
 
 ```
 npx wrangler deploy
+npx wrangler secret put PARTNER_ACCESS_CODE
 ```
 
-in `exa-proxy/` (Pages origin allowed, so Live refresh can still use the old Exa URL until you switch).
+Pick a long phrase only you and Chad know. Do not paste it into GitHub, chat, or the HTML file.
 
-```
-npx wrangler deploy
-```
+If Wrangler asks about Cloudflare skills (Y/n), press Ctrl+C. The deploy is already done.
 
-in `hunter-proxy/` (GitHub Pages origin is **not** allowed. Localhost only, until the tool is private).
+### Chad / Courtney: use Live
 
-## What Chad should paste in Live Settings
+1. Hard-refresh https://skirotica.github.io/warm-reception/live/
+2. Production API URL should still be saved. If not, paste `https://warm-reception-prod-api.cryandean.workers.dev` and click **Save API**.
+3. In **Partner access code**, type the same phrase you put in Wrangler. Click **Save code**. The box should clear. Status should read **API and partner code saved**.
+4. Click Run on one case.
 
-Only the production API base URL. Example:
+Without the code, Run should say partner access required. Do not paste Anthropic keys.
 
-`https://warm-reception-prod-api.<your-account>.workers.dev`
+### What this does not do
 
-No trailing slash. Save API. He should **not** paste Anthropic, Hunter, or Exa keys on Live.
+It does not hide the public queue HTML. It does not prove the clicker is Chad versus Courtney (shared code). It does not turn Hunter on. Step 5 (private store + Hunter) waits until Live is no longer a public anonymous page.
 
-Refresh from Exa and Run both use that same URL (`/search` and `/v1/messages`).
+## What not to paste on Live
 
-## What Chad should not paste
-
-- Anthropic API key (Live)
-- Hunter Email Finder or Domain Search key
+- Anthropic API key
+- Hunter keys
 - Exa API key
-- Any production secret into the class demo page either, except the graded demo still uses an Anthropic key in Settings by design
-
-## Follow-on (do not do in this step)
-
-Step 4: Chad sign-in, or put Live behind Cloudflare Access so it is no longer a public anonymous tool.
-
-Step 5 (only after private): set Hunter secrets, set `HUNTER_ENABLED = "true"`, redeploy `prod-api`, then turn Hunter calls back on in Live. Until then, leave Hunter off.
+- The partner access code into GitHub or this file
