@@ -90,7 +90,9 @@ Do not set Hunter secrets.
 
 You do **not** need a new product website (no warmreception.ai) for this step. Stay on GitHub Pages and the existing Worker. The domain that matters here is each **company’s** website, such as discern.com.
 
-Refresh from Exa no longer dumps articles into the queue. It opens a confirm tray. For each article, type or correct the company name and its real domain, then Confirm or Skip. Confirm writes the company to the partner store. POC name and email stay blank. Run is blocked until that domain is confirmed. Hunter stays off.
+Refresh from Exa no longer dumps articles into the queue. It opens a confirm tray. Two articles about the same company (same name or same website) become **one row**. Confirm once. That company appears once in the queue. Extra articles stay as extra stories on that case, not a second DeepJudge. If the company is already queued, Confirm adds the stories to the existing card.
+
+For each company, type or correct the name and its real domain, then Confirm or Skip. Confirm writes the company to the partner store. POC name and email stay blank. Run is blocked until that domain is confirmed. Hunter stays off.
 
 Do not invent a `.com` from a slug. Do not invent a person. Do not type a real POC email into the public Live page.
 

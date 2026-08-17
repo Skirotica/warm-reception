@@ -155,6 +155,12 @@ body {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+.queue-summary .q-stories {
+  color: var(--ink-3);
+  font-weight: 600;
+  margin-left: var(--sp-2);
+  font-size: var(--fs-0);
+}
 .queue-summary .q-poc,
 .queue-summary .q-decision {
   color: var(--ink-2); font-size: var(--fs-0); min-width: 0;
@@ -588,18 +594,25 @@ body {
   display: grid;
   grid-template-columns: 1fr 10rem 12rem auto auto auto;
   gap: var(--sp-2);
-  align-items: center;
+  align-items: start;
   margin-bottom: var(--sp-2);
 }
 .exa-intake-row .intake-title {
   font-size: var(--fs-1);
   color: var(--ink);
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.exa-intake-row .intake-title a { color: var(--accent); }
+.exa-intake-row .intake-title a {
+  color: var(--accent);
+  display: block;
+  margin-bottom: 2px;
+}
+.exa-intake-row .story-count {
+  color: var(--ink-3);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
 .exa-intake-row input {
   width: 100%;
   background: var(--bg-raise);
@@ -659,7 +672,7 @@ body.is-demo .live-only { display: none !important; }
           </div>
           <div class="exa-intake" id="exa-intake" hidden>
             <h3>Confirm company and domain</h3>
-            <p class="intake-help">Exa found news. Nothing is queued for a draft until you confirm the company name and its real website domain (for example discern.com, not a news site). Confirm writes the company to the partner store. Skip if you do not want that name stored. Do not invent a person or an email here.</p>
+            <p class="intake-help">Exa found news. Same company from two articles is one row, not two companies. Confirm the company name and its real website domain (for example discern.com, not a news site). Confirm writes the company to the partner store. Skip if you do not want that name stored. Do not invent a person or an email here.</p>
             <div id="exa-intake-rows"></div>
           </div>
           <div class="run-all-summary" id="run-all-summary"></div>
@@ -1349,17 +1362,18 @@ body.is-demo .live-only { display: none !important; }
     function loadLiveExtras() {
       try {
         var raw = localStorage.getItem(LIVE_EXTRAS_STORAGE);
-        if (!raw) return { events: [], profiles: [], contacts: [], statuses: [], employment: [] };
+        if (!raw) return { events: [], profiles: [], contacts: [], statuses: [], employment: [], attached_sources: {} };
         var parsed = JSON.parse(raw);
         return {
           events: parsed.events || [],
           profiles: parsed.profiles || [],
           contacts: parsed.contacts || [],
           statuses: parsed.statuses || [],
-          employment: parsed.employment || []
+          employment: parsed.employment || [],
+          attached_sources: parsed.attached_sources || {}
         };
       } catch (e) {
-        return { events: [], profiles: [], contacts: [], statuses: [], employment: [] };
+        return { events: [], profiles: [], contacts: [], statuses: [], employment: [], attached_sources: {} };
       }
     }
 
@@ -1408,6 +1422,15 @@ body.is-demo .live-only { display: none !important; }
           }
         }
         if (!found) EMPLOYMENT_CHECK.checks.push(row);
+      });
+      var attached = extras.attached_sources || {};
+      Object.keys(attached).forEach(function (caseId) {
+        var urls = attached[caseId] || [];
+        for (var i = 0; i < CANDIDATE_EVENTS.length; i++) {
+          if (CANDIDATE_EVENTS[i].case_id !== caseId) continue;
+          CANDIDATE_EVENTS[i].source_urls = urls;
+          if (urls[0] && !CANDIDATE_EVENTS[i].source_url) CANDIDATE_EVENTS[i].source_url = urls[0];
+        }
       });
     }
 
@@ -1788,6 +1811,14 @@ body.is-demo .live-only { display: none !important; }
         });
         companyEl.appendChild(site);
       }
+      var storyN = eventSourceUrls(ev).length;
+      if (storyN > 1) {
+        companyEl.appendChild(document.createTextNode(" "));
+        var stories = document.createElement("span");
+        stories.className = "q-stories";
+        stories.textContent = storyN + " stories";
+        companyEl.appendChild(stories);
+      }
     }
 
     function refreshQueueCompanyLabel(ev) {
@@ -1981,10 +2012,61 @@ body.is-demo .live-only { display: none !important; }
       };
     }
 
+    function dedupeExtrasByCompany(extras) {
+      extras = extras || loadLiveExtras();
+      var keep = [];
+      var dropIds = {};
+      var changed = false;
+      (extras.events || []).forEach(function (ev) {
+        if (!ev) return;
+        var d = normalizeDomainKey(ev.domain);
+        var n = normalizeCompanyKey(ev.company_name);
+        var match = null;
+        keep.forEach(function (k) {
+          if (match) return;
+          var kd = normalizeDomainKey(k.domain);
+          var kn = normalizeCompanyKey(k.company_name);
+          if (d && kd && looksLikeRealDomain(d) && looksLikeRealDomain(kd) && d === kd) match = k;
+          else if (n && kn && n.length >= 3 && n === kn) match = k;
+        });
+        if (!match) {
+          keep.push(ev);
+          return;
+        }
+        changed = true;
+        var urls = eventSourceUrls(match);
+        eventSourceUrls(ev).forEach(function (u) {
+          if (urls.indexOf(u) === -1) urls.push(u);
+        });
+        match.source_urls = urls;
+        if (!match.source_url && urls[0]) match.source_url = urls[0];
+        dropIds[ev.case_id] = true;
+        dropIds[ev.company_id] = true;
+      });
+      if (!changed) return extras;
+      extras.events = keep;
+      extras.profiles = (extras.profiles || []).filter(function (p) {
+        return !dropIds[p.company_id];
+      });
+      extras.contacts = (extras.contacts || []).filter(function (c) {
+        return !dropIds[c.company_id];
+      });
+      extras.employment = (extras.employment || []).filter(function (e) {
+        return !dropIds[e.company_id];
+      });
+      extras.attached_sources = extras.attached_sources || {};
+      keep.forEach(function (ev) {
+        extras.attached_sources[ev.case_id] = eventSourceUrls(ev);
+      });
+      saveLiveExtras(extras);
+      return extras;
+    }
+
     function rebuildQueueEvents() {
       if (IS_LIVE) {
         var scrub = upgradePlaceholderLiveExtrasFromDomain();
         var extras = loadLiveExtras();
+        extras = dedupeExtrasByCompany(extras);
         var keepCase = {};
         (extras.events || []).forEach(function (e) {
           keepCase[e.case_id] = true;
@@ -2047,6 +2129,24 @@ body.is-demo .live-only { display: none !important; }
       var contactId = "CT-LX-" + slug + "-" + stamp;
       var summary = (text || title).replace(/\s+/g, " ").trim().slice(0, 280);
       var confirmed = !!(overrides && overrides.confirmed);
+      var sourceUrls = [];
+      function addSource(u) {
+        u = String(u || "").trim();
+        if (u && sourceUrls.indexOf(u) === -1) sourceUrls.push(u);
+      }
+      addSource(url);
+      ((overrides && overrides.articles) || []).forEach(function (a) {
+        addSource(a && a.url);
+      });
+      if ((overrides && overrides.articles || []).length) {
+        var combo = (overrides.articles || []).map(function (a) {
+          var raw = a && a.raw ? a.raw : {};
+          return String(raw.title || a.title || "") + " " + String(raw.text || "");
+        }).join("\n");
+        if (/hire|appoint|joins|joined|named|names/i.test(combo)) eventType = "executive_hire";
+        var longer = combo.replace(/\s+/g, " ").trim().slice(0, 280);
+        if (longer) summary = longer;
+      }
       return {
         event: {
           case_id: caseId,
@@ -2056,7 +2156,8 @@ body.is-demo .live-only { display: none !important; }
           event_type: eventType,
           event_summary: summary,
           event_date: published,
-          source_url: url,
+          source_url: sourceUrls[0] || url,
+          source_urls: sourceUrls,
           sector: "legaltech",
           employee_count: null,
           revenue_estimate_mm: null,
@@ -2101,16 +2202,149 @@ body.is-demo .live-only { display: none !important; }
       };
     }
 
+    function normalizeDomainKey(domain) {
+      return String(domain || "")
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .replace(/\/.*$/, "")
+        .trim();
+    }
+
+    function normalizeCompanyKey(name) {
+      return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    }
+
+    function eventSourceUrls(ev) {
+      var urls = [];
+      function add(u) {
+        u = String(u || "").trim();
+        if (u && urls.indexOf(u) === -1) urls.push(u);
+      }
+      if (!ev) return urls;
+      add(ev.source_url);
+      (ev.source_urls || []).forEach(add);
+      return urls;
+    }
+
+    function intakeArticles(item) {
+      if (item && item.articles && item.articles.length) return item.articles;
+      if (!item) return [];
+      return [{ title: item.title || "", url: item.url || "", raw: item.raw }];
+    }
+
+    function queuedEventForCompany(name, domain) {
+      var d = normalizeDomainKey(domain);
+      var n = normalizeCompanyKey(name);
+      var i;
+      for (i = 0; i < CANDIDATE_EVENTS.length; i++) {
+        var ev = CANDIDATE_EVENTS[i];
+        var ed = normalizeDomainKey(ev.domain);
+        var en = normalizeCompanyKey(ev.company_name);
+        if (d && ed && looksLikeRealDomain(d) && looksLikeRealDomain(ed) && d === ed) return ev;
+        if (n && en && n.length >= 3 && n === en) return ev;
+      }
+      return null;
+    }
+
+    function attachStoriesToEvent(ev, articles) {
+      if (!ev) return;
+      var urls = eventSourceUrls(ev);
+      (articles || []).forEach(function (a) {
+        var u = String(a && a.url || "").trim();
+        if (u && urls.indexOf(u) === -1) urls.push(u);
+      });
+      ev.source_urls = urls;
+      if (!ev.source_url && urls[0]) ev.source_url = urls[0];
+      var extras = loadLiveExtras();
+      extras.attached_sources = extras.attached_sources || {};
+      extras.attached_sources[ev.case_id] = urls;
+      (extras.events || []).forEach(function (row) {
+        if (row.case_id === ev.case_id) {
+          row.source_url = ev.source_url;
+          row.source_urls = urls;
+        }
+      });
+      saveLiveExtras(extras);
+    }
+
+    function makeIntakeGroup(p, article) {
+      return {
+        raw: p.raw,
+        title: p.title,
+        url: p.url,
+        company_guess: p.company_guess || "",
+        domain_guess: p.domain_guess || "",
+        articles: [article]
+      };
+    }
+
+    function addIntakeArticle(group, p, article) {
+      var exists = false;
+      group.articles.forEach(function (a) {
+        if (a.url === article.url) exists = true;
+      });
+      if (!exists) group.articles.push(article);
+      if (!group.company_guess && p.company_guess) group.company_guess = p.company_guess;
+      if (!group.domain_guess && p.domain_guess) group.domain_guess = p.domain_guess;
+    }
+
+    function collapseIntakeByCompany(pending) {
+      var byDomain = {};
+      var byName = {};
+      var ungrouped = [];
+      (pending || []).forEach(function (p) {
+        var article = { title: p.title || "", url: p.url || "", raw: p.raw };
+        var d = normalizeDomainKey(p.domain_guess);
+        var n = normalizeCompanyKey(p.company_guess);
+        if (d && looksLikeRealDomain(d)) {
+          if (!byDomain[d]) byDomain[d] = makeIntakeGroup(p, article);
+          else addIntakeArticle(byDomain[d], p, article);
+          return;
+        }
+        if (n.length >= 3) {
+          if (!byName[n]) byName[n] = makeIntakeGroup(p, article);
+          else addIntakeArticle(byName[n], p, article);
+          return;
+        }
+        ungrouped.push(makeIntakeGroup(p, article));
+      });
+      Object.keys(byName).forEach(function (n) {
+        var matchD = "";
+        Object.keys(byDomain).forEach(function (d) {
+          if (matchD) return;
+          var slug = d.split(".")[0].replace(/-/g, "");
+          var gName = normalizeCompanyKey(byDomain[d].company_guess);
+          if (n === slug || n === gName) matchD = d;
+        });
+        if (!matchD) return;
+        byName[n].articles.forEach(function (a) {
+          addIntakeArticle(byDomain[matchD], byName[n], a);
+        });
+        delete byName[n];
+      });
+      var out = [];
+      Object.keys(byDomain).forEach(function (d) { out.push(byDomain[d]); });
+      Object.keys(byName).forEach(function (n) { out.push(byName[n]); });
+      return out.concat(ungrouped);
+    }
+
     function sourceUrlAlreadyQueued(url) {
       var u = String(url || "");
       if (!u) return true;
       var extras = loadLiveExtras();
       var i;
       for (i = 0; i < CANDIDATE_EVENTS.length; i++) {
-        if (CANDIDATE_EVENTS[i].source_url === u) return true;
+        if (eventSourceUrls(CANDIDATE_EVENTS[i]).indexOf(u) !== -1) return true;
       }
       for (i = 0; i < (extras.events || []).length; i++) {
-        if (extras.events[i].source_url === u) return true;
+        if (eventSourceUrls(extras.events[i]).indexOf(u) !== -1) return true;
+      }
+      var attached = extras.attached_sources || {};
+      var caseId;
+      for (caseId in attached) {
+        if (!attached.hasOwnProperty(caseId)) continue;
+        if ((attached[caseId] || []).indexOf(u) !== -1) return true;
       }
       return false;
     }
@@ -2147,12 +2381,21 @@ body.is-demo .live-only { display: none !important; }
         row.className = "exa-intake-row";
         var title = document.createElement("div");
         title.className = "intake-title";
-        var link = document.createElement("a");
-        link.href = item.url || "#";
-        link.target = "_blank";
-        link.rel = "noopener";
-        link.textContent = item.title || item.url || "Untitled";
-        title.appendChild(link);
+        var articles = intakeArticles(item);
+        if (articles.length > 1) {
+          var count = document.createElement("div");
+          count.className = "story-count";
+          count.textContent = articles.length + " stories, one company";
+          title.appendChild(count);
+        }
+        articles.forEach(function (art) {
+          var link = document.createElement("a");
+          link.href = art.url || "#";
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = art.title || art.url || "Untitled";
+          title.appendChild(link);
+        });
         var nameIn = document.createElement("input");
         nameIn.type = "text";
         nameIn.placeholder = "Company name";
@@ -2185,12 +2428,29 @@ body.is-demo .live-only { display: none !important; }
         confirmBtn.className = "btn primary";
         confirmBtn.textContent = "Confirm";
         confirmBtn.addEventListener("click", function () {
+          var articles = intakeArticles(item);
+          var statusEl = document.getElementById("live-refresh-status");
+          var existing = queuedEventForCompany(nameIn.value, domainIn.value);
+          if (existing) {
+            attachStoriesToEvent(existing, articles);
+            remountQueue();
+            if (statusEl) {
+              statusEl.textContent =
+                existing.company_name +
+                " is already in the queue. Extra stories were added to that one case.";
+            }
+            PENDING_EXA_INTAKE = PENDING_EXA_INTAKE.filter(function (row) {
+              return row.url !== item.url;
+            });
+            renderExaIntake();
+            return;
+          }
           var bundle = parseExaResultToBundle(item.raw, Date.now() % 100000, {
             company_name: nameIn.value,
             domain: domainIn.value,
-            confirmed: true
+            confirmed: true,
+            articles: articles
           });
-          var statusEl = document.getElementById("live-refresh-status");
           if (!bundle) {
             if (statusEl) statusEl.textContent = "Confirm needs a company name and a real domain (not a news site).";
             return;
@@ -2199,7 +2459,17 @@ body.is-demo .live-only { display: none !important; }
             if (statusEl) statusEl.textContent = "Already in the queue.";
           } else {
             remountQueue();
-            if (statusEl) statusEl.textContent = "Queued " + bundle.event.company_name + " (" + bundle.event.domain + "). POC and email still empty until you add them in the gate.";
+            if (statusEl) {
+              var n = (bundle.event.source_urls || []).length;
+              statusEl.textContent =
+                "Queued " +
+                bundle.event.company_name +
+                " (" +
+                bundle.event.domain +
+                ")" +
+                (n > 1 ? " with " + n + " stories" : "") +
+                ". POC and email still empty until you add them in the gate.";
+            }
           }
           PENDING_EXA_INTAKE = PENDING_EXA_INTAKE.filter(function (row) {
             return row.url !== item.url;
@@ -2269,6 +2539,7 @@ body.is-demo .live-only { display: none !important; }
         });
         if (found) p.domain_guess = found;
       });
+      pending = collapseIntakeByCompany(pending);
       return { pending: pending, skippedDup: skippedDup };
     }
 
@@ -6113,8 +6384,10 @@ body.is-demo .live-only { display: none !important; }
           if (statusEl) {
             if (PENDING_EXA_INTAKE.length) {
               statusEl.textContent =
-                "Confirm company and domain for " + PENDING_EXA_INTAKE.length +
-                " article(s) before they enter the queue." +
+                "Confirm " +
+                PENDING_EXA_INTAKE.length +
+                (PENDING_EXA_INTAKE.length === 1 ? " company" : " companies") +
+                " before they enter the queue. Same company from two stories is one row." +
                 (intake.skippedDup ? " Skipped " + intake.skippedDup + " already queued." : "");
             } else {
               statusEl.textContent = intake.skippedDup
@@ -6134,7 +6407,7 @@ body.is-demo .live-only { display: none !important; }
     if (resetLiveBtn) {
       resetLiveBtn.addEventListener("click", async function () {
         if (!confirm("Clear Exa-refreshed extras? Seed live cases (CE-L01 to CE-L05) stay. Confirmed Exa cases are removed from this browser and the partner store.")) return;
-        var empty = { events: [], profiles: [], contacts: [], statuses: [], employment: [] };
+        var empty = { events: [], profiles: [], contacts: [], statuses: [], employment: [], attached_sources: {} };
         var statusEl = document.getElementById("live-refresh-status");
         localStorage.setItem(LIVE_EXTRAS_STORAGE, JSON.stringify(empty));
         if (statusEl) statusEl.textContent = "Clearing extras…";
