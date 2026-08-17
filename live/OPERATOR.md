@@ -151,19 +151,19 @@ Cloudflare's shared `pages.dev` host needs Access started from the Pages project
 3. Left nav: **Workers & Pages**.
 4. Open the project named **warm-reception-live**.
 5. **Settings** → **General**.
-6. Select **Enable access policy**.
+6. Select **Preview access** (older docs call this **Enable access policy**). Turn it on.
 
-That creates an Access application. The first toggle often covers preview URLs only (`something.warm-reception-live.pages.dev`). You also need the stable Live URL.
+That only locks hashed preview URLs (`something.warm-reception-live.pages.dev`). It does not lock the stable Live URL. Preview access is not step 7 done.
 
 **2. Cover the stable Live URL**
 
-1. On that Access policy row, select **Manage**.
+1. On the Preview access row, select **Manage**.
 2. You land in Zero Trust → Access → Applications (labels may say Access controls → Applications).
 3. Open the application for this project. Select **Configure**.
 4. Under **Public hostname**, in **Subdomain**, delete the `*` wildcard so the host is `warm-reception-live.pages.dev` (not `*.warm-reception-live.pages.dev`).
 5. Save.
 
-Then go back to Workers & Pages → **warm-reception-live** → Settings → General and select **Enable access policy** again so hashed preview hosts stay locked too. You should see two applications: one for `warm-reception-live.pages.dev` and one for `*.warm-reception-live.pages.dev`.
+Then go back to Workers & Pages → **warm-reception-live** → Settings → General and turn **Preview access** on again so hashed preview hosts stay locked too. You should see two applications: one for `warm-reception-live.pages.dev` and one for `*.warm-reception-live.pages.dev`. Do not add a blank Zero Trust self-hosted app for `pages.dev` first. Cloudflare does not treat `pages.dev` as a zone you own, so that path often does nothing.
 
 **3. Allow only Courtney, Chad, and Nick**
 
