@@ -106,9 +106,13 @@ Human confirm, company-website links, and same-company de-duplication are on Git
 
 ## Step 7 (private Live, then Hunter)
 
-Hunter stays **off** on `https://skirotica.github.io/warm-reception/live/`. That page is still public HTML. Step 7 puts Live behind a Cloudflare login, then turns Hunter on as a Worker service (keys never in the browser).
+Two parts. Access first. Hunter later. Do not mix them.
 
-Class demo at the site root stays public and synthetic.
+Hunter stays **off** on `https://skirotica.github.io/warm-reception/live/`. That page is still public HTML. The browser also refuses Hunter on any `github.io` host even if someone later sets `HUNTER_ENABLED=true` on the Worker.
+
+This turn is the login wall on private Live: `https://warm-reception-live.pages.dev`. Leave `HUNTER_ENABLED` as `false`. Do not run the Hunter commands below until Courtney confirms Access passed (incognito hits a login wall).
+
+Class demo at the site root stays public and synthetic. Jusfy (Brazil) and Aavalynx (UK/EU) stay out of the real-email path until Chad accepts that extra legal load.
 
 ### Courtney: put Live on Cloudflare Pages
 
@@ -134,17 +138,59 @@ npx wrangler deploy
 
 ### Courtney: lock the door (Cloudflare Access)
 
-In Cloudflare: Zero Trust → Access → Applications → Add an application → Self-hosted.
+Do this in the Cloudflare dashboard. You cannot finish this from Wrangler. Do not turn Hunter on yet.
 
-- Application name: Warm Reception Live
-- Domain: the Pages hostname (`warm-reception-live.pages.dev`)
-- Policy: Allow, include emails for you and Chad only
+GitHub Pages Live stays public on purpose. Do not put Access on `skirotica.github.io`. The private copy is `https://warm-reception-live.pages.dev`.
 
-Save. Opening the Pages URL should ask for email login. GitHub Pages Live stays as the old public copy. Use the Pages URL as the real Live from here.
+Cloudflare's shared `pages.dev` host needs Access started from the Pages project. A blank Zero Trust "self-hosted" app pointed at `pages.dev` often does nothing.
 
-### Courtney: turn Hunter on (only after Access works)
+**1. Turn on Access for this Pages project**
 
-Still in `prod-api`:
+1. Open https://dash.cloudflare.com and sign in.
+2. If Cloudflare asks you to create a Zero Trust / Cloudflare One team, finish that once (pick any team name you will remember).
+3. Left nav: **Workers & Pages**.
+4. Open the project named **warm-reception-live**.
+5. **Settings** → **General**.
+6. Select **Enable access policy**.
+
+That creates an Access application. The first toggle often covers preview URLs only (`something.warm-reception-live.pages.dev`). You also need the stable Live URL.
+
+**2. Cover the stable Live URL**
+
+1. On that Access policy row, select **Manage**.
+2. You land in Zero Trust → Access → Applications (labels may say Access controls → Applications).
+3. Open the application for this project. Select **Configure**.
+4. Under **Public hostname**, in **Subdomain**, delete the `*` wildcard so the host is `warm-reception-live.pages.dev` (not `*.warm-reception-live.pages.dev`).
+5. Save.
+
+Then go back to Workers & Pages → **warm-reception-live** → Settings → General and select **Enable access policy** again so hashed preview hosts stay locked too. You should see two applications: one for `warm-reception-live.pages.dev` and one for `*.warm-reception-live.pages.dev`.
+
+**3. Allow only Courtney, Chad, and Nick**
+
+The default policy may only let people on your Cloudflare account through. Change it so the three partners can log in with the emails you already have. Do not invent emails. Do not allow a whole domain such as `@gmail.com`.
+
+1. Zero Trust → Access → Applications → open each Warm Reception Live application.
+2. Edit the **Allow** policy.
+3. Include → **Emails** → add Courtney's email, Chad's email, and Nick's email.
+4. Save.
+
+If Cloudflare asks for a login method, add **One-time PIN**: Zero Trust → Integrations → Identity providers → Add new → **One-time PIN**. Partners type their email and get a short code. No Google Workspace required.
+
+**4. Prove the wall (do this before Hunter)**
+
+1. Open a private / incognito window so you are not already logged into Cloudflare.
+2. Go to https://warm-reception-live.pages.dev
+3. You should see a Cloudflare login wall, not the Live queue.
+4. Sign in with your allowed email. After the code, you should see Live as before (queue, Save API, Save code, Run).
+5. Leave GitHub Pages Live public: https://skirotica.github.io/warm-reception/live/ still opens with no login, and Hunter stays off there.
+
+**Stop here.** Reply that Access passed. Do not set `HUNTER_ENABLED=true` until that reply.
+
+### Courtney: turn Hunter on (later turn only)
+
+Skip this whole block until Access passed. `HUNTER_ENABLED` is currently `"false"` in `prod-api/wrangler.toml`. Leave it.
+
+Still in `prod-api` (next turn, after Access):
 
 ```
 npx wrangler secret put HUNTER_API_KEY
@@ -162,13 +208,17 @@ In `wrangler.toml` set `HUNTER_ENABLED = "true"`, then:
 npx wrangler deploy
 ```
 
-Do not set `HUNTER_ENABLED` while partners still use the public GitHub Pages Live URL.
+Do not set `HUNTER_ENABLED` while partners still use the public GitHub Pages Live URL as the working Live. GitHub Pages Live stays Hunter-off in the browser even after this Worker flag is on.
 
-### Chad / Courtney: prove the private tool
+### Chad / Courtney: prove Access (this turn)
 
-1. Open the Pages Live URL (not GitHub Pages). Cloudflare email login should appear.
-2. Save API and Save code as before.
-3. Confirm one Exa company, click Run. If Hunter is on, the run should look up emails at that domain. Approve / Edit / Escalate still required. No mailbox send.
+1. Incognito: https://warm-reception-live.pages.dev shows a login wall, not the queue.
+2. After login: Live looks as before. Save API and Save code still work. Run still needs Approve / Edit / Escalate. No mailbox send.
+3. GitHub Pages Live still has no login wall and no Hunter.
+
+### Chad / Courtney: prove Hunter (later turn only)
+
+After Access passed and Hunter is on: open the Pages Live URL (not GitHub Pages), confirm one Exa company, click Run. Email lookup may run at that domain. Skip Jusfy and Aavalynx until Chad accepts extra legal load. Approve / Edit / Escalate still required. No mailbox send.
 
 ## What not to paste on Live
 
