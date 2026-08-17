@@ -5,3 +5,4 @@ deploy-companion/
 *.key
 .DS_Store
 Thumbs.db
+.wrangler/

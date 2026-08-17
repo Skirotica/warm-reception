@@ -1,8 +1,15 @@
 /**
- * Hunter proxy for Warm Reception (GitHub Pages).
+ * Hunter proxy for Warm Reception.
  * Deploy on Cloudflare Workers.
  *
- * Secrets (one Worker, two keys if Hunter split them by product):
+ * Privacy: Hunter stays off on public GitHub Pages. Do not add
+ * https://skirotica.github.io to ALLOWED_ORIGINS until the tool is private
+ * (Cloudflare Access or partner sign-in, step 4/5).
+ *
+ * Origin allowlist is friction, not a lock. Never return API keys.
+ * Do not accept a browser-supplied Hunter key (query api_key is rejected).
+ *
+ * Secrets:
  *   HUNTER_EMAIL_FINDER_KEY  — Email Finder product key
  *   HUNTER_DOMAIN_SEARCH_KEY — Domain Search product key
  * Fallback: HUNTER_API_KEY used for either route if the specific secret is missing.
@@ -10,17 +17,33 @@
  * Routes:
  *   GET /email-finder?domain=&first_name=&last_name=&linkedin_handle=
  *   GET /domain-search?domain=&limit=10
- * Response: Hunter JSON passthrough (+ CORS for the Pages origin).
  */
+
+function parseAllowedOrigins(env) {
+  const raw = (env && env.ALLOWED_ORIGINS) || "";
+  return raw.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+function corsHeaders(origin) {
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    Vary: "Origin"
+  };
+}
+
 export default {
   async fetch(request, env) {
-    const origin = request.headers.get("Origin") || "*";
-    const cors = {
-      "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Methods": "GET,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Accept",
-      Vary: "Origin"
-    };
+    const allowed = parseAllowedOrigins(env);
+    const origin = request.headers.get("Origin") || "";
+    if (!origin || allowed.indexOf(origin) === -1) {
+      return new Response(JSON.stringify({ errors: [{ details: "Origin not allowed" }] }), {
+        status: 403,
+        headers: { "Content-Type": "application/json", Vary: "Origin" }
+      });
+    }
+    const cors = corsHeaders(origin);
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
@@ -28,6 +51,13 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "") || "/";
+
+    if (url.searchParams.get("api_key")) {
+      return new Response(
+        JSON.stringify({ errors: [{ details: "Do not send a Hunter key to this worker" }] }),
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } }
+      );
+    }
 
     let hunterUrl;
     let apiKey;

@@ -789,6 +789,8 @@ body.is-demo .live-only { display: none !important; }
 
   <script>
     const MODEL = "claude-sonnet-4-5";
+    // Capstone demo only: Anthropic key in Settings / localStorage is OK for the graded prototype.
+    // Live production (live/index.html) uses a Cloudflare Worker and must not paste provider keys.
     const API_KEY_STORAGE = "warm_reception_anthropic_api_key";
     const HUNTER_KEY_STORAGE = "warm_reception_hunter_email_finder_key";
     const HUNTER_PROXY_STORAGE = "warm_reception_hunter_proxy_url";

@@ -2,8 +2,12 @@ name = "warm-reception-hunter"
 main = "worker.js"
 compatibility_date = "2026-08-01"
 
-# After deploy:
-#   npx wrangler secret put HUNTER_API_KEY
-#   (paste your Hunter Email Finder key when prompted)
-# Then put the worker URL into Warm Reception Settings → Hunter proxy URL
-# Example: https://warm-reception-hunter.<your-subdomain>.workers.dev
+# Privacy: do not add https://skirotica.github.io until Live is private
+# (Cloudflare Access or partner sign-in). Hunter stays off on public Pages.
+[vars]
+ALLOWED_ORIGINS = "http://localhost:8765,http://127.0.0.1:8765"
+
+# Secrets:
+#   npx wrangler secret put HUNTER_EMAIL_FINDER_KEY
+#   npx wrangler secret put HUNTER_DOMAIN_SEARCH_KEY
+# Fallback: npx wrangler secret put HUNTER_API_KEY

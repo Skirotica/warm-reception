@@ -1,3 +1,10 @@
 name = "warm-reception-exa-proxy"
 main = "worker.js"
 compatibility_date = "2024-11-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://skirotica.github.io,http://localhost:8765,http://127.0.0.1:8765"
+
+# Secret:
+#   npx wrangler secret put EXA_API_KEY
+# Prefer prod-api/ for Live. This worker is the old Exa-only URL.

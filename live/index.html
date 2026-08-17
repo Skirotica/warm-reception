@@ -570,19 +570,11 @@ body.is-demo .live-only { display: none !important; }
     <button type="button" class="btn primary" id="run-all-btn">Run All</button>
     <span class="meta" id="run-all-progress"></span>
     <div class="settings">
-      <input id="api-key" type="password" autocomplete="off" aria-label="Anthropic API key" placeholder="Anthropic API key" />
-      <button type="button" class="btn" id="save-key">Save</button>
-      <button type="button" class="btn" id="clear-key">Clear</button>
-      <span class="key-status" id="key-status">No Anthropic key</span>
-      <input id="hunter-key" type="password" autocomplete="off" aria-label="Hunter Email Finder API key" placeholder="Hunter Email Finder key" />
-      <button type="button" class="btn" id="save-hunter-key">Save Hunter</button>
-      <button type="button" class="btn" id="clear-hunter-key">Clear Hunter</button>
-      <span class="key-status" id="hunter-key-status">No Hunter key</span>
-      <input id="hunter-proxy-url" type="url" autocomplete="off" aria-label="Hunter proxy URL" placeholder="Hunter proxy URL (required on Pages)" />
-      <button type="button" class="btn" id="save-hunter-proxy">Save Hunter proxy</button>
-      <input class="live-only" id="exa-proxy-url" type="url" autocomplete="off" aria-label="Exa proxy URL" placeholder="Exa proxy URL (live refresh)" />
-      <button type="button" class="btn live-only" id="save-exa-proxy">Save Exa proxy</button>
-      <span class="key-status live-only" id="exa-proxy-status">No Exa proxy</span>
+      <!-- Live production: only the Cloudflare Worker URL. Never Anthropic / Hunter / Exa keys. See live/OPERATOR.md. -->
+      <input id="prod-api-url" type="url" autocomplete="off" aria-label="Production API base URL" placeholder="Production API URL (Cloudflare Worker)" />
+      <button type="button" class="btn" id="save-prod-api">Save API</button>
+      <button type="button" class="btn" id="clear-prod-api">Clear API</button>
+      <span class="key-status" id="prod-api-status">No production API URL</span>
     </div>
   </header>
 
@@ -762,10 +754,10 @@ body.is-demo .live-only { display: none !important; }
                 <strong>Data contract:</strong> The agent only sees the embedded candidate events, company profiles, ICP contacts, pre-qualified whitelist, and company status in this file’s exact shape. Live CRM, ATS, or free-form paste is not supported.
               </li>
               <li>
-                <strong>Lookups and send:</strong> Event research cites Exa.ai. On live cases, Hunter.io Domain Search loads the company email roster into company_contacts; the agent picks a qualified POC or No-gos with a plain reason (e.g. found an IT specialist, not a fit). Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 still demos embedded missing-email rules. GitHub Pages needs a Hunter proxy URL. Nothing leaves without human Approve.
+                <strong>Lookups and send:</strong> Event research cites Exa.ai through the production API worker (no Exa key in this page). Hunter.io stays off on public GitHub Pages (privacy review). Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 at the site root still demos embedded missing-email rules. Nothing leaves without human Approve.
               </li>
               <li>
-                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Capstone demo checks embedded company_contacts (CE-08). Live path also discovers ICP-title alternates via Hunter Domain Search when preferred email is blank.
+                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Capstone demo checks embedded company_contacts (CE-08). Live public Pages does not run Hunter; add a qualified POC in the gate until the tool is private.
               </li>
               <li>
                 <strong>Review agent stretch:</strong> A second agent critiques the worker before the human gate (looks right / needs attention). It adds latency and token cost; the human still makes the final Approve / Edit / Escalate click.
@@ -789,18 +781,44 @@ body.is-demo .live-only { display: none !important; }
 
   <script>
     const MODEL = "claude-sonnet-4-5";
+    // Live must not read or send provider keys. Demo at site root still uses API_KEY_STORAGE.
     const API_KEY_STORAGE = "warm_reception_anthropic_api_key";
     const HUNTER_KEY_STORAGE = "warm_reception_hunter_email_finder_key";
     const HUNTER_PROXY_STORAGE = "warm_reception_hunter_proxy_url";
     const EXA_PROXY_STORAGE = "warm_reception_exa_proxy_url";
+    const PROD_API_STORAGE = "warm_reception_prod_api_url";
 
-    function normalizeExaProxyBase(raw) {
+    function normalizeWorkerBase(raw) {
       var base = String(raw || "").trim();
       if (!base) return "";
-      // Accept paste of .../search or .../search?q=... — app always appends /search itself.
+      // Accept paste of .../search or .../v1/messages — app appends routes itself.
       base = base.replace(/\/search\/?(?:\?.*)?$/i, "");
+      base = base.replace(/\/v1\/messages\/?$/i, "");
       base = base.replace(/\/$/, "");
       return base;
+    }
+
+    function normalizeExaProxyBase(raw) {
+      return normalizeWorkerBase(raw);
+    }
+
+    function prodApiBase() {
+      return normalizeWorkerBase(localStorage.getItem(PROD_API_STORAGE) || "");
+    }
+
+    function exaApiBase() {
+      var prod = prodApiBase();
+      if (prod) return prod;
+      return normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
+    }
+
+    function anthropicMessagesUrl() {
+      return prodApiBase() + "/v1/messages";
+    }
+
+    function anthropicHeaders() {
+      // Worker holds ANTHROPIC_API_KEY. Do not send x-api-key or browser-access headers.
+      return { "content-type": "application/json" };
     }
     const LIVE_EXTRAS_STORAGE = "warm_reception_live_extras_v1";
     const EVAL_RESULTS_STORAGE = "warm_reception_eval_results_v3";
@@ -1955,7 +1973,7 @@ body.is-demo .live-only { display: none !important; }
         if (panelHead) panelHead.textContent = "Chad · Live review queue";
         if (banner) {
           banner.classList.add("visible");
-          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker, not in this page. Hunter stays off on public Pages. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
         activeVoicePartnerId = "partner_c";
@@ -2010,10 +2028,8 @@ body.is-demo .live-only { display: none !important; }
     }
 
     /**
-     * Hunter Email Finder + Domain Search. Pages cannot call api.hunter.io directly (CORS).
-     * Prefer a proxy URL (Cloudflare Worker) that holds the server-side key.
-     * Live path: preferred Email Finder miss -> Domain Search for ICP-title alternates.
-     * Capstone demo CE-08 uses the same company_contacts preferred-vs-alternate rules with embedded contacts.
+     * Hunter Email Finder + Domain Search. Kept for a later private deploy (step 4/5).
+     * Live on public GitHub Pages never calls Hunter (privacy review).
      */
     function hunterProxyBase() {
       return (localStorage.getItem(HUNTER_PROXY_STORAGE) || "").trim().replace(/\/$/, "");
@@ -2024,6 +2040,10 @@ body.is-demo .live-only { display: none !important; }
     }
 
     async function hunterFetchJson(pathAndQuery) {
+      // Privacy: Hunter stays off on public GitHub Pages. Do not call Hunter or send a key.
+      if (IS_LIVE) {
+        return { ok: false, detail: "hunter_off_public_pages", data: null, status: 0 };
+      }
       var proxyBase = hunterProxyBase();
       var hunterKey = hunterKeySaved();
       var url;
@@ -2619,9 +2639,8 @@ body.is-demo .live-only { display: none !important; }
     ].join("\n");
 
     async function coachVoiceFromEdit(partnerId, beforeSnap, afterSnap, ev) {
-      var key = localStorage.getItem(API_KEY_STORAGE) || "";
-      if (!key) {
-        return { ok: false, detail: "no_key", notes: [] };
+      if (!prodApiBase()) {
+        return { ok: false, detail: "no_prod_api", notes: [] };
       }
       var name = partnerDisplayName(partnerId);
       var userMessage = [
@@ -2636,14 +2655,9 @@ body.is-demo .live-only { display: none !important; }
         JSON.stringify(afterSnap, null, 2)
       ].join("\n");
       try {
-        var response = await fetch("https://api.anthropic.com/v1/messages", {
+        var response = await fetch(anthropicMessagesUrl(), {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true"
-          },
+          headers: anthropicHeaders(),
           body: JSON.stringify({
             model: MODEL,
             max_tokens: 500,
@@ -2722,8 +2736,7 @@ body.is-demo .live-only { display: none !important; }
       var partnerId = partnerIdForCase(ev);
       var notes = voiceNotesForPartner(partnerId);
       if (!notes.length) return fields;
-      var key = localStorage.getItem(API_KEY_STORAGE) || "";
-      if (!key) return fields;
+      if (!prodApiBase()) return fields;
       var userMessage = [
         "Partner: " + partnerDisplayName(partnerId) + " (" + partnerId + ")",
         "Apply ONLY this partner's voice rules to the drafts below.",
@@ -2735,14 +2748,9 @@ body.is-demo .live-only { display: none !important; }
         JSON.stringify(snapshotSequenceDrafts(fields), null, 2)
       ].join("\n");
       try {
-        var response = await fetch("https://api.anthropic.com/v1/messages", {
+        var response = await fetch(anthropicMessagesUrl(), {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true"
-          },
+          headers: anthropicHeaders(),
           body: JSON.stringify({
             model: MODEL,
             max_tokens: 2200,
@@ -3446,9 +3454,9 @@ body.is-demo .live-only { display: none !important; }
           nums: nums
         };
       }
-      var proxyBase = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
+      var proxyBase = exaApiBase();
       if (!proxyBase) {
-        return { ok: false, skipped: true, detail: "no_exa_proxy", nums: nums };
+        return { ok: false, skipped: true, detail: "no_prod_api", nums: nums };
       }
       var q = encodeURIComponent(
         (ev.company_name || "") +
@@ -3710,10 +3718,13 @@ body.is-demo .live-only { display: none !important; }
       var lower = text.toLowerCase();
       if (!navigator.onLine) return "You appear offline. Check your internet connection and try again.";
       if (statusCode === 401 || (lower.indexOf("invalid") !== -1 && lower.indexOf("key") !== -1) || lower.indexOf("authentication") !== -1) {
-        return "Bad API key. Open Settings, paste a valid key, click Save, then try again.";
+        return "The production API worker rejected the stored Anthropic key. Chad should update ANTHROPIC_API_KEY with wrangler secret put, then try again. Do not paste a key into this page.";
       }
       if (statusCode === 402 || lower.indexOf("credit") !== -1 || lower.indexOf("billing") !== -1 || lower.indexOf("quota") !== -1) {
-        return "No API credit or billing issue on this account.";
+        return "No API credit or billing issue on the Anthropic account tied to the worker.";
+      }
+      if (statusCode === 403 && (lower.indexOf("origin") !== -1 || lower.indexOf("hunter is disabled") !== -1)) {
+        return "The production API worker refused this request (origin or Hunter-off). Open live/OPERATOR.md.";
       }
       if (statusCode === 429) return "Rate limited. Wait a moment and try again.";
       if (err && err.name === "TypeError") {
@@ -3721,13 +3732,13 @@ body.is-demo .live-only { display: none !important; }
         try {
           if (location.protocol === "file:") {
             originHint =
-              " You opened this page as a local file (file://). Serve the folder over http instead: in that folder run  python -m http.server 8765  then open http://localhost:8765/index.html";
+              " You opened this page as a local file (file://). Serve the folder over http instead: in that folder run  python -m http.server 8765  then open http://localhost:8765/live/index.html";
           }
         } catch (e) { /* ignore */ }
         return (
-          "Network error (Failed to fetch). The browser never reached the API." +
+          "Network error (Failed to fetch). The browser never reached the production API worker." +
           originHint +
-          " Also check: internet on, VPN/firewall not blocking api.anthropic.com, API key still Saved in the top bar."
+          " Check: internet on, production API URL saved in Settings, worker deployed."
         );
       }
       if (responseText) return "API error: " + responseText;
@@ -4163,11 +4174,10 @@ body.is-demo .live-only { display: none !important; }
     }
 
     async function runReviewerAgent(ev, resultEl, workerRaw) {
-      var key = localStorage.getItem(API_KEY_STORAGE) || "";
-      if (!key) {
+      if (!prodApiBase()) {
         renderReviewerPanel(resultEl, {
           verdict: "needs attention",
-          reason: "Reviewer skipped — no API key saved."
+          reason: "Reviewer skipped. Save the production API URL in Settings."
         });
         return resultEl._reviewer;
       }
@@ -4201,14 +4211,9 @@ body.is-demo .live-only { display: none !important; }
       ].join("\n");
 
       try {
-        var response = await fetch("https://api.anthropic.com/v1/messages", {
+        var response = await fetch(anthropicMessagesUrl(), {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true"
-          },
+          headers: anthropicHeaders(),
           body: JSON.stringify({
             model: MODEL,
             max_tokens: 300,
@@ -4584,10 +4589,9 @@ body.is-demo .live-only { display: none !important; }
     }
 
     async function runAgentForCase(ev, resultEl, buttonEl) {
-      var key = localStorage.getItem(API_KEY_STORAGE) || "";
-      if (!key) {
-        resultEl.innerHTML = '<div class="error-note">No Anthropic API key saved. Paste your key in the top bar and click Save first.</div>';
-        return { kind: "error", detail: "no_key" };
+      if (!prodApiBase()) {
+        resultEl.innerHTML = '<div class="error-note">No production API URL saved. Paste the Cloudflare Worker URL in Settings and click Save API. Do not paste Anthropic or Hunter keys here.</div>';
+        return { kind: "error", detail: "no_prod_api" };
       }
       buttonEl.disabled = true;
       resultEl.innerHTML = '<span class="thinking">Running…</span>';
@@ -4598,7 +4602,10 @@ body.is-demo .live-only { display: none !important; }
       var exaIcpLive = null;
       var seedContact = contactsForCompany(ev.company_id)[0] || null;
       var skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
+      // Privacy review: Hunter stays off on public GitHub Pages until the tool is private (step 4/5).
+      var hunterOffPublicPages = IS_LIVE;
       var shouldEnrichHunter =
+        !hunterOffPublicPages &&
         !skipHunterForIcp &&
         ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
 
@@ -4608,6 +4615,7 @@ body.is-demo .live-only { display: none !important; }
         exaIcpLive = await enrichIcpFieldsViaExa(ev);
         skipHunterForIcp = companyClearlyOutOfIcpSize(ev);
         shouldEnrichHunter =
+          !hunterOffPublicPages &&
           !skipHunterForIcp &&
           ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
         if (exaIcpLive && !exaIcpLive.skipped) {
@@ -4627,7 +4635,22 @@ body.is-demo .live-only { display: none !important; }
         if (metaEl) metaEl.textContent = "Running " + ev.case_id;
       }
 
-      if (skipHunterForIcp) {
+      if (hunterOffPublicPages) {
+        hunterLive = {
+          live: false,
+          status: "skipped_public_pages",
+          detail: "Hunter.io is off on the public live page. Add a POC email in the human gate if you want Go and Black Gavel. Hunter turns on after the tool is private (Cloudflare Access or partner sign-in).",
+          domain_search: { ran: false, skipped_reason: "public_pages_privacy" }
+        };
+        appendRunLog({
+          time: new Date().toLocaleTimeString(),
+          case_id: ev.case_id,
+          company_name: ev.company_name,
+          agent_decision: "hunter/skipped_public_pages",
+          human_action: "_system",
+          detail: hunterLive.detail
+        });
+      } else if (skipHunterForIcp) {
         hunterLive = {
           live: false,
           status: "skipped_out_of_icp_size",
@@ -4773,14 +4796,9 @@ body.is-demo .live-only { display: none !important; }
       ].join("\n");
 
       try {
-        var response = await fetch("https://api.anthropic.com/v1/messages", {
+        var response = await fetch(anthropicMessagesUrl(), {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true"
-          },
+          headers: anthropicHeaders(),
           body: JSON.stringify({
             model: MODEL,
             max_tokens: 2800,
@@ -4856,8 +4874,8 @@ body.is-demo .live-only { display: none !important; }
     var queueNogo = document.getElementById("queue-nogo");
     var queueAmbiguous = document.getElementById("queue-ambiguous");
     var queuePending = document.getElementById("queue-pending");
-    var keyInput = document.getElementById("api-key");
-    var keyStatus = document.getElementById("key-status");
+    var prodApiInput = document.getElementById("prod-api-url");
+    var prodApiStatus = document.getElementById("prod-api-status");
     var promptView = document.getElementById("system-prompt-view");
     var policyUl = document.getElementById("policy-list");
     var evalList = document.getElementById("eval-list");
@@ -5439,9 +5457,8 @@ body.is-demo .live-only { display: none !important; }
       var runAllBtn = document.getElementById("run-all-btn");
       var progressEl = document.getElementById("run-all-progress");
       var summaryEl = document.getElementById("run-all-summary");
-      var key = localStorage.getItem(API_KEY_STORAGE) || "";
-      if (!key) {
-        summaryEl.textContent = "Save an API key before Run All.";
+      if (!prodApiBase()) {
+        summaryEl.textContent = "Save the production API URL in Settings before Run All. Do not paste an Anthropic key here.";
         return;
       }
       runAllBtn.disabled = true;
@@ -5488,115 +5505,49 @@ body.is-demo .live-only { display: none !important; }
       runAllCases();
     });
 
-    function refreshKeyStatus() {
-      var saved = localStorage.getItem(API_KEY_STORAGE) || "";
-      if (saved) {
-        keyStatus.textContent = "Anthropic saved";
-        keyInput.value = "";
-        keyInput.placeholder = "Anthropic ••••••••";
-      } else {
-        keyStatus.textContent = "No Anthropic key";
-        keyInput.placeholder = "Anthropic API key";
+    function refreshProdApiStatus() {
+      var saved = prodApiBase();
+      if (prodApiStatus) {
+        prodApiStatus.textContent = saved ? "Production API saved" : "No production API URL";
+      }
+      if (prodApiInput && saved) prodApiInput.value = saved;
+      else if (prodApiInput && !saved) {
+        var legacyExa = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
+        if (legacyExa) prodApiInput.placeholder = "Old Exa URL found. Save the prod-api worker URL instead.";
       }
     }
 
-    function refreshHunterKeyStatus() {
-      var hunterStatus = document.getElementById("hunter-key-status");
-      var hunterInput = document.getElementById("hunter-key");
-      var proxyInput = document.getElementById("hunter-proxy-url");
-      var saved = localStorage.getItem(HUNTER_KEY_STORAGE) || "";
-      var proxy = localStorage.getItem(HUNTER_PROXY_STORAGE) || "";
-      if (hunterStatus) {
-        if (proxy) hunterStatus.textContent = saved ? "Hunter + proxy saved" : "Hunter proxy saved";
-        else if (saved) hunterStatus.textContent = "Hunter key saved (needs proxy on Pages)";
-        else hunterStatus.textContent = "No Hunter key";
-      }
-      if (hunterInput && saved) {
-        hunterInput.value = "";
-        hunterInput.placeholder = "Hunter ••••••••";
-      } else if (hunterInput) {
-        hunterInput.placeholder = "Hunter Email Finder key";
-      }
-      if (proxyInput && proxy) proxyInput.value = proxy;
-    }
-
-    document.getElementById("save-key").addEventListener("click", function () {
-      var value = (keyInput.value || "").trim();
-      if (!value) {
-        keyStatus.textContent = "Paste a key before saving";
-        return;
-      }
-      localStorage.setItem(API_KEY_STORAGE, value);
-      keyInput.value = "";
-      refreshKeyStatus();
-    });
-
-    document.getElementById("clear-key").addEventListener("click", function () {
-      localStorage.removeItem(API_KEY_STORAGE);
-      keyInput.value = "";
-      refreshKeyStatus();
-    });
-
-    document.getElementById("save-hunter-key").addEventListener("click", function () {
-      var hunterInput = document.getElementById("hunter-key");
-      var value = (hunterInput && hunterInput.value || "").trim();
-      if (!value) {
-        var st = document.getElementById("hunter-key-status");
-        if (st) st.textContent = "Paste Hunter Email Finder key first";
-        return;
-      }
-      localStorage.setItem(HUNTER_KEY_STORAGE, value);
-      if (hunterInput) hunterInput.value = "";
-      refreshHunterKeyStatus();
-    });
-
-    document.getElementById("clear-hunter-key").addEventListener("click", function () {
-      localStorage.removeItem(HUNTER_KEY_STORAGE);
-      var hunterInput = document.getElementById("hunter-key");
-      if (hunterInput) hunterInput.value = "";
-      refreshHunterKeyStatus();
-    });
-
-    document.getElementById("save-hunter-proxy").addEventListener("click", function () {
-      var proxyInput = document.getElementById("hunter-proxy-url");
-      var value = (proxyInput && proxyInput.value || "").trim().replace(/\/$/, "");
-      if (!value) {
-        localStorage.removeItem(HUNTER_PROXY_STORAGE);
-      } else {
-        localStorage.setItem(HUNTER_PROXY_STORAGE, value);
-      }
-      refreshHunterKeyStatus();
-    });
-
-    refreshKeyStatus();
-    refreshHunterKeyStatus();
-
-    function refreshExaProxyStatus() {
-      var status = document.getElementById("exa-proxy-status");
-      var input = document.getElementById("exa-proxy-url");
-      var proxy = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
-      if (status) status.textContent = proxy ? "Exa proxy saved" : "No Exa proxy";
-      if (input && proxy) input.value = proxy;
-    }
-
-    var saveExaProxyBtn = document.getElementById("save-exa-proxy");
-    if (saveExaProxyBtn) {
-      saveExaProxyBtn.addEventListener("click", function () {
-        var input = document.getElementById("exa-proxy-url");
-        var value = normalizeExaProxyBase(input && input.value ? input.value : "");
-        if (!value) localStorage.removeItem(EXA_PROXY_STORAGE);
-        else localStorage.setItem(EXA_PROXY_STORAGE, value);
-        refreshExaProxyStatus();
+    var saveProdApiBtn = document.getElementById("save-prod-api");
+    if (saveProdApiBtn) {
+      saveProdApiBtn.addEventListener("click", function () {
+        var value = normalizeWorkerBase(prodApiInput && prodApiInput.value ? prodApiInput.value : "");
+        if (!value) {
+          if (prodApiStatus) prodApiStatus.textContent = "Paste the Cloudflare Worker URL first";
+          return;
+        }
+        localStorage.setItem(PROD_API_STORAGE, value);
+        refreshProdApiStatus();
       });
     }
+
+    var clearProdApiBtn = document.getElementById("clear-prod-api");
+    if (clearProdApiBtn) {
+      clearProdApiBtn.addEventListener("click", function () {
+        localStorage.removeItem(PROD_API_STORAGE);
+        if (prodApiInput) prodApiInput.value = "";
+        refreshProdApiStatus();
+      });
+    }
+
+    refreshProdApiStatus();
 
     var refreshExaBtn = document.getElementById("btn-refresh-exa");
     if (refreshExaBtn) {
       refreshExaBtn.addEventListener("click", async function () {
         var statusEl = document.getElementById("live-refresh-status");
-        var proxyBase = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
+        var proxyBase = exaApiBase();
         if (!proxyBase) {
-          if (statusEl) statusEl.textContent = "Save an Exa proxy URL first (Cloudflare Worker).";
+          if (statusEl) statusEl.textContent = "Save the production API URL first (Cloudflare Worker).";
           return;
         }
         refreshExaBtn.disabled = true;
@@ -5636,8 +5587,6 @@ body.is-demo .live-only { display: none !important; }
         if (statusEl) statusEl.textContent = "Cleared refreshed extras.";
       });
     }
-
-    refreshExaProxyStatus();
 
     renderRunLog();
     wireVoiceMemoryPanel();

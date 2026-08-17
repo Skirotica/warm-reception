@@ -1,0 +1,19 @@
+name = "warm-reception-prod-api"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+# Origin allowlist is friction, not a lock. GitHub Pages origin is the whole
+# site (demo + live). Real lock is Cloudflare Access or partner sign-in (step 4).
+# Do not put a gate secret in live/index.html. It would be visible in the page.
+[vars]
+ALLOWED_ORIGINS = "https://skirotica.github.io,http://localhost:8765,http://127.0.0.1:8765"
+HUNTER_ENABLED = "false"
+
+# Secrets (set after deploy, never commit):
+#   npx wrangler secret put ANTHROPIC_API_KEY
+#   npx wrangler secret put EXA_API_KEY
+# Do not set Hunter secrets while HUNTER_ENABLED is false (public Pages).
+# After the tool is private (step 4/5):
+#   npx wrangler secret put HUNTER_API_KEY
+#   npx wrangler secret put HUNTER_DOMAIN_SEARCH_KEY
+#   then set HUNTER_ENABLED = "true" in this file and redeploy.
