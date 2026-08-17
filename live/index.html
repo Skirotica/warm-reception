@@ -2892,6 +2892,10 @@ body.is-demo .live-only { display: none !important; }
 
         runBtn.addEventListener("click", function (e) {
           e.stopPropagation();
+          var uiNow = CASE_UI[ev.case_id];
+          if (uiNow && (uiNow.lastFields || uiNow.lastHtml || STORE_RESULTS[ev.case_id])) {
+            clearCaseRunOutput(ev);
+          }
           if (!row.classList.contains("open")) toggleRow(ev.case_id);
           runAgentForCase(ev, resultEl, runBtn);
         });
@@ -5012,6 +5016,75 @@ body.is-demo .live-only { display: none !important; }
       storePutBlob("results", STORE_RESULTS);
     }
 
+    function contactIsHumanSupplied(c) {
+      return String((c && c.discovered_via) || "") === "human_override";
+    }
+
+    function contactIsHunterSourced(c) {
+      if (!c || contactIsHumanSupplied(c)) return false;
+      var via = String(c.discovered_via || "");
+      if (via.indexOf("hunter") !== -1) return true;
+      if (String(c.contact_id || "").indexOf("CT-H-") === 0) return true;
+      return false;
+    }
+
+    function clearHunterContactsForCompany(companyId) {
+      if (!companyId) return;
+      var keptIds = {};
+      for (var i = ICP_CONTACTS.length - 1; i >= 0; i--) {
+        var c = ICP_CONTACTS[i];
+        if (c.company_id !== companyId) continue;
+        if (contactIsHunterSourced(c)) {
+          ICP_CONTACTS.splice(i, 1);
+          continue;
+        }
+        keptIds[c.contact_id] = true;
+      }
+      if (EMPLOYMENT_CHECK && Array.isArray(EMPLOYMENT_CHECK.checks)) {
+        EMPLOYMENT_CHECK.checks = EMPLOYMENT_CHECK.checks.filter(function (row) {
+          if (row.company_id !== companyId) return true;
+          if (keptIds[row.contact_id]) return true;
+          return String(row.contact_id || "").indexOf("CT-H-") !== 0;
+        });
+      }
+      var extras = loadLiveExtras();
+      extras.contacts = (extras.contacts || []).filter(function (c) {
+        if (c.company_id !== companyId) return true;
+        return !contactIsHunterSourced(c);
+      });
+      extras.employment = (extras.employment || []).filter(function (row) {
+        if (row.company_id !== companyId) return true;
+        if (String(row.contact_id || "").indexOf("CT-H-") === 0) return false;
+        return true;
+      });
+      saveLiveExtras(extras);
+    }
+
+    function clearCaseRunOutput(ev) {
+      if (!ev) return;
+      var caseId = ev.case_id;
+      var ui = CASE_UI[caseId];
+      clearHunterContactsForCompany(ev.company_id);
+      delete STORE_RESULTS[caseId];
+      storePutBlob("results", STORE_RESULTS);
+      if (ui) {
+        ui.lastFields = null;
+        ui.lastHtml = null;
+        ui.humanComplete = false;
+        ui.humanStateText = "";
+        ui.humanOutcome = "";
+        ui._hunterLive = null;
+        if (ui.resultEl) {
+          ui.resultEl.className = "agent-result empty";
+          ui.resultEl.innerHTML = '<div class="empty"><div class="headline">Not run yet</div>Click Run to evaluate this case.</div>';
+          ui.resultEl._lastFields = null;
+          ui.resultEl._hunterLive = null;
+          ui.resultEl._humanComplete = false;
+        }
+        updateRowSummary(caseId, null);
+      }
+    }
+
     function appendRunLog(entry) {
       if (window.__WR_SILENT_STORE__) return;
       RUN_LOG.push(entry);
@@ -6177,12 +6250,11 @@ body.is-demo .live-only { display: none !important; }
       if (ui.summaryDecisionEl) ui.summaryDecisionEl.textContent = decision;
       if (ui.summaryPocEl) ui.summaryPocEl.textContent = poc || "—";
       placeRowInGroup(caseId, fields || null);
-      // Product review queue: one agent pass per case. Hide Run after completion.
-      if (ui.runActionsEl) {
-        ui.runActionsEl.style.display = fields ? "none" : "";
-      } else if (ui.runBtn) {
-        ui.runBtn.style.display = fields ? "none" : "";
+      if (ui.runBtn) {
+        ui.runBtn.textContent = fields ? "Run again" : "Run";
+        ui.runBtn.style.display = "";
       }
+      if (ui.runActionsEl) ui.runActionsEl.style.display = "";
     }
 
     function buildExpandContent(ev) {
