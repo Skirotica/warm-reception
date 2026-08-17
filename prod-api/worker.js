@@ -27,10 +27,21 @@ function parseAllowedOrigins(env) {
   return ["https://skirotica.github.io"];
 }
 
+function originAllowed(origin, allowed) {
+  if (!origin) return false;
+  if (allowed.indexOf(origin) !== -1) return true;
+  try {
+    var host = new URL(origin).hostname.toLowerCase();
+    // Preview deploys are https://<hash>.warm-reception-live.pages.dev
+    if (/(^|\.)warm-reception-live\.pages\.dev$/.test(host)) return true;
+  } catch (e) { /* ignore */ }
+  return false;
+}
+
 function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Accept, X-Partner-Access",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin"
@@ -345,7 +356,7 @@ export default {
   async fetch(request, env) {
     const allowed = parseAllowedOrigins(env);
     const origin = request.headers.get("Origin") || "";
-    if (!origin || allowed.indexOf(origin) === -1) {
+    if (!originAllowed(origin, allowed)) {
       return jsonResponse(
         { error: "Origin not allowed" },
         403,

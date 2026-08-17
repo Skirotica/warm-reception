@@ -5,7 +5,7 @@ compatibility_date = "2026-08-01"
 # Origin allowlist is friction, not a lock. Step 4: PARTNER_ACCESS_CODE secret.
 # Partners type the code in Live. It is not in the HTML. Hunter stays off on Pages.
 [vars]
-ALLOWED_ORIGINS = "https://skirotica.github.io,http://localhost:8765,http://127.0.0.1:8765"
+ALLOWED_ORIGINS = "https://skirotica.github.io,https://warm-reception-live.pages.dev,https://5fe9b356.warm-reception-live.pages.dev,http://localhost:8765,http://127.0.0.1:8765"
 HUNTER_ENABLED = "false"
 
 # Secrets (set after deploy, never commit):

@@ -942,7 +942,7 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function storePutBlob(key, value) {
-      storeFetch("/store/blob/" + key, "PUT", value);
+      return storeFetch("/store/blob/" + key, "PUT", value);
     }
 
     function storePostAudit(entry) {
@@ -967,7 +967,8 @@ body.is-demo .live-only { display: none !important; }
       if (/[?&]mode=live(?:&|$)/i.test(search)) return "live";
       var host = String(location.hostname || "").toLowerCase();
       // Cloudflare Pages deploys the live folder as the site root, so there is no /live/ path.
-      if (/warm-reception-live\.pages\.dev$/i.test(host)) return "live";
+      // Treat warm-reception-live.pages.dev and *.warm-reception-live.pages.dev as live.
+      if (/(^|\.)warm-reception-live\.pages\.dev$/i.test(host)) return "live";
       var path = String(location.pathname || "").toLowerCase().replace(/\\/g, "/");
       if (/(?:^|\/)live\/(?:index\.html)?$/.test(path) || /\/live\/?$/.test(path)) return "live";
       return "demo";
@@ -1382,7 +1383,7 @@ body.is-demo .live-only { display: none !important; }
     function saveLiveExtras(bundle) {
       var payload = bundle || { events: [], profiles: [], contacts: [], statuses: [], employment: [] };
       localStorage.setItem(LIVE_EXTRAS_STORAGE, JSON.stringify(payload));
-      storePutBlob("extras", payload);
+      return storePutBlob("extras", payload);
     }
 
     function upsertByKey(list, item, key) {
@@ -1572,7 +1573,7 @@ body.is-demo .live-only { display: none !important; }
         .replace(/[“”"']/g, "")
         .replace(/\s+/g, " ")
         .trim();
-      name = name.replace(/^(Legaltech|Legal AI startup|Legal AI|Big news\.?|Exclusive:?|Breaking:?|A message from|A letter from|Join us(?: at)?)\s+/i, "").trim();
+      name = name.replace(/^(Legaltech|Legal AI startup|Legal AI|Big news\.?|Exclusive:?|Breaking:?|A message from|A letter from|Join us(?: at)?|Brazilian Legal Tech Startup|Legal Entity Management Platform|Platform|Startup|Company)\s+/i, "").trim();
       name = name.replace(/['’‘]s\s+(CEO|CRO|CFO|COO|founder|leadership|team|board).*$/i, "").trim();
       name = name.replace(/\s+as\s+(our|the|a|an|new|its|their|Chief|CRO|CEO|CFO|COO|VP|Head|President)\b.*$/i, "").trim();
       name = name.replace(/\s*[-–—|:].*$/, "").trim();
@@ -2016,11 +2017,41 @@ body.is-demo .live-only { display: none !important; }
 
     function dedupeExtrasByCompany(extras) {
       extras = extras || loadLiveExtras();
+      extras.attached_sources = extras.attached_sources || {};
       var keep = [];
       var dropIds = {};
       var changed = false;
+
+      function mergeUrlsOnto(target, fromEv) {
+        var urls = eventSourceUrls(target);
+        eventSourceUrls(fromEv).forEach(function (u) {
+          if (!urlAlreadyInList(urls, u)) urls.push(u);
+        });
+        target.source_urls = urls;
+        if (!target.source_url && urls[0]) target.source_url = urls[0];
+        extras.attached_sources[target.case_id] = urls;
+      }
+
       (extras.events || []).forEach(function (ev) {
         if (!ev) return;
+        var seed = null;
+        var s;
+        for (s = 0; s < CANDIDATE_EVENTS.length; s++) {
+          var seedEv = CANDIDATE_EVENTS[s];
+          if (!isSeedLiveCase(seedEv.case_id)) continue;
+          if (sameQueuedCompany(ev.company_name, ev.domain, seedEv.company_name, seedEv.domain) ||
+              blobMentionsQueuedCompany(ev.event_summary, ev.entity_note, ev.source_url, seedEv.company_name, seedEv.domain)) {
+            seed = seedEv;
+            break;
+          }
+        }
+        if (seed) {
+          changed = true;
+          mergeUrlsOnto(seed, ev);
+          dropIds[ev.case_id] = true;
+          dropIds[ev.company_id] = true;
+          return;
+        }
         var match = null;
         keep.forEach(function (k) {
           if (match) return;
@@ -2031,12 +2062,7 @@ body.is-demo .live-only { display: none !important; }
           return;
         }
         changed = true;
-        var urls = eventSourceUrls(match);
-        eventSourceUrls(ev).forEach(function (u) {
-          if (!urlAlreadyInList(urls, u)) urls.push(u);
-        });
-        match.source_urls = urls;
-        if (!match.source_url && urls[0]) match.source_url = urls[0];
+        mergeUrlsOnto(match, ev);
         dropIds[ev.case_id] = true;
         dropIds[ev.company_id] = true;
       });
@@ -2051,7 +2077,6 @@ body.is-demo .live-only { display: none !important; }
       extras.employment = (extras.employment || []).filter(function (e) {
         return !dropIds[e.company_id];
       });
-      extras.attached_sources = extras.attached_sources || {};
       keep.forEach(function (ev) {
         extras.attached_sources[ev.case_id] = eventSourceUrls(ev);
       });
@@ -2237,6 +2262,12 @@ body.is-demo .live-only { display: none !important; }
       if (da && db && looksLikeRealDomain(da) && looksLikeRealDomain(db) && da === db) return true;
       if (na && nb && na.length >= 3 && na === nb) return true;
       if (sa && sb && sa.length >= 4 && sa === sb) return true;
+      // "Platform Discern" / "Discern Inc" vs seed "Discern"
+      if (sa && sb) {
+        var shorter = sa.length <= sb.length ? sa : sb;
+        var longer = sa.length <= sb.length ? sb : sa;
+        if (shorter.length >= 5 && longer.indexOf(shorter) !== -1) return true;
+      }
       if (slugA && looksLikeRealDomain(da) && slugA.length >= 3) {
         if (nb && slugA === nb) return true;
         if (sb && sb.length >= 4 && slugA === sb) return true;
@@ -2292,6 +2323,80 @@ body.is-demo .live-only { display: none !important; }
       return [{ title: item.title || "", url: item.url || "", raw: item.raw }];
     }
 
+    function isSeedLiveCase(caseId) {
+      return /^CE-L\d+$/.test(String(caseId || ""));
+    }
+
+    function allSkipEvents() {
+      var seen = {};
+      var out = [];
+      function add(ev) {
+        if (!ev || !ev.case_id || seen[ev.case_id]) return;
+        seen[ev.case_id] = true;
+        out.push(ev);
+      }
+      CANDIDATE_EVENTS.forEach(function (ev) {
+        if (IS_LIVE && !ev.live_exa) return;
+        add(ev);
+      });
+      (loadLiveExtras().events || []).forEach(add);
+      return out;
+    }
+
+    function compactBlobKey(text) {
+      return String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    }
+
+    function blobMentionsQueuedCompany(title, text, url, name, domain) {
+      var blob = String(title || "") + "\n" + String(text || "") + "\n" + String(url || "");
+      var compact = compactBlobKey(blob);
+      if (!compact) return false;
+      var n = normalizeCompanyKey(name);
+      var stem = companyStemKey(name);
+      var d = normalizeDomainKey(domain);
+      var slug = domainSlugKey(domain);
+      if (n.length >= 4 && compact.indexOf(n) !== -1) return true;
+      if (stem.length >= 4 && compact.indexOf(stem) !== -1) return true;
+      if (d && looksLikeRealDomain(d)) {
+        if (blob.toLowerCase().indexOf(d) !== -1) return true;
+        if (compact.indexOf(d.replace(/\./g, "")) !== -1) return true;
+      }
+      if (slug.length >= 4 && compact.indexOf(slug) !== -1) return true;
+      return false;
+    }
+
+    function eventWithSourceUrl(url) {
+      var extras = loadLiveExtras();
+      function fromList(list) {
+        var i;
+        for (i = 0; i < (list || []).length; i++) {
+          if (urlAlreadyInList(eventSourceUrls(list[i]), url)) return list[i];
+        }
+        return null;
+      }
+      var hit = fromList(CANDIDATE_EVENTS);
+      if (hit) return hit;
+      hit = fromList(extras.events || []);
+      if (hit) {
+        var k;
+        for (k = 0; k < CANDIDATE_EVENTS.length; k++) {
+          if (CANDIDATE_EVENTS[k].case_id === hit.case_id) return CANDIDATE_EVENTS[k];
+        }
+        return hit;
+      }
+      var attached = extras.attached_sources || {};
+      var caseId;
+      for (caseId in attached) {
+        if (!attached.hasOwnProperty(caseId)) continue;
+        if (!urlAlreadyInList(attached[caseId] || [], url)) continue;
+        var n;
+        for (n = 0; n < CANDIDATE_EVENTS.length; n++) {
+          if (CANDIDATE_EVENTS[n].case_id === caseId) return CANDIDATE_EVENTS[n];
+        }
+      }
+      return null;
+    }
+
     function queuedEventForCompany(name, domain) {
       var extras = loadLiveExtras();
       var lists = [CANDIDATE_EVENTS, extras.events || []];
@@ -2301,6 +2406,7 @@ body.is-demo .live-only { display: none !important; }
         for (i = 0; i < lists[j].length; i++) {
           var ev = lists[j][i];
           if (!ev) continue;
+          if (IS_LIVE && j === 0 && !ev.live_exa) continue;
           if (!sameQueuedCompany(name, domain, ev.company_name, ev.domain)) continue;
           if (j === 0) return ev;
           var k;
@@ -2308,6 +2414,28 @@ body.is-demo .live-only { display: none !important; }
             if (CANDIDATE_EVENTS[k].case_id === ev.case_id) return CANDIDATE_EVENTS[k];
           }
           return ev;
+        }
+      }
+      return null;
+    }
+
+    function queuedEventForStory(title, text, url, name, domain, articles) {
+      var existing = null;
+      if (url) {
+        existing = eventWithSourceUrl(url);
+        if (existing) return existing;
+      }
+      existing = queuedEventForIntake(name, domain, articles);
+      if (existing) return existing;
+      var skipList = allSkipEvents();
+      var i;
+      var j;
+      for (i = 0; i < skipList.length; i++) {
+        var ev = skipList[i];
+        if (blobMentionsQueuedCompany(title, text, url, ev.company_name, ev.domain)) return ev;
+        for (j = 0; j < (articles || []).length; j++) {
+          var art = articles[j] || {};
+          if (blobMentionsQueuedCompany(art.title, "", art.url, ev.company_name, ev.domain)) return ev;
         }
       }
       return null;
@@ -2431,14 +2559,33 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function mergeConfirmedExaBundle(bundle) {
-      if (!bundle || !bundle.event || !bundle.event.source_url) return false;
-      if (sourceUrlAlreadyQueued(bundle.event.source_url)) return false;
+      if (!bundle || !bundle.event) return false;
+      var articles = (bundle.event.source_urls || []).map(function (u) {
+        return { url: u };
+      });
+      if (!articles.length && bundle.event.source_url) {
+        articles = [{ url: bundle.event.source_url }];
+      }
+      var existing = queuedEventForStory(
+        bundle.event.event_summary,
+        bundle.event.entity_note,
+        bundle.event.source_url,
+        bundle.event.company_name,
+        bundle.event.domain,
+        articles
+      );
+      if (existing) {
+        attachStoriesToEvent(existing, articles);
+        return "attached";
+      }
       var extras = loadLiveExtras();
       extras.events.push(bundle.event);
       extras.profiles.push(bundle.profile);
       extras.contacts.push(bundle.contact);
       extras.statuses.push(bundle.status);
       extras.employment.push(bundle.employment);
+      extras.attached_sources = extras.attached_sources || {};
+      extras.attached_sources[bundle.event.case_id] = eventSourceUrls(bundle.event);
       saveLiveExtras(extras);
       return true;
     }
@@ -2508,12 +2655,22 @@ body.is-demo .live-only { display: none !important; }
         confirmBtn.type = "button";
         confirmBtn.className = "btn primary";
         confirmBtn.textContent = "Confirm";
-        confirmBtn.addEventListener("click", function () {
+        confirmBtn.addEventListener("click", async function () {
           var articles = intakeArticles(item);
           var statusEl = document.getElementById("live-refresh-status");
-          var existing = queuedEventForIntake(nameIn.value, domainIn.value, articles);
+          var blobTitle = articles.map(function (a) { return a.title || ""; }).join("\n");
+          var blobUrl = articles.map(function (a) { return a.url || ""; }).join("\n");
+          var existing = queuedEventForStory(
+            blobTitle,
+            String((item.raw && item.raw.text) || ""),
+            blobUrl || item.url,
+            nameIn.value,
+            domainIn.value,
+            articles
+          );
           if (existing) {
             attachStoriesToEvent(existing, articles);
+            if (storeEnabled()) await storePutBlob("extras", loadLiveExtras());
             remountQueue();
             if (statusEl) {
               statusEl.textContent =
@@ -2536,20 +2693,27 @@ body.is-demo .live-only { display: none !important; }
             if (statusEl) statusEl.textContent = "Confirm needs a company name and a real domain (not a news site).";
             return;
           }
-          if (!mergeConfirmedExaBundle(bundle)) {
+          var merged = mergeConfirmedExaBundle(bundle);
+          if (!merged) {
             if (statusEl) statusEl.textContent = "Already in the queue.";
           } else {
+            if (storeEnabled()) await storePutBlob("extras", loadLiveExtras());
             remountQueue();
             if (statusEl) {
-              var n = (bundle.event.source_urls || []).length;
-              statusEl.textContent =
-                "Queued " +
-                bundle.event.company_name +
-                " (" +
-                bundle.event.domain +
-                ")" +
-                (n > 1 ? " with " + n + " stories" : "") +
-                ". POC and email still empty until you add them in the gate.";
+              if (merged === "attached") {
+                statusEl.textContent =
+                  "That company is already in the queue. Extra stories were added to the existing case.";
+              } else {
+                var n = (bundle.event.source_urls || []).length;
+                statusEl.textContent =
+                  "Queued " +
+                  bundle.event.company_name +
+                  " (" +
+                  bundle.event.domain +
+                  ")" +
+                  (n > 1 ? " with " + n + " stories" : "") +
+                  ". POC and email still empty until you add them in the gate.";
+              }
             }
           }
           PENDING_EXA_INTAKE = PENDING_EXA_INTAKE.filter(function (row) {
@@ -2584,16 +2748,13 @@ body.is-demo .live-only { display: none !important; }
       (results || []).forEach(function (r, idx) {
         var url = String(r.url || "").trim();
         if (!url) return;
-        if (sourceUrlAlreadyQueued(url)) {
-          skippedDup += 1;
-          return;
-        }
         var identity = guessCompanyAndDomainFromExa(r.title, r.text, url, idx);
         var companyGuess = (identity && identity.company_name) || "";
         var domainGuess = (identity && looksLikeRealDomain(identity.domain) ? identity.domain : "") || "";
-        var existing = queuedEventForIntake(companyGuess, domainGuess, [{ title: r.title || "", url: url, raw: r }]);
+        var story = { title: r.title || "", url: url, raw: r };
+        var existing = queuedEventForStory(r.title, r.text, url, companyGuess, domainGuess, [story]);
         if (existing) {
-          attachStoriesToEvent(existing, [{ title: r.title || "", url: url, raw: r }]);
+          attachStoriesToEvent(existing, [story]);
           skippedQueued += 1;
           return;
         }
@@ -2632,10 +2793,21 @@ body.is-demo .live-only { display: none !important; }
       pending = collapseIntakeByCompany(pending);
       var kept = [];
       pending.forEach(function (item) {
-        var existing = queuedEventForIntake(item.company_guess, item.domain_guess, intakeArticles(item));
+        var articles = intakeArticles(item);
+        var blobTitle = articles.map(function (a) { return a.title || ""; }).join("\n");
+        var blobText = String((item.raw && item.raw.text) || "");
+        var blobUrl = articles.map(function (a) { return a.url || ""; }).join("\n");
+        var existing = queuedEventForStory(
+          blobTitle,
+          blobText,
+          blobUrl || item.url,
+          item.company_guess,
+          item.domain_guess,
+          articles
+        );
         if (existing) {
-          attachStoriesToEvent(existing, intakeArticles(item));
-          skippedQueued += intakeArticles(item).length;
+          attachStoriesToEvent(existing, articles);
+          skippedQueued += articles.length;
           return;
         }
         kept.push(item);
@@ -6475,11 +6647,20 @@ body.is-demo .live-only { display: none !important; }
         refreshExaBtn.disabled = true;
         if (statusEl) statusEl.textContent = "Refreshing from Exa…";
         try {
+          if (storeEnabled()) {
+            await hydrateFromStore();
+          } else {
+            applyLiveExtrasToWorld(loadLiveExtras());
+          }
+          var extrasNow = loadLiveExtras();
+          extrasNow = dedupeExtrasByCompany(extrasNow);
+          applyLiveExtrasToWorld(extrasNow);
           var q = encodeURIComponent("Legaltech Series A Series B funding OR CRO VP Sales executive hire announcement 2026");
           var res = await fetch(proxyBase + "/search?num=6&q=" + q, { method: "GET", headers: prodApiHeaders({ Accept: "application/json" }) });
           var data = await res.json().catch(function () { return null; });
           if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
           var intake = buildExaIntakeList((data && data.results) || []);
+          if (storeEnabled()) await storePutBlob("extras", loadLiveExtras());
           PENDING_EXA_INTAKE = intake.pending;
           if (intake.skippedQueued) remountQueue();
           renderExaIntake();
@@ -6501,8 +6682,8 @@ body.is-demo .live-only { display: none !important; }
               statusEl.textContent =
                 "No new companies. " +
                 skipped +
-                (skipped === 1 ? " story was" : " stories were") +
-                " for companies already in the queue.";
+                (skipped === 1 ? " story matches a company" : " stories match companies") +
+                " already in the queue.";
             } else {
               statusEl.textContent = "Exa returned no new articles.";
             }
