@@ -49,12 +49,12 @@ function hunterEnabled(env) {
 }
 
 function partnerCodeConfigured(env) {
-  return String((env && env.PARTNER_ACCESS_CODE) || "").length > 0;
+  return String((env && env.PARTNER_ACCESS_CODE) || "").trim().length > 0;
 }
 
 function partnerCodeMatches(request, env) {
-  const expected = String((env && env.PARTNER_ACCESS_CODE) || "");
-  const got = String(request.headers.get("X-Partner-Access") || "");
+  const expected = String((env && env.PARTNER_ACCESS_CODE) || "").trim();
+  const got = String(request.headers.get("X-Partner-Access") || "").trim();
   if (!expected || !got || expected.length !== got.length) return false;
   let diff = 0;
   for (let i = 0; i < expected.length; i++) {
@@ -224,6 +224,123 @@ async function proxyHunter(url, path, env, cors) {
   });
 }
 
+function storeMissing(cors) {
+  return jsonResponse(
+    {
+      error: "Store not configured",
+      detail: "Create D1 with wrangler d1 create warm-reception, paste database_id in wrangler.toml, run schema.sql, then deploy."
+    },
+    503,
+    cors
+  );
+}
+
+async function kvGet(env, key) {
+  const row = await env.DB.prepare("SELECT v FROM kv WHERE k = ?").bind(key).first();
+  if (!row || !row.v) return null;
+  try {
+    return JSON.parse(row.v);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function kvPut(env, key, value) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    "INSERT INTO kv (k, v, updated_at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, updated_at = excluded.updated_at"
+  ).bind(key, JSON.stringify(value), now).run();
+}
+
+async function storeSnapshot(env, cors) {
+  if (!env.DB) return storeMissing(cors);
+  try {
+    const audit = await env.DB.prepare(
+      "SELECT created_at, case_id, company_name, agent_decision, human_action, detail FROM audit ORDER BY id DESC LIMIT 200"
+    ).all();
+    const rows = (audit && audit.results) || [];
+    return jsonResponse(
+      {
+        ok: true,
+        audit: rows.slice().reverse(),
+        extras: (await kvGet(env, "extras")) || {
+          events: [],
+          profiles: [],
+          contacts: [],
+          statuses: [],
+          employment: []
+        },
+        voice: (await kvGet(env, "voice")) || null,
+        results: (await kvGet(env, "results")) || {},
+        clients: (await kvGet(env, "clients")) || []
+      },
+      200,
+      cors
+    );
+  } catch (e) {
+    return jsonResponse(
+      { error: "Store read failed", detail: String((e && e.message) || e) },
+      500,
+      cors
+    );
+  }
+}
+
+async function storeAudit(request, env, cors) {
+  if (!env.DB) return storeMissing(cors);
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "JSON required" }, 400, cors);
+  }
+  const created = new Date().toISOString();
+  try {
+    await env.DB.prepare(
+      "INSERT INTO audit (created_at, case_id, company_name, agent_decision, human_action, detail) VALUES (?, ?, ?, ?, ?, ?)"
+    )
+      .bind(
+        created,
+        String((body && body.case_id) || "").slice(0, 64),
+        String((body && body.company_name) || "").slice(0, 200),
+        String((body && body.agent_decision) || "").slice(0, 200),
+        String((body && body.human_action) || "").slice(0, 80),
+        String((body && body.detail) || "").slice(0, 500)
+      )
+      .run();
+    return jsonResponse({ ok: true, created_at: created }, 200, cors);
+  } catch (e) {
+    return jsonResponse(
+      { error: "Store write failed", detail: String((e && e.message) || e) },
+      500,
+      cors
+    );
+  }
+}
+
+var BLOB_KEYS = { extras: true, voice: true, results: true, clients: true };
+
+async function storePutBlob(request, env, cors, key) {
+  if (!env.DB) return storeMissing(cors);
+  if (!BLOB_KEYS[key]) return jsonResponse({ error: "Unknown store key" }, 400, cors);
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "JSON required" }, 400, cors);
+  }
+  try {
+    await kvPut(env, key, body);
+    return jsonResponse({ ok: true, key: key }, 200, cors);
+  } catch (e) {
+    return jsonResponse(
+      { error: "Store write failed", detail: String((e && e.message) || e) },
+      500,
+      cors
+    );
+  }
+}
+
 export default {
   async fetch(request, env) {
     const allowed = parseAllowedOrigins(env);
@@ -251,7 +368,8 @@ export default {
           service: "warm-reception-prod-api",
           hunter: hunterEnabled(env) ? "enabled" : "disabled",
           partner_gate: partnerCodeConfigured(env) ? "required" : "not_configured",
-          routes: ["/v1/messages", "/search", "/domain-search", "/email-finder"]
+          store: env.DB ? "d1" : "missing",
+          routes: ["/v1/messages", "/search", "/domain-search", "/email-finder", "/store/snapshot", "/store/audit"]
         },
         200,
         cors
@@ -280,6 +398,17 @@ export default {
         return jsonResponse({ error: "Use GET " + path }, 405, cors);
       }
       return proxyHunter(url, path, env, cors);
+    }
+
+    if (path === "/store/snapshot" && request.method === "GET") {
+      return storeSnapshot(env, cors);
+    }
+    if (path === "/store/audit" && request.method === "POST") {
+      return storeAudit(request, env, cors);
+    }
+    if (path.indexOf("/store/blob/") === 0 && request.method === "PUT") {
+      var key = path.slice("/store/blob/".length);
+      return storePutBlob(request, env, cors, key);
     }
 
     return jsonResponse({ error: "Not found" }, 404, cors);

@@ -12,6 +12,15 @@ HUNTER_ENABLED = "false"
 #   npx wrangler secret put ANTHROPIC_API_KEY
 #   npx wrangler secret put EXA_API_KEY
 #   npx wrangler secret put PARTNER_ACCESS_CODE
+#
+# Step 5 D1 store. Uncomment after you create it and paste database_id:
+#   npx wrangler d1 create warm-reception
+#   npx wrangler d1 execute warm-reception --remote --file=./schema.sql
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "warm-reception"
+# database_id = "PASTE_ID_HERE"
+
 # Do not set Hunter secrets while HUNTER_ENABLED is false (public Pages).
 # After the tool is private (step 4/5):
 #   npx wrangler secret put HUNTER_API_KEY

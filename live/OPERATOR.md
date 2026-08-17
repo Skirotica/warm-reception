@@ -47,7 +47,44 @@ Without the code, Run should say partner access required. Do not paste Anthropic
 
 ### What this does not do
 
-It does not hide the public queue HTML. It does not prove the clicker is Chad versus Courtney (shared code). It does not turn Hunter on. Step 5 (private store + Hunter) waits until Live is no longer a public anonymous page.
+It does not hide the public queue HTML. It does not prove the clicker is Chad versus Courtney (shared code). It does not turn Hunter on.
+
+## Step 5 (private store)
+
+The run log, Exa extras, voice rules, and case results save to Cloudflare D1 (a private database on the Worker). They survive refresh and another laptop, as long as the partner access code is entered. Hunter stays off.
+
+### Courtney: create the database, then deploy
+
+From the `prod-api` folder:
+
+```
+npx wrangler d1 create warm-reception
+```
+
+Wrangler prints a `database_id` (a long id). Open `wrangler.toml` in this same folder. Uncomment the four D1 lines at the bottom of the secrets section and paste that id:
+
+```
+[[d1_databases]]
+binding = "DB"
+database_name = "warm-reception"
+database_id = "paste-the-id-here"
+```
+
+Then:
+
+```
+npx wrangler d1 execute warm-reception --remote --file=./schema.sql
+npx wrangler deploy
+```
+
+Do not set Hunter secrets.
+
+### Chad / Courtney: prove the store
+
+1. Hard-refresh Live. Save API and Save code.
+2. Status should read **API, code, and store connected**. If it says store not set up yet, the D1 steps above are not finished.
+3. Run a case. Approve or Escalate.
+4. Refresh the page, Save code again, and check the run log. The action should still be there.
 
 ## What not to paste on Live
 

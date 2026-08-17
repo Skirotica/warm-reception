@@ -834,6 +834,42 @@ body.is-demo .live-only { display: none !important; }
     function anthropicHeaders() {
       return prodApiHeaders({ "content-type": "application/json" });
     }
+
+    var STORE_RESULTS = {};
+
+    function storeEnabled() {
+      return IS_LIVE && !!prodApiBase() && !!partnerAccessCode();
+    }
+
+    function storeFetch(path, method, body) {
+      if (!storeEnabled()) return Promise.resolve(null);
+      var opts = {
+        method: method || "GET",
+        headers: prodApiHeaders({ Accept: "application/json" })
+      };
+      if (body !== undefined) {
+        opts.headers["content-type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      return fetch(prodApiBase() + path, opts).then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, status: res.status, data: data };
+        }).catch(function () {
+          return { ok: res.ok, status: res.status, data: null };
+        });
+      }).catch(function () {
+        return null;
+      });
+    }
+
+    function storePutBlob(key, value) {
+      storeFetch("/store/blob/" + key, "PUT", value);
+    }
+
+    function storePostAudit(entry) {
+      if (!entry) return;
+      storeFetch("/store/audit", "POST", entry);
+    }
     const LIVE_EXTRAS_STORAGE = "warm_reception_live_extras_v1";
     const EVAL_RESULTS_STORAGE = "warm_reception_eval_results_v3";
     const VOICE_MEMORY_STORAGE = "warm_reception_voice_memory_v1";
@@ -1262,7 +1298,9 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function saveLiveExtras(bundle) {
-      localStorage.setItem(LIVE_EXTRAS_STORAGE, JSON.stringify(bundle || { events: [], profiles: [], contacts: [], statuses: [], employment: [] }));
+      var payload = bundle || { events: [], profiles: [], contacts: [], statuses: [], employment: [] };
+      localStorage.setItem(LIVE_EXTRAS_STORAGE, JSON.stringify(payload));
+      storePutBlob("extras", payload);
     }
 
     function upsertByKey(list, item, key) {
@@ -1987,7 +2025,7 @@ body.is-demo .live-only { display: none !important; }
         if (panelHead) panelHead.textContent = "Chad · Live review queue";
         if (banner) {
           banner.classList.add("visible");
-          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Hunter stays off on public Pages. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+          banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Audit log and extras save to the private store after D1 is set up. Hunter stays off on public Pages. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
         activeVoicePartnerId = "partner_c";
@@ -2472,7 +2510,9 @@ body.is-demo .live-only { display: none !important; }
 
     function saveVoiceMemory(store) {
       try {
-        localStorage.setItem(VOICE_MEMORY_STORAGE, JSON.stringify(store || emptyVoiceMemoryStore()));
+        var payload = store || emptyVoiceMemoryStore();
+        localStorage.setItem(VOICE_MEMORY_STORAGE, JSON.stringify(payload));
+        storePutBlob("voice", payload);
       } catch (e) { /* ignore */ }
     }
 
@@ -3913,11 +3953,21 @@ body.is-demo .live-only { display: none !important; }
       ui.lastHtml = resultEl.innerHTML;
       ui.lastFields = resultEl._lastFields;
       ui.humanComplete = !!resultEl._humanComplete;
+      var st = resultEl.querySelector(".human-state");
+      if (st) ui.humanStateText = st.textContent || "";
+      STORE_RESULTS[ev.case_id] = {
+        lastFields: ui.lastFields || null,
+        humanComplete: ui.humanComplete,
+        humanStateText: ui.humanStateText || ""
+      };
+      storePutBlob("results", STORE_RESULTS);
     }
 
     function appendRunLog(entry) {
+      if (window.__WR_SILENT_STORE__) return;
       RUN_LOG.push(entry);
       renderRunLog();
+      storePostAudit(entry);
     }
 
     function normalizeSequenceDraftFields(fields) {
@@ -5064,6 +5114,23 @@ body.is-demo .live-only { display: none !important; }
             if (st) st.textContent = ui.humanStateText;
           }
         }
+      } else if (ui.lastFields) {
+        var labeled = [];
+        Object.keys(ui.lastFields).forEach(function (k) {
+          labeled.push(k + ": " + ui.lastFields[k]);
+        });
+        window.__WR_SILENT_STORE__ = true;
+        try {
+          renderParsedResult(resultEl, labeled.join("\n"), ui.ev);
+        } finally {
+          window.__WR_SILENT_STORE__ = false;
+        }
+        resultEl._humanComplete = !!ui.humanComplete;
+        if (ui.humanComplete && ui.humanStateText) {
+          var st2 = resultEl.querySelector(".human-state");
+          if (st2) st2.textContent = ui.humanStateText;
+        }
+        wireHumanGate(resultEl, ui.ev);
       } else {
         resultEl.innerHTML = '<div class="empty"><div class="headline">Not run yet</div>Click Run to evaluate this case.</div>';
         resultEl._lastFields = null;
@@ -5094,6 +5161,71 @@ body.is-demo .live-only { display: none !important; }
 
     applyAppModeShell();
     remountQueue();
+
+    async function hydrateFromStore() {
+      if (!storeEnabled()) return;
+      var packed = await storeFetch("/store/snapshot", "GET");
+      if (!packed || !packed.ok || !packed.data) {
+        if (prodApiStatus && packed && packed.status === 503) {
+          prodApiStatus.textContent = "API and code saved. Store not set up yet";
+        }
+        return;
+      }
+      var data = packed.data;
+      if (data.extras) {
+        try {
+          localStorage.setItem(LIVE_EXTRAS_STORAGE, JSON.stringify(data.extras));
+        } catch (e) { /* ignore */ }
+        applyLiveExtrasToWorld(data.extras);
+      }
+      if (data.voice) {
+        try {
+          localStorage.setItem(VOICE_MEMORY_STORAGE, JSON.stringify(data.voice));
+        } catch (e) { /* ignore */ }
+        renderVoiceMemoryPanel();
+      }
+      if (Array.isArray(data.audit) && data.audit.length) {
+        RUN_LOG = data.audit.map(function (row) {
+          return {
+            time: row.time || (row.created_at ? String(row.created_at).replace("T", " ").slice(0, 19) : ""),
+            case_id: row.case_id || "",
+            company_name: row.company_name || "",
+            agent_decision: row.agent_decision || "",
+            human_action: row.human_action || "",
+            detail: row.detail || ""
+          };
+        });
+        renderRunLog();
+      }
+      if (data.results && typeof data.results === "object") STORE_RESULTS = data.results;
+      if (Array.isArray(data.clients)) {
+        data.clients.forEach(function (s) {
+          var found = false;
+          for (var i = 0; i < COMPANY_STATUS.length; i++) {
+            if (COMPANY_STATUS[i].domain === s.domain || COMPANY_STATUS[i].company_name === s.company_name) {
+              COMPANY_STATUS[i] = s;
+              found = true;
+              break;
+            }
+          }
+          if (!found) COMPANY_STATUS.push(s);
+        });
+      }
+      remountQueue();
+      Object.keys(STORE_RESULTS).forEach(function (id) {
+        var ui = CASE_UI[id];
+        var rec = STORE_RESULTS[id];
+        if (!ui || !rec) return;
+        ui.lastFields = rec.lastFields || null;
+        ui.humanComplete = !!rec.humanComplete;
+        ui.humanStateText = rec.humanStateText || "";
+        if (ui.lastFields) updateRowSummary(id, ui.lastFields);
+      });
+      if (selectedCaseId && CASE_UI[selectedCaseId]) restoreResultIntoRow(CASE_UI[selectedCaseId]);
+      if (prodApiStatus) prodApiStatus.textContent = "API, code, and store connected";
+    }
+
+    if (IS_LIVE) hydrateFromStore();
 
     var DEMO_CHIPS = [
       { case_id: "CE-01", label: "Happy path" },
@@ -5556,6 +5688,7 @@ body.is-demo .live-only { display: none !important; }
         sessionStorage.setItem(PARTNER_ACCESS_STORAGE, code);
         if (partnerAccessInput) partnerAccessInput.value = "";
         refreshProdApiStatus();
+        hydrateFromStore();
       });
     }
     var clearPartnerBtn = document.getElementById("clear-partner-access");
