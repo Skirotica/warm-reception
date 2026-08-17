@@ -59,6 +59,22 @@ function hunterEnabled(env) {
   return String((env && env.HUNTER_ENABLED) || "").toLowerCase() === "true";
 }
 
+function hunterKeyConfigured(env) {
+  return !!(env && (env.HUNTER_API_KEY || env.HUNTER_DOMAIN_SEARCH_KEY || env.HUNTER_EMAIL_FINDER_KEY));
+}
+
+function hunterKeyMissingResponse(cors) {
+  return jsonResponse(
+    {
+      error: "Hunter key not set on worker",
+      code: "hunter_key_missing",
+      detail: "From prod-api run: npx wrangler secret put HUNTER_API_KEY. Do not put the key in the page."
+    },
+    500,
+    cors
+  );
+}
+
 function hunterGithubOrigin(origin) {
   try {
     return /github\.io$/i.test(new URL(origin).hostname);
@@ -213,22 +229,26 @@ async function proxyHunter(url, path, env, cors, origin) {
   if (path === "/email-finder") {
     apiKey = env.HUNTER_EMAIL_FINDER_KEY || env.HUNTER_API_KEY;
     if (!apiKey) {
-      return jsonResponse({ error: "HUNTER_EMAIL_FINDER_KEY (or HUNTER_API_KEY) secret not set" }, 500, cors);
+      return hunterKeyMissingResponse(cors);
     }
     hunterUrl = new URL("https://api.hunter.io/v2/email-finder");
     hunterUrl.searchParams.set("api_key", apiKey);
     const domain = url.searchParams.get("domain") || "";
     const first = url.searchParams.get("first_name") || "";
     const last = url.searchParams.get("last_name") || "";
+    const fullName = url.searchParams.get("full_name") || "";
+    const company = url.searchParams.get("company") || "";
     const linkedin = url.searchParams.get("linkedin_handle") || "";
     if (domain) hunterUrl.searchParams.set("domain", domain);
     if (first) hunterUrl.searchParams.set("first_name", first);
     if (last) hunterUrl.searchParams.set("last_name", last);
+    if (fullName) hunterUrl.searchParams.set("full_name", fullName);
+    if (company) hunterUrl.searchParams.set("company", company);
     if (linkedin) hunterUrl.searchParams.set("linkedin_handle", linkedin);
   } else {
     apiKey = env.HUNTER_DOMAIN_SEARCH_KEY || env.HUNTER_API_KEY;
     if (!apiKey) {
-      return jsonResponse({ error: "HUNTER_DOMAIN_SEARCH_KEY (or HUNTER_API_KEY) secret not set" }, 500, cors);
+      return hunterKeyMissingResponse(cors);
     }
     hunterUrl = new URL("https://api.hunter.io/v2/domain-search");
     hunterUrl.searchParams.set("api_key", apiKey);
@@ -391,6 +411,7 @@ export default {
           ok: true,
           service: "warm-reception-prod-api",
           hunter: hunterEnabled(env) ? "enabled" : "disabled",
+          hunter_key: hunterKeyConfigured(env) ? "set" : "missing",
           partner_gate: partnerCodeConfigured(env) ? "required" : "not_configured",
           store: env.DB ? "d1" : "missing",
           routes: ["/v1/messages", "/search", "/domain-search", "/email-finder", "/store/snapshot", "/store/audit"]

@@ -467,6 +467,21 @@ body {
   background: color-mix(in srgb, var(--danger) 8%, transparent);
   color: var(--danger); font-size: var(--fs-1);
 }
+.hunter-note {
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-sm);
+  border: var(--border-w) solid var(--line);
+  background: var(--bg-inset);
+  color: var(--ink); font-size: var(--fs-1);
+  margin: 0 0 var(--sp-3);
+}
+.hunter-note.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.hunter-note.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
 
 
 /* Prompt 10 console chrome — token vars only */
@@ -3012,9 +3027,13 @@ body.is-demo .live-only { display: none !important; }
           try { liveData = JSON.parse(liveRaw); } catch (e) { liveData = null; }
           if (!liveResponse.ok) {
             var liveMsg = (liveData && (liveData.error || liveData.detail)) || liveRaw.slice(0, 160);
+            var liveCode = liveData && liveData.code ? String(liveData.code) : "";
+            var liveDetail = liveCode === "hunter_key_missing" || /secret not set|Hunter key not set/i.test(String(liveMsg))
+              ? "hunter_key_missing"
+              : "hunter_http_" + liveResponse.status + ": " + liveMsg;
             return {
               ok: false,
-              detail: "hunter_http_" + liveResponse.status + ": " + liveMsg,
+              detail: liveDetail,
               data: liveData,
               status: liveResponse.status
             };
@@ -3058,6 +3077,79 @@ body.is-demo .live-only { display: none !important; }
         }
         return { ok: false, detail: errMsg, data: null, status: 0 };
       }
+    }
+
+    function hunterKeyMissingDetail(detail) {
+      return /hunter_key_missing|secret not set|Hunter key not set|HUNTER_API_KEY|HUNTER_DOMAIN_SEARCH_KEY|HUNTER_EMAIL_FINDER_KEY/i.test(String(detail || ""));
+    }
+
+    /**
+     * Use Hunter-returned addresses only. Never invent. Invalid is dropped.
+     * valid, accept_all, and high confidence (70+) are usable.
+     */
+    function hunterEmailIsUsable(row) {
+      var email = String((row && row.email) || "").trim();
+      if (!email || email.indexOf("@") === -1) return false;
+      var verification = String((row && row.verification) || "").toLowerCase();
+      if (verification === "invalid") return false;
+      var confidence = row && row.confidence != null ? Number(row.confidence) : null;
+      var named = !!(String((row && row.first_name) || "").trim() || String((row && row.last_name) || "").trim());
+      if (verification === "valid" || verification === "accept_all") return named || (confidence != null && confidence >= 70);
+      if (confidence != null && isFinite(confidence) && confidence >= 70) return true;
+      return named;
+    }
+
+    function hunterStatusLabel(hunterLive) {
+      if (!hunterLive) return "Hunter did not run on this case.";
+      if (hunterLive.status === "skipped_public_pages") return "Hunter blocked on public GitHub Pages.";
+      if (hunterLive.status === "skipped_extra_legal_load") return hunterLive.detail || "Hunter blocked for extra legal load.";
+      if (hunterLive.status === "skipped_out_of_icp_size") {
+        return "Hunter skipped: company size is outside the 50 to 350 employee range.";
+      }
+      var err = hunterLive.domain_search_error || hunterLive.detail || "";
+      if (hunterLive.status === "key_missing" || hunterKeyMissingDetail(err)) {
+        return "Hunter key is not set on the Worker. From the prod-api folder run npx wrangler secret put HUNTER_API_KEY. Do not paste the key into this page.";
+      }
+      if (hunterLive.status === "lookup_failed") {
+        return "Hunter lookup failed. The Worker was reached, but Hunter did not return a roster.";
+      }
+      var roster = (hunterLive.domain_search && hunterLive.domain_search.company_roster) || [];
+      var scanned = hunterLive.domain_search && hunterLive.domain_search.scanned != null
+        ? hunterLive.domain_search.scanned
+        : roster.length;
+      if (hunterLive.domain_search && hunterLive.domain_search.ran) {
+        if (roster.length) return "Hunter ran. Company contacts returned: " + roster.length + ".";
+        if (scanned) return "Hunter ran. Scanned " + scanned + " rows. Usable contacts: 0.";
+        return "Hunter ran. Usable contacts: 0.";
+      }
+      if (hunterLive.status === "found") return "Hunter ran. A contact email was returned.";
+      if (hunterLive.status === "not_found") return "Hunter ran. Usable contacts: 0.";
+      return "Hunter ran. Usable contacts: " + roster.length + ".";
+    }
+
+    function appendHunterStatusNote(resultEl) {
+      if (!IS_LIVE || !resultEl) return;
+      var existing = resultEl.querySelector(".hunter-note");
+      if (existing) existing.remove();
+      var note = document.createElement("p");
+      note.className = "hunter-note";
+      var hunterLive = resultEl._hunterLive;
+      note.textContent = hunterStatusLabel(hunterLive);
+      var err = hunterLive && (hunterLive.domain_search_error || hunterLive.detail || "");
+      if (!hunterLive || hunterLive.status === "key_missing" || hunterKeyMissingDetail(err)) {
+        note.classList.add("danger");
+      } else if (
+        !hunterLive ||
+        hunterLive.status === "skipped_public_pages" ||
+        hunterLive.status === "lookup_failed" ||
+        hunterLive.status === "skipped_extra_legal_load"
+      ) {
+        note.classList.add("warn");
+      }
+      var banner = resultEl.querySelector(".status-banner");
+      if (banner && banner.nextSibling) banner.parentNode.insertBefore(note, banner.nextSibling);
+      else if (banner) banner.parentNode.appendChild(note);
+      else resultEl.insertBefore(note, resultEl.firstChild);
     }
 
     async function enrichContactEmailWithHunter(contact, domain, companyName) {
@@ -3120,6 +3212,16 @@ body.is-demo .live-only { display: none !important; }
         var email = res.data && res.data.data && res.data.data.email ? String(res.data.data.email).trim() : "";
         lastScore = res.data && res.data.data && res.data.data.score != null ? res.data.data.score : null;
         if (!email) continue;
+        var finderRow = {
+          email: email,
+          first_name: first,
+          last_name: last,
+          confidence: lastScore,
+          verification: res.data.data.verification && res.data.data.verification.status
+            ? String(res.data.data.verification.status)
+            : ""
+        };
+        if (!hunterEmailIsUsable(finderRow)) continue;
         contact.email = email;
         if (res.data.data.linkedin_url && !contact.linkedin_url) contact.linkedin_url = res.data.data.linkedin_url;
         for (var i = 0; i < ICP_CONTACTS.length; i++) {
@@ -3233,7 +3335,7 @@ body.is-demo .live-only { display: none !important; }
       if (!domain) return { ok: false, detail: "missing_domain", added: [], updatedPreferred: false, all_with_email: [] };
       var res = await hunterFetchJson("/domain-search?domain=" + encodeURIComponent(domain) + "&limit=10");
       if (!res.ok) return { ok: false, detail: res.detail, added: [], updatedPreferred: false, all_with_email: [] };
-      var payload = (res.data && res.data.data) || {};
+      var payload = (res.data && res.data.data) || (res.data && res.data.emails ? res.data : {}) || {};
       var emails = payload.emails || [];
       var orgName = String(payload.organization || "").trim();
       var hunterDomain = String(payload.domain || domain).trim().toLowerCase();
@@ -3255,11 +3357,12 @@ body.is-demo .live-only { display: none !important; }
             last_name: String(row.last_name || "").trim(),
             title: String(row.position || row.position_raw || "").trim(),
             linkedin_url: row.linkedin ? String(row.linkedin).trim() : "",
-            confidence: row.confidence != null ? row.confidence : null
+            confidence: row.confidence != null ? row.confidence : null,
+            verification: row.verification && row.verification.status ? String(row.verification.status) : ""
           };
         })
         .filter(function (row) {
-          return row.email && (row.first_name || row.last_name);
+          return hunterEmailIsUsable(row);
         })
         .sort(function (a, b) {
           var aIcp = isIcpAlternateTitle(a.title) ? 0 : 1;
@@ -5121,6 +5224,8 @@ body.is-demo .live-only { display: none !important; }
         resultEl.appendChild(dl);
       }
 
+      appendHunterStatusNote(resultEl);
+
       appendRunLog({
         time: new Date().toLocaleTimeString(),
         case_id: ev.case_id,
@@ -5717,14 +5822,14 @@ body.is-demo .live-only { display: none !important; }
         var enrich = enrichBundle.preferred || { ok: true, detail: "roster_only" };
         var ds = enrichBundle.domain_search;
         hunterLive = {
-          live: true,
+          live: !!(ds && ds.ok) || !!(enrich && enrich.ok && enrich.detail === "found"),
           status: "roster",
           score: enrich.hunter && enrich.hunter.score != null ? enrich.hunter.score : null,
           source: enrich.hunter && enrich.hunter.source ? enrich.hunter.source : "hunter.io",
           detail: enrich.detail || (ds && ds.detail) || "",
           domain_search: ds
             ? {
-                ran: true,
+                ran: !!ds.ok,
                 detail: ds.detail,
                 company_roster: ds.all_with_email || [],
                 alternates_added: (ds.added || []).map(function (c) {
@@ -5747,12 +5852,18 @@ body.is-demo .live-only { display: none !important; }
         } else if (enrich.detail === "not_found") {
           hunterLive.status = "not_found";
         }
-        if (!enrich.ok && enrich.detail && /cors_or_network|no_hunter_key_or_proxy/.test(enrich.detail)) {
-          hunterLive.status = "not_found";
+        if (!enrich.ok && enrich.detail && /cors_or_network|no_hunter_key_or_proxy|hunter_key_missing/.test(enrich.detail)) {
+          hunterLive.status = hunterKeyMissingDetail(enrich.detail) ? "key_missing" : "lookup_failed";
+          hunterLive.live = false;
           hunterLive.detail = enrich.detail;
         }
         if (ds && !ds.ok && ds.detail) {
           hunterLive.domain_search_error = ds.detail;
+          hunterLive.live = false;
+          if (hunterKeyMissingDetail(ds.detail)) hunterLive.status = "key_missing";
+          else if (hunterLive.status !== "found" && hunterLive.status !== "company_roster_found") {
+            hunterLive.status = "lookup_failed";
+          }
         }
         resultEl.innerHTML = '<span class="thinking">Running…</span>';
         if (metaEl) metaEl.textContent = "Running " + ev.case_id;
@@ -5762,8 +5873,12 @@ body.is-demo .live-only { display: none !important; }
       }
 
       var payload = buildCasePayload(ev, hunterLive, exaIcpLive);
+      resultEl._hunterLive = hunterLive;
       resultEl._ctaSession = payload.cta_session;
-      if (CASE_UI[ev.case_id]) CASE_UI[ev.case_id]._ctaSession = payload.cta_session;
+      if (CASE_UI[ev.case_id]) {
+        CASE_UI[ev.case_id]._ctaSession = payload.cta_session;
+        CASE_UI[ev.case_id]._hunterLive = hunterLive;
+      }
       var profile = payload.company_profile;
       var statusRow = payload.company_status;
       var isClient = (profile && profile.status === "client") || (statusRow && statusRow.status === "client");
@@ -5792,12 +5907,33 @@ body.is-demo .live-only { display: none !important; }
         "If after all sources you still cannot tell in-vs-out of ICP: Table 3 Ambiguous, decision Ambiguous (not No-go / Below Threshold). " +
         "No-go only for known disqualifiers (confirmed size out of range, wrong sector, client, bankruptcy, etc.).";
       var emailGuidance;
+      var hunterLookupBlocked = hunterLive && (
+        hunterLive.status === "key_missing" ||
+        hunterLive.status === "lookup_failed" ||
+        hunterLive.status === "skipped_public_pages"
+      );
       if (skipHunterForIcp || companyClearlyOutOfIcpSize(ev)) {
         emailGuidance =
           "This company fails classic ICP size (employees must be 50–350) and is not on the pre-qualified whitelist. " +
           "Table 2 No-go / Below Threshold. decision No-go or Below Threshold. fit_if_email_secured: Still-blocked. " +
           "fit_if_email_note: out of ICP size even if a POC email existed. " +
           "Why must lead with headcount / ICP size, mention whitelist does not apply, and say do not pursue email. Draft fields blank. Hunter may have been skipped.";
+      } else if (hunterLookupBlocked) {
+        if (hunterLive.status === "key_missing") {
+          emailGuidance =
+            "Hunter.io lookup did not complete because the Worker is missing the Hunter key. " +
+            "Do NOT invent an email. Do NOT say Hunter searched this company and found nothing. " +
+            "Table 2. decision No-go. why must say the email lookup did not run (Hunter key not set on the Worker). " +
+            "Next action: the operator sets the Hunter key on the Worker, then Run again. Draft fields blank.";
+        } else if (hunterLive.status === "skipped_public_pages") {
+          emailGuidance =
+            "Hunter.io is blocked on public GitHub Pages. Do NOT invent an email. Do NOT say Hunter searched and found nothing. " +
+            "Table 2. decision No-go. why must say email lookup is off on this public host. Use private Live for Hunter. Draft fields blank.";
+        } else {
+          emailGuidance =
+            "Hunter.io lookup failed before a company roster came back. Do NOT invent an email. Do NOT say Hunter searched and found nothing. " +
+            "Table 2. decision No-go. why must say the email lookup failed, and the partner can add a verified POC email or retry after the lookup is fixed. Draft fields blank.";
+        }
       } else if (contactsWithEmail.length) {
         emailGuidance =
           "POC SELECTION (Response B): company_contacts lists people Hunter.io found at this company (with emails). " +
@@ -6080,6 +6216,7 @@ body.is-demo .live-only { display: none !important; }
         resultEl.innerHTML = ui.lastHtml;
         resultEl._lastFields = ui.lastFields || null;
         resultEl._caseEvent = ui.ev;
+        resultEl._hunterLive = ui._hunterLive || resultEl._hunterLive || null;
         resultEl._humanComplete = !!ui.humanComplete;
         refreshStoredGoDrafts(ui, resultEl);
         var oldGate = resultEl.querySelector(".human-gate");
@@ -6092,6 +6229,7 @@ body.is-demo .live-only { display: none !important; }
           }
         }
       } else if (ui.lastFields) {
+        resultEl._hunterLive = ui._hunterLive || null;
         var labeled = [];
         Object.keys(ui.lastFields).forEach(function (k) {
           labeled.push(k + ": " + ui.lastFields[k]);
@@ -6638,6 +6776,26 @@ body.is-demo .live-only { display: none !important; }
       runAllCases();
     });
 
+    function pingProdApiHealth() {
+      var saved = prodApiBase();
+      if (!saved || !prodApiStatus) return;
+      fetch(saved + "/", { method: "GET", headers: { Accept: "application/json" } })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (!data || !prodApiStatus) return;
+          var codeOn = !!partnerAccessCode();
+          var prefix = codeOn ? "API and partner code saved. " : "API saved. Partner code needed. ";
+          if (data.hunter_key === "missing") {
+            prodApiStatus.textContent = prefix + "Hunter key is not set on the Worker.";
+          } else if (data.hunter === "disabled") {
+            prodApiStatus.textContent = prefix + "Hunter is off on the Worker.";
+          } else if (data.hunter === "enabled") {
+            prodApiStatus.textContent = prefix + "Hunter is on.";
+          }
+        })
+        .catch(function () { /* keep the local status text */ });
+    }
+
     function refreshProdApiStatus() {
       var saved = prodApiBase();
       var codeOn = !!partnerAccessCode();
@@ -6651,6 +6809,7 @@ body.is-demo .live-only { display: none !important; }
         var legacyExa = normalizeExaProxyBase(localStorage.getItem(EXA_PROXY_STORAGE) || "");
         if (legacyExa) prodApiInput.placeholder = "Old Exa URL found. Save the prod-api worker URL instead.";
       }
+      if (saved) pingProdApiHealth();
     }
 
     var partnerAccessInput = document.getElementById("partner-access");
