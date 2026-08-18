@@ -75,6 +75,8 @@ Production security / privacy item 2. These are product rules. The do-not-contac
 
 **Existing clients.** Never draft outreach to a company already on the client list. Never send to a client, ever.
 
+**Where the list lives (18 Aug 2026).** Private Live now keeps that list in the Worker / D1 store. Partners add name + domain on `https://warm-reception-live.pages.dev` after Save API and Save code. GitHub Live does not load it. Do not put real client names in GitHub, the HTML file, or chat.
+
 **How to protect that list (coaching note).** Courtney’s product answer is the never-outreach rule above. The second half of the question was about *where the list lives* if the page or store is stolen, not whether to contact clients. Do not put the client list in the public page, in GitHub, or in the browser page source. Keep it in the private store behind login (Worker / D1). If someone steals that store they could still see who the clients are, so the list should live only there, not also in HTML anyone can download. Courtney did not need to design the theft case; Chad owns that later.
 
 **Opt-out / do-not-contact.** Respect stop requests. A human adds the person to a do-not-contact list via a button (not built this turn). Block future sends to that person. Person-level DNC from “do not contact me” replies. Company-wide DNC is still undecided; use person-level until Chad says otherwise. Duration: hold until a partner removes them (indefinite). She did not specify a time limit.

@@ -586,6 +586,52 @@ body {
   margin: 0 0 var(--sp-3);
 }
 .live-toolbar.visible { display: flex; }
+body.is-demo .private-store-only,
+body.is-public-github .private-store-only { display: none !important; }
+.client-book {
+  width: 100%;
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--bg-inset);
+  border: var(--border-w) solid var(--line);
+  border-radius: var(--radius);
+}
+.client-book h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-2);
+  color: var(--ink);
+}
+.client-book .intake-help { margin: 0 0 var(--sp-3); color: var(--ink-2); font-size: var(--fs-0); }
+.client-book-add {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0 0 var(--sp-3);
+}
+.client-book-add input {
+  background: var(--bg-raise);
+  color: var(--ink);
+  border: var(--border-w) solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-family: var(--font-body);
+  font-size: var(--fs-0);
+  min-width: 10rem;
+}
+.client-book-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.client-book-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding: var(--sp-2) 0;
+  border-top: var(--border-w) solid var(--line);
+  font-size: var(--fs-0);
+}
+.client-book-row .name { color: var(--ink); font-weight: 600; }
+.client-book-row .domain { color: var(--ink-2); }
 .exa-intake {
   display: none;
   width: 100%;
@@ -685,6 +731,17 @@ body.is-demo .live-only { display: none !important; }
             <button type="button" class="btn primary" id="btn-refresh-exa">Refresh from Exa</button>
             <button type="button" class="btn" id="btn-reset-live-extras">Clear refreshed extras</button>
             <span class="meta" id="live-refresh-status"></span>
+          </div>
+          <div class="client-book private-store-only" id="client-book">
+            <h3>Existing clients (never outreach)</h3>
+            <p class="intake-help">Companies on this list never get a draft or a send. The list lives in the private store after Save API and Save code. It is not on GitHub. Add the legal name and the real website domain. Do not paste this list into chat or GitHub.</p>
+            <div class="client-book-add">
+              <input id="client-book-name" type="text" autocomplete="off" aria-label="Client company name" placeholder="Company name" />
+              <input id="client-book-domain" type="text" autocomplete="off" aria-label="Client website domain" placeholder="company.com" />
+              <button type="button" class="btn" id="client-book-add">Add client</button>
+              <span class="meta" id="client-book-status"></span>
+            </div>
+            <div class="client-book-list" id="client-book-list"></div>
           </div>
           <div class="exa-intake" id="exa-intake" hidden>
             <h3>Confirm company and domain</h3>
@@ -855,7 +912,7 @@ body.is-demo .live-only { display: none !important; }
                 <strong>Lookups and send:</strong> Event research cites Exa.ai through the production API worker (no Exa key in this page). Public GitHub Live is synthetic only: Hunter, Exa refresh, and the partner store stay off. On private Live after Access login, Hunter can find company emails after Save API and Save code. Some non-US cases stay out of the real-email path until Chad accepts extra legal load. Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 at the site root still demos embedded missing-email rules. Nothing leaves without human Approve.
               </li>
               <li>
-                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Capstone demo checks embedded company_contacts (CE-08). Live public GitHub Pages does not run Hunter. Private Live may run Hunter after Save API and Save code. Confirm never invents a person, an email, or a website from the company name.
+                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Private Live checks the partner client book in the private store (never outreach, no draft). Capstone demo checks embedded company_contacts (CE-08). Live public GitHub Pages does not run Hunter and does not load the client book. Private Live may run Hunter after Save API and Save code. Confirm never invents a person, an email, or a website from the company name.
               </li>
               <li>
                 <strong>Review agent stretch:</strong> A second agent critiques the worker before the human gate (looks right / needs attention). It adds latency and token cost; the human still makes the final Approve / Edit / Escalate click.
@@ -931,6 +988,7 @@ body.is-demo .live-only { display: none !important; }
     }
 
     var STORE_RESULTS = {};
+    var CLIENT_BOOK = [];
 
     function isGithubIoHost() {
       return /github\.io$/i.test(String(location.hostname || ""));
@@ -1247,7 +1305,7 @@ body.is-demo .live-only { display: none !important; }
       "5. Maximum 2 generation attempts per email when language check fails.",
       "6. Enforce a 30-day duplicate suppression window using prior_sends.csv.",
       "7. Never reply to inbound emails.",
-      "8. Existing clients in company_status.csv: stop immediately, Table 2, no override, no draft.",
+      "8. Existing clients in company_status.csv or the partner client book (private store): stop immediately, Table 2, no override, no draft. Never draft. Never send.",
       "9. Name collisions and unconfirmed entities: Table 3, no draft before human verification.",
       "10. Approved sends in this capstone prototype route to sandbox only.",
       "11. Pre-qualified whitelist: if prequalified_match is present in case context, skip ICP re-qualification (do not No-go for size/revenue/backing/TA alone). Still require a qualifying event, verified email, and all hard stops. In plain-language Why, say this company was already partner-vetted. Put prequalified-whitelist.md and the whitelist company_id only in citations.",
@@ -2311,6 +2369,132 @@ body.is-demo .live-only { display: none !important; }
       return false;
     }
 
+    function normalizeClientRow(row) {
+      if (!row || typeof row !== "object") return null;
+      var company_name = String(row.company_name || row.name || "").trim();
+      var domain = normalizeDomainKey(row.domain || "");
+      if (!company_name && !domain) return null;
+      return {
+        company_name: company_name,
+        domain: domain,
+        status: "client",
+        notes: String(row.notes || "Partner client book. Never cold outreach."),
+        added_at: String(row.added_at || new Date().toISOString())
+      };
+    }
+
+    function matchClientBook(name, domain) {
+      if (IS_PUBLIC_GITHUB_LIVE) return null;
+      for (var i = 0; i < CLIENT_BOOK.length; i++) {
+        var row = CLIENT_BOOK[i];
+        if (sameQueuedCompany(name, domain, row.company_name, row.domain)) return row;
+      }
+      return null;
+    }
+
+    function persistClientBook() {
+      if (IS_PUBLIC_GITHUB_LIVE) return Promise.resolve(null);
+      return storePutBlob("clients", CLIENT_BOOK);
+    }
+
+    function renderClientBook() {
+      var list = document.getElementById("client-book-list");
+      var panel = document.getElementById("client-book");
+      if (!list || !panel) return;
+      if (IS_PUBLIC_GITHUB_LIVE || !IS_LIVE) {
+        panel.hidden = true;
+        return;
+      }
+      panel.hidden = false;
+      list.innerHTML = "";
+      if (!CLIENT_BOOK.length) {
+        var empty = document.createElement("p");
+        empty.className = "card-meta";
+        empty.textContent = "No existing clients saved yet. Add one to block drafts and sends to that company.";
+        list.appendChild(empty);
+        return;
+      }
+      CLIENT_BOOK.forEach(function (row, idx) {
+        var line = document.createElement("div");
+        line.className = "client-book-row";
+        var label = document.createElement("div");
+        var nameEl = document.createElement("span");
+        nameEl.className = "name";
+        nameEl.textContent = row.company_name || "(no name)";
+        label.appendChild(nameEl);
+        if (row.domain) {
+          label.appendChild(document.createTextNode(" "));
+          var domEl = document.createElement("span");
+          domEl.className = "domain";
+          domEl.textContent = row.domain;
+          label.appendChild(domEl);
+        }
+        var removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn";
+        removeBtn.textContent = "Remove";
+        removeBtn.addEventListener("click", function () {
+          CLIENT_BOOK.splice(idx, 1);
+          persistClientBook();
+          renderClientBook();
+          var statusEl = document.getElementById("client-book-status");
+          if (statusEl) statusEl.textContent = "Removed. Future Runs will treat this company as a normal prospect.";
+        });
+        line.appendChild(label);
+        line.appendChild(removeBtn);
+        list.appendChild(line);
+      });
+    }
+
+    function applyExistingClientRefusal(ev, resultEl, buttonEl) {
+      var why =
+        "This company is already a client. Cold outreach is not allowed. Do not contact them through this workflow. Use the existing client relationship instead.";
+      var labeled = [
+        "status: REFUSED-ESCALATE",
+        "table: Table 2",
+        "decision: Refused",
+        "confidence_rating: High",
+        "company_name: " + (ev.company_name || ""),
+        "domain: " + (ev.domain || ""),
+        "poc_name: ",
+        "poc_title: ",
+        "poc_email: ",
+        "fit_if_email_secured: Still-blocked",
+        "fit_if_email_note: Existing client. Cold outreach is not allowed even if a POC email existed.",
+        "reason_or_ambiguity: This company is already a client. Cold outreach is not allowed.",
+        "override_available: No",
+        "draft_to: ",
+        "draft_from: ",
+        "persona_assigned: ",
+        "persona_used: ",
+        "citations: partner_client_book, agent-rules.md#8, " + (ev.case_id || "") + ", " + (ev.company_id || ""),
+        "why: " + why,
+        "draft_1_subject: ",
+        "draft_1_body: ",
+        "draft_2_subject: ",
+        "draft_2_body: ",
+        "draft_3_subject: ",
+        "draft_3_body: ",
+        "draft_4_subject: ",
+        "draft_4_body: "
+      ].join("\n");
+      resultEl.innerHTML = "";
+      renderParsedResult(resultEl, labeled, ev);
+      updateRowSummary(ev.case_id, resultEl._lastFields);
+      wireHumanGate(resultEl, ev);
+      persistCaseResult(ev, resultEl);
+      appendRunLog({
+        time: new Date().toLocaleTimeString(),
+        case_id: ev.case_id,
+        company_name: ev.company_name,
+        agent_decision: "REFUSED-ESCALATE/existing_client",
+        human_action: "_system",
+        detail: "Blocked by partner client book. No Hunter. No draft."
+      });
+      if (buttonEl) buttonEl.disabled = false;
+      return { kind: "refused", detail: "existing_client" };
+    }
+
     function normalizeSourceUrlKey(url) {
       var s = String(url || "").trim();
       if (!s) return "";
@@ -2791,6 +2975,10 @@ body.is-demo .live-only { display: none !important; }
           skippedQueued += 1;
           return;
         }
+        if (matchClientBook(companyGuess, domainGuess)) {
+          skippedQueued += 1;
+          return;
+        }
         pending.push({
           raw: r,
           title: r.title || "",
@@ -2840,6 +3028,10 @@ body.is-demo .live-only { display: none !important; }
         );
         if (existing) {
           attachStoriesToEvent(existing, articles);
+          skippedQueued += articles.length;
+          return;
+        }
+        if (matchClientBook(item.company_guess, item.domain_guess)) {
           skippedQueued += articles.length;
           return;
         }
@@ -2949,6 +3141,7 @@ body.is-demo .live-only { display: none !important; }
     function applyAppModeShell() {
       document.body.classList.toggle("is-live", IS_LIVE);
       document.body.classList.toggle("is-demo", !IS_LIVE);
+      document.body.classList.toggle("is-public-github", IS_PUBLIC_GITHUB_LIVE);
       var titleEl = document.getElementById("product-title");
       var banner = document.getElementById("mode-banner");
       var liveToolbar = document.getElementById("live-toolbar");
@@ -2962,7 +3155,7 @@ body.is-demo .live-only { display: none !important; }
           if (IS_PUBLIC_GITHUB_LIVE) {
             banner.innerHTML = "<strong>Public GitHub Live is a safe shell.</strong> Synthetic cases only. Real company and contact data is only on the Access-protected Live site at <a href=\"https://warm-reception-live.pages.dev\">https://warm-reception-live.pages.dev</a>. Hunter stays off here. Refresh from Exa is off. Capstone demo stays at the site root. Human Approve / Edit / Escalate still required before any send.";
           } else {
-            banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Audit log and extras save to the private store after D1 is set up. Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+            banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Existing clients live in the private store. Never draft or send to a client. Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
           }
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
@@ -3000,8 +3193,15 @@ body.is-demo .live-only { display: none !important; }
       return ICP_CONTACTS.filter(function (row) { return row.company_id === companyId; });
     }
 
-    function statusFor(companyName) {
-      return COMPANY_STATUS.find(function (row) { return row.company_name === companyName; }) || null;
+    function statusFor(companyName, domain) {
+      var fromBook = matchClientBook(companyName, domain);
+      if (fromBook) return fromBook;
+      for (var i = 0; i < COMPANY_STATUS.length; i++) {
+        var row = COMPANY_STATUS[i];
+        if (sameQueuedCompany(companyName, domain, row.company_name, row.domain)) return row;
+        if (row.company_name === companyName) return row;
+      }
+      return null;
     }
 
     function formatFieldLabel(key) {
@@ -3550,7 +3750,7 @@ body.is-demo .live-only { display: none !important; }
     function partnerIdForCase(ev) {
       if (IS_LIVE) return "partner_c";
       if (!ev) return "partner_c";
-      var status = statusFor(ev.company_name);
+      var status = statusFor(ev.company_name, ev.domain);
       if (status && (status.partner_id === "partner_c" || status.partner_id === "partner_n")) {
         return status.partner_id;
       }
@@ -4734,7 +4934,7 @@ body.is-demo .live-only { display: none !important; }
       var profile = byCompanyId(COMPANY_PROFILES, ev.company_id);
       var companyContacts = contactsForCompany(ev.company_id);
       var contact = companyContacts[0] || null;
-      var status = statusFor(ev.company_name);
+      var status = statusFor(ev.company_name, ev.domain);
       var whitelist = whitelistFor(ev.company_id, ev.company_name, ev.domain);
       var ctaSession = buildCtaSession(new Date());
       var relatedProfiles = COMPANY_PROFILES.filter(function (p) {
@@ -5552,6 +5752,9 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function promoteCaseToGoWithManualPoc(ev, resultEl, poc) {
+      if (matchClientBook(ev.company_name, ev.domain)) {
+        return { ok: false, detail: "This company is already a client. Cold outreach is not allowed. Remove them from Existing clients first if that was a mistake." };
+      }
       var first = String(poc.first_name || "").trim();
       var last = String(poc.last_name || "").trim();
       var title = String(poc.title || "").trim() || "Executive";
@@ -5672,7 +5875,7 @@ body.is-demo .live-only { display: none !important; }
       var fitHint = String(fields.fit_if_email_secured || "").trim();
       var fitNorm = fitHint.toLowerCase().replace(/\s+/g, "-");
       var emailChaseWorthIt = fitNorm === "would-go" || fitNorm.indexOf("would-go") === 0;
-      var showPocOverride = (!isGo || !hasSequence) && emailChaseWorthIt;
+      var showPocOverride = (!isGo || !hasSequence) && emailChaseWorthIt && !matchClientBook(ev.company_name, ev.domain);
 
       var gate = document.createElement("div");
       gate.className = "human-gate";
@@ -5894,6 +6097,9 @@ body.is-demo .live-only { display: none !important; }
       if (IS_LIVE && !IS_PUBLIC_GITHUB_LIVE && (liveNeedsDomainConfirm(ev) || !looksLikeRealDomain(ev.domain))) {
         resultEl.innerHTML = '<div class="error-note">Confirm the company name and its real website domain in the Exa intake tray before Run. Do not invent a person or email here.</div>';
         return { kind: "error", detail: "domain_not_confirmed" };
+      }
+      if (matchClientBook(ev.company_name, ev.domain)) {
+        return applyExistingClientRefusal(ev, resultEl, buttonEl);
       }
       buttonEl.disabled = true;
       resultEl.innerHTML = '<span class="thinking">Running…</span>';
@@ -6479,19 +6685,16 @@ body.is-demo .live-only { display: none !important; }
         renderRunLog();
       }
       if (data.results && typeof data.results === "object") STORE_RESULTS = data.results;
+      CLIENT_BOOK = [];
       if (Array.isArray(data.clients)) {
         data.clients.forEach(function (s) {
-          var found = false;
-          for (var i = 0; i < COMPANY_STATUS.length; i++) {
-            if (COMPANY_STATUS[i].domain === s.domain || COMPANY_STATUS[i].company_name === s.company_name) {
-              COMPANY_STATUS[i] = s;
-              found = true;
-              break;
-            }
-          }
-          if (!found) COMPANY_STATUS.push(s);
+          var row = normalizeClientRow(s);
+          if (!row) return;
+          if (matchClientBook(row.company_name, row.domain)) return;
+          CLIENT_BOOK.push(row);
         });
       }
+      renderClientBook();
       remountQueue();
       Object.keys(STORE_RESULTS).forEach(function (id) {
         var ui = CASE_UI[id];
@@ -7025,6 +7228,46 @@ body.is-demo .live-only { display: none !important; }
     }
 
     refreshProdApiStatus();
+
+    var addClientBtn = document.getElementById("client-book-add");
+    if (addClientBtn) {
+      addClientBtn.addEventListener("click", function () {
+        var statusEl = document.getElementById("client-book-status");
+        if (IS_PUBLIC_GITHUB_LIVE) {
+          if (statusEl) statusEl.textContent = "The client book is only on the private Live site.";
+          return;
+        }
+        if (!storeEnabled()) {
+          if (statusEl) statusEl.textContent = "Save API and Save code first so the list can live in the private store.";
+          return;
+        }
+        var nameEl = document.getElementById("client-book-name");
+        var domainEl = document.getElementById("client-book-domain");
+        var row = normalizeClientRow({
+          company_name: nameEl && nameEl.value,
+          domain: domainEl && domainEl.value
+        });
+        if (!row || !row.company_name || !looksLikeRealDomain(row.domain)) {
+          if (statusEl) statusEl.textContent = "Enter the legal name and the real website domain, such as company.com.";
+          return;
+        }
+        if (matchClientBook(row.company_name, row.domain)) {
+          if (statusEl) statusEl.textContent = "That company is already on the never-outreach list.";
+          return;
+        }
+        CLIENT_BOOK.push(row);
+        persistClientBook();
+        renderClientBook();
+        if (nameEl) nameEl.value = "";
+        if (domainEl) domainEl.value = "";
+        if (statusEl) {
+          statusEl.textContent =
+            "Saved in the private store. If this company is already in the queue, Run it. You should get Refused, no draft, and no Hunter lookup.";
+        }
+      });
+    }
+
+    renderClientBook();
 
     var refreshExaBtn = document.getElementById("btn-refresh-exa");
     if (refreshExaBtn) {

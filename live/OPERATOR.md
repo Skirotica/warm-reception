@@ -186,6 +186,14 @@ If Cloudflare asks for a login method, add **One-time PIN**: Zero Trust → Inte
 
 Access passed (login wall + One-time PIN). Hunter is on for this private host.
 
+## Existing clients (never outreach)
+
+The real client book lives only in the private store (D1), behind Access. It is not in GitHub, not in the public HTML, and not on GitHub Live.
+
+On `https://warm-reception-live.pages.dev`, after Save API and Save code, use **Existing clients (never outreach)**. Add the legal name and the real website domain. Run on a matching queue card should refuse immediately: No-go / Refused, no email drafts, no Hunter lookup. Approve cannot send. Do not paste that list into chat, GitHub, or this file.
+
+GitHub Live does not show or load this list.
+
 ### Courtney: Hunter on (this turn)
 
 `HUNTER_ENABLED` is `"true"` in `prod-api/wrangler.toml`. GitHub Pages Live stays Hunter-off in the browser and on Hunter Worker routes.

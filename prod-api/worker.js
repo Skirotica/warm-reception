@@ -385,6 +385,9 @@ async function storePutBlob(request, env, cors, key) {
   } catch (e) {
     return jsonResponse({ error: "JSON required" }, 400, cors);
   }
+  if (key === "clients" && !Array.isArray(body)) {
+    return jsonResponse({ error: "clients must be an array" }, 400, cors);
+  }
   try {
     await kvPut(env, key, body);
     return jsonResponse({ ok: true, key: key }, 200, cors);
