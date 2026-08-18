@@ -511,8 +511,14 @@ body {
   margin-bottom: var(--sp-2); flex-wrap: wrap;
 }
 .sequence-block .seq-title {
-  font-size: var(--fs-0); font-weight: 700; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--ink-2);
+  font-size: var(--fs-0); color: var(--ink-2);
+}
+.sequence-block .seq-lead {
+  font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+.sequence-block .seq-date {
+  font-weight: 400; letter-spacing: 0; text-transform: none;
+  margin-left: 0.35em;
 }
 .sequence-block .seq-approve {
   display: inline-flex; align-items: center; gap: var(--sp-2);
@@ -4845,11 +4851,14 @@ body.is-demo .live-only { display: none !important; }
       });
     }
 
-    function sequenceCadenceLabels(cal) {
+    function sequenceCadenceParts(cal) {
       var parts = sequenceSendDateParts(cal);
       var lags = ["trigger day", "3 days", "7 days", "14 days"];
       return parts.map(function (p, i) {
-        return "Email " + (i + 1) + " · " + lags[i] + " " + formatLongDate(p);
+        return {
+          lead: "Email " + (i + 1) + " · " + lags[i],
+          date: formatLongDate(p)
+        };
       });
     }
 
@@ -5981,7 +5990,7 @@ body.is-demo .live-only { display: none !important; }
         return wrap;
       }
       var cal = (resultEl && resultEl._ctaSession && resultEl._ctaSession.calendar) || buildCalendarBlock(new Date());
-      var cadence = sequenceCadenceLabels(cal);
+      var cadence = sequenceCadenceParts(cal);
       for (var n = 1; n <= 4; n++) {
         var subj = String(fields["draft_" + n + "_subject"] || "").trim();
         var body = String(fields["draft_" + n + "_body"] || "").trim();
@@ -5992,7 +6001,14 @@ body.is-demo .live-only { display: none !important; }
         head.className = "seq-head";
         var title = document.createElement("div");
         title.className = "seq-title";
-        title.textContent = cadence[n - 1];
+        var lead = document.createElement("span");
+        lead.className = "seq-lead";
+        lead.textContent = cadence[n - 1].lead;
+        var date = document.createElement("span");
+        date.className = "seq-date";
+        date.textContent = cadence[n - 1].date;
+        title.appendChild(lead);
+        title.appendChild(date);
         head.appendChild(title);
         block.appendChild(head);
         var subjEl = document.createElement("div");
@@ -6446,13 +6462,14 @@ body.is-demo .live-only { display: none !important; }
       var gate = document.createElement("div");
       gate.className = "human-gate";
       var editHtml = "";
-      var editCadence = sequenceCadenceLabels(
+      var editCadence = sequenceCadenceParts(
         (resultEl && resultEl._ctaSession && resultEl._ctaSession.calendar) || buildCalendarBlock(new Date())
       );
       for (var n = 1; n <= 4; n++) {
         editHtml +=
           '<div class="seq-edit">' +
-          "<strong>" + escapeHtml(editCadence[n - 1]) + "</strong><br><br>" +
+          "<strong>" + escapeHtml(editCadence[n - 1].lead) + "</strong> " +
+          escapeHtml(editCadence[n - 1].date) + "<br><br>" +
           '<label>Subject<br><input class="edit-subject-' + n + '" /></label><br><br>' +
           '<label>Body<br><textarea class="edit-body-' + n + '" rows="5"></textarea></label>' +
           "</div>";
