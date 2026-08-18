@@ -607,7 +607,21 @@ body.is-public-github .private-store-only { display: none !important; }
   gap: var(--sp-2);
   flex-wrap: wrap;
   align-items: center;
+  margin: 0 0 var(--sp-2);
+}
+.client-book-status {
+  display: block;
   margin: 0 0 var(--sp-3);
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+}
+.client-book-status.is-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+.client-book-status.is-ok {
+  color: var(--ok);
+  font-weight: 600;
 }
 .client-book-add input {
   background: var(--bg-raise);
@@ -738,9 +752,9 @@ body.is-demo .live-only { display: none !important; }
             <div class="client-book-add">
               <input id="client-book-name" type="text" autocomplete="off" aria-label="Client company name" placeholder="Company name" />
               <input id="client-book-domain" type="text" autocomplete="off" aria-label="Client website domain" placeholder="company.com" />
-              <button type="button" class="btn" id="client-book-add">Add client</button>
-              <span class="meta" id="client-book-status"></span>
+              <button type="button" class="btn primary" id="client-book-add">Add client</button>
             </div>
+            <p class="client-book-status" id="client-book-status"></p>
             <div class="client-book-list" id="client-book-list"></div>
           </div>
           <div class="exa-intake" id="exa-intake" hidden>
@@ -2397,6 +2411,73 @@ body.is-demo .live-only { display: none !important; }
       return storePutBlob("clients", CLIENT_BOOK);
     }
 
+    function setClientBookStatus(text, kind) {
+      var statusEl = document.getElementById("client-book-status");
+      if (!statusEl) return;
+      statusEl.textContent = text || "";
+      statusEl.classList.toggle("is-error", kind === "error");
+      statusEl.classList.toggle("is-ok", kind === "ok");
+    }
+
+    function queuedMatchForClient(name, domain) {
+      var events = (QUEUE_EVENTS && QUEUE_EVENTS.length) ? QUEUE_EVENTS : CANDIDATE_EVENTS;
+      for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        if (sameQueuedCompany(name, domain, ev.company_name, ev.domain)) return ev;
+      }
+      return null;
+    }
+
+    function addClientFromForm() {
+      if (IS_PUBLIC_GITHUB_LIVE) {
+        setClientBookStatus("The client book is only on the private Live site.", "error");
+        return;
+      }
+      if (!storeEnabled()) {
+        setClientBookStatus("Save API and Save code first, in the top bar. Then click Add client again. The list has to live in the private store.", "error");
+        return;
+      }
+      var nameEl = document.getElementById("client-book-name");
+      var domainEl = document.getElementById("client-book-domain");
+      var typedName = String(nameEl && nameEl.value ? nameEl.value : "").trim();
+      var typedDomain = String(domainEl && domainEl.value ? domainEl.value : "").trim();
+      var queued = queuedMatchForClient(typedName, typedDomain);
+      var row = normalizeClientRow({
+        company_name: typedName || (queued && queued.company_name),
+        domain: typedDomain || (queued && queued.domain)
+      });
+      if (row && !looksLikeRealDomain(row.domain) && queued && looksLikeRealDomain(queued.domain)) {
+        row.domain = normalizeDomainKey(queued.domain);
+      }
+      if (!row || !row.company_name) {
+        setClientBookStatus("Type a company name from your queue, such as Discern.", "error");
+        return;
+      }
+      if (!looksLikeRealDomain(row.domain)) {
+        setClientBookStatus("Add the website domain too, such as discern.com. You can copy it from that company’s card.", "error");
+        return;
+      }
+      if (matchClientBook(row.company_name, row.domain)) {
+        setClientBookStatus(row.company_name + " is already on the never-outreach list. Open that card and click Run.", "ok");
+        return;
+      }
+      CLIENT_BOOK.push(row);
+      renderClientBook();
+      if (nameEl) nameEl.value = "";
+      if (domainEl) domainEl.value = "";
+      setClientBookStatus("Saving " + row.company_name + "…", "ok");
+      Promise.resolve(persistClientBook()).then(function (packed) {
+        if (packed && packed.ok) {
+          setClientBookStatus(row.company_name + " is saved. Open that card and click Run. You should get Refused, no emails, no Hunter.", "ok");
+          return;
+        }
+        var detail = packed && packed.data && (packed.data.error || packed.data.detail);
+        setClientBookStatus("The name is on this page, but the private store did not save it. " + (detail || "Save API and Save code, then Add client again."), "error");
+      }).catch(function () {
+        setClientBookStatus("The name is on this page, but the private store did not save it. Save API and Save code, then Add client again.", "error");
+      });
+    }
+
     function renderClientBook() {
       var list = document.getElementById("client-book-list");
       var panel = document.getElementById("client-book");
@@ -2437,8 +2518,7 @@ body.is-demo .live-only { display: none !important; }
           CLIENT_BOOK.splice(idx, 1);
           persistClientBook();
           renderClientBook();
-          var statusEl = document.getElementById("client-book-status");
-          if (statusEl) statusEl.textContent = "Removed. Future Runs will treat this company as a normal prospect.";
+          setClientBookStatus("Removed. Future Runs will treat this company as a normal prospect.", "ok");
         });
         line.appendChild(label);
         line.appendChild(removeBtn);
@@ -7231,41 +7311,18 @@ body.is-demo .live-only { display: none !important; }
 
     var addClientBtn = document.getElementById("client-book-add");
     if (addClientBtn) {
-      addClientBtn.addEventListener("click", function () {
-        var statusEl = document.getElementById("client-book-status");
-        if (IS_PUBLIC_GITHUB_LIVE) {
-          if (statusEl) statusEl.textContent = "The client book is only on the private Live site.";
-          return;
-        }
-        if (!storeEnabled()) {
-          if (statusEl) statusEl.textContent = "Save API and Save code first so the list can live in the private store.";
-          return;
-        }
-        var nameEl = document.getElementById("client-book-name");
-        var domainEl = document.getElementById("client-book-domain");
-        var row = normalizeClientRow({
-          company_name: nameEl && nameEl.value,
-          domain: domainEl && domainEl.value
-        });
-        if (!row || !row.company_name || !looksLikeRealDomain(row.domain)) {
-          if (statusEl) statusEl.textContent = "Enter the legal name and the real website domain, such as company.com.";
-          return;
-        }
-        if (matchClientBook(row.company_name, row.domain)) {
-          if (statusEl) statusEl.textContent = "That company is already on the never-outreach list.";
-          return;
-        }
-        CLIENT_BOOK.push(row);
-        persistClientBook();
-        renderClientBook();
-        if (nameEl) nameEl.value = "";
-        if (domainEl) domainEl.value = "";
-        if (statusEl) {
-          statusEl.textContent =
-            "Saved in the private store. If this company is already in the queue, Run it. You should get Refused, no draft, and no Hunter lookup.";
+      addClientBtn.addEventListener("click", addClientFromForm);
+    }
+    ["client-book-name", "client-book-domain"].forEach(function (id) {
+      var input = document.getElementById(id);
+      if (!input) return;
+      input.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          addClientFromForm();
         }
       });
-    }
+    });
 
     renderClientBook();
 
