@@ -4469,6 +4469,7 @@ body.is-demo .live-only { display: none !important; }
     }
 
     var WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    var MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
     // Structured Black Gavel sequence (source of truth for Go drafts). Prefer this over agent prose.
     // Subjects may say "CRO hire"; body copy addresses the recipient as the hire when they are the person who moved.
@@ -4801,6 +4802,57 @@ body.is-demo .live-only { display: none !important; }
       return { year: dt.getUTCFullYear(), month: dt.getUTCMonth() + 1, day: dt.getUTCDate(), weekday: dt.getUTCDay() };
     }
 
+    function ymdFromIso(iso) {
+      var p = String(iso || "").split("-");
+      var y = Number(p[0]);
+      var m = Number(p[1]);
+      var d = Number(p[2]);
+      if (!y || !m || !d) return null;
+      return { year: y, month: m, day: d, weekday: new Date(Date.UTC(y, m - 1, d)).getUTCDay() };
+    }
+
+    function dayOrdinal(n) {
+      var v = Number(n) || 0;
+      var mod100 = v % 100;
+      if (mod100 >= 11 && mod100 <= 13) return v + "th";
+      var mod10 = v % 10;
+      if (mod10 === 1) return v + "st";
+      if (mod10 === 2) return v + "nd";
+      if (mod10 === 3) return v + "rd";
+      return v + "th";
+    }
+
+    function formatLongDate(p) {
+      if (!p) return "";
+      return WEEKDAY_NAMES[p.weekday] + " " + MONTH_NAMES[p.month - 1] + " " + dayOrdinal(p.day);
+    }
+
+    function rollSendDateToWeekday(p) {
+      var cur = { year: p.year, month: p.month, day: p.day, weekday: p.weekday };
+      while (cur.weekday === 0 || cur.weekday === 6) {
+        cur = addCalendarDays(cur.year, cur.month, cur.day, 1);
+      }
+      return cur;
+    }
+
+    function sequenceSendDateParts(cal) {
+      var today = (cal && cal.today_iso && ymdFromIso(cal.today_iso)) || localParts(new Date());
+      var offsets = [0, 3, 7, 14];
+      return offsets.map(function (delta, i) {
+        var p = addCalendarDays(today.year, today.month, today.day, delta);
+        if (i > 0) p = rollSendDateToWeekday(p);
+        return p;
+      });
+    }
+
+    function sequenceCadenceLabels(cal) {
+      var parts = sequenceSendDateParts(cal);
+      var lags = ["trigger day", "3 days", "7 days", "14 days"];
+      return parts.map(function (p, i) {
+        return "Email " + (i + 1) + " · " + lags[i] + " " + formatLongDate(p);
+      });
+    }
+
     function addBusinessDays(y, m, d, businessDays) {
       var cur = { year: y, month: m, day: d, weekday: new Date(Date.UTC(y, m - 1, d)).getUTCDay() };
       var left = businessDays;
@@ -4850,6 +4902,7 @@ body.is-demo .live-only { display: none !important; }
       var tomorrowIsWeekend = tomorrow.weekday === 0 || tomorrow.weekday === 6;
       var nextWeekday = addBusinessDays(today.year, today.month, today.day, 1);
       var twoWeekdays = addBusinessDays(today.year, today.month, today.day, 2);
+      var sendParts = sequenceSendDateParts({ today_iso: isoFromYmd(today) });
       return {
         timezone: browserTimeZone(),
         today_iso: isoFromYmd(today),
@@ -4861,7 +4914,15 @@ body.is-demo .live-only { display: none !important; }
         next_weekday: WEEKDAY_NAMES[nextWeekday.weekday],
         next_weekday_iso: isoFromYmd(nextWeekday),
         two_weekdays: WEEKDAY_NAMES[twoWeekdays.weekday],
-        two_weekdays_iso: isoFromYmd(twoWeekdays)
+        two_weekdays_iso: isoFromYmd(twoWeekdays),
+        email_1_send: formatLongDate(sendParts[0]),
+        email_1_send_iso: isoFromYmd(sendParts[0]),
+        email_2_send: formatLongDate(sendParts[1]),
+        email_2_send_iso: isoFromYmd(sendParts[1]),
+        email_3_send: formatLongDate(sendParts[2]),
+        email_3_send_iso: isoFromYmd(sendParts[2]),
+        email_4_send: formatLongDate(sendParts[3]),
+        email_4_send_iso: isoFromYmd(sendParts[3])
       };
     }
 
@@ -4879,7 +4940,11 @@ body.is-demo .live-only { display: none !important; }
         "next_weekday_iso: " + cal.next_weekday_iso,
         "two_weekdays: " + cal.two_weekdays,
         "two_weekdays_iso: " + cal.two_weekdays_iso,
-        "If you say tomorrow, the weekday must be " + cal.tomorrow_weekday + ". Do not propose Saturday or Sunday. If tomorrow is weekend, offer " + cal.next_weekday + " instead. Do not write tomorrow, Friday unless tomorrow_weekday is Friday. Allow Can I call you tomorrow or " + cal.two_weekdays + "? when tomorrow is a business day. Do not switch today between emails. No Sunday-as-today unless today_weekday is Sunday."
+        "email_1_send: " + (cal.email_1_send || "") + " (" + (cal.email_1_send_iso || "") + ", trigger day)",
+        "email_2_send: " + (cal.email_2_send || "") + " (" + (cal.email_2_send_iso || "") + ", +3 days)",
+        "email_3_send: " + (cal.email_3_send || "") + " (" + (cal.email_3_send_iso || "") + ", +7 days)",
+        "email_4_send: " + (cal.email_4_send || "") + " (" + (cal.email_4_send_iso || "") + ", +14 days)",
+        "If you say tomorrow, the weekday must be " + cal.tomorrow_weekday + ". Do not propose Saturday or Sunday. If tomorrow is weekend, offer " + cal.next_weekday + " instead. Do not write tomorrow, Friday unless tomorrow_weekday is Friday. Allow Can I call you tomorrow or " + cal.two_weekdays + "? when tomorrow is a business day. Do not switch today between emails. No Sunday-as-today unless today_weekday is Sunday. Scheduled send dates are email_1_send through email_4_send from this same CALENDAR."
       ].join("\n");
     }
 
@@ -5915,7 +5980,8 @@ body.is-demo .live-only { display: none !important; }
         else resultEl.appendChild(wrap);
         return wrap;
       }
-      var cadence = ["Email 1 · trigger day", "Email 2 · ~3 days", "Email 3 · ~7 days", "Email 4 · ~14 days"];
+      var cal = (resultEl && resultEl._ctaSession && resultEl._ctaSession.calendar) || buildCalendarBlock(new Date());
+      var cadence = sequenceCadenceLabels(cal);
       for (var n = 1; n <= 4; n++) {
         var subj = String(fields["draft_" + n + "_subject"] || "").trim();
         var body = String(fields["draft_" + n + "_body"] || "").trim();
@@ -6380,10 +6446,13 @@ body.is-demo .live-only { display: none !important; }
       var gate = document.createElement("div");
       gate.className = "human-gate";
       var editHtml = "";
+      var editCadence = sequenceCadenceLabels(
+        (resultEl && resultEl._ctaSession && resultEl._ctaSession.calendar) || buildCalendarBlock(new Date())
+      );
       for (var n = 1; n <= 4; n++) {
         editHtml +=
           '<div class="seq-edit">' +
-          "<strong>Email " + n + "</strong><br><br>" +
+          "<strong>" + escapeHtml(editCadence[n - 1]) + "</strong><br><br>" +
           '<label>Subject<br><input class="edit-subject-' + n + '" /></label><br><br>' +
           '<label>Body<br><textarea class="edit-body-' + n + '" rows="5"></textarea></label>' +
           "</div>";
