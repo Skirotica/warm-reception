@@ -194,6 +194,10 @@ On `https://warm-reception-live.pages.dev`, after Save API and Save code, use **
 
 GitHub Live does not show or load this list.
 
+## Do not contact (stop requests)
+
+Person-level. If someone says stop, a partner clicks **Do not contact this person** on that card, or adds the name under **Do not contact**. Future drafts to that person are blocked until a partner clicks Remove. Company-wide DNC is not in this step. The list lives only in the private store. GitHub Live does not load it. Do not paste real names or emails into chat, GitHub, or this file.
+
 ### Courtney: Hunter on (this turn)
 
 `HUNTER_ENABLED` is `"true"` in `prod-api/wrangler.toml`. GitHub Pages Live stays Hunter-off in the browser and on Hunter Worker routes.

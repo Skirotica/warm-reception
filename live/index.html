@@ -757,6 +757,18 @@ body.is-demo .live-only { display: none !important; }
             <p class="client-book-status" id="client-book-status"></p>
             <div class="client-book-list" id="client-book-list"></div>
           </div>
+          <div class="client-book private-store-only" id="dnc-book">
+            <h3>Do not contact (stop requests)</h3>
+            <p class="intake-help">If a person says stop, a partner adds them here. Future drafts to that person are blocked until a partner removes them. This is person-level, not the whole company. The list lives in the private store. Do not paste it into chat or GitHub.</p>
+            <div class="client-book-add">
+              <input id="dnc-name" type="text" autocomplete="off" aria-label="Person name" placeholder="Person name" />
+              <input id="dnc-email" type="email" autocomplete="off" aria-label="Person email" placeholder="email optional" />
+              <input id="dnc-company" type="text" autocomplete="off" aria-label="Company name" placeholder="Company" />
+              <button type="button" class="btn primary" id="dnc-add">Add person</button>
+            </div>
+            <p class="client-book-status" id="dnc-status"></p>
+            <div class="client-book-list" id="dnc-list"></div>
+          </div>
           <div class="exa-intake" id="exa-intake" hidden>
             <h3>Confirm company and domain</h3>
             <p class="intake-help">Exa found news. Same company from two articles is one row, not two companies. Confirm the company name and its real website domain (the company site, not a news article). Confirm writes the company to the partner store. Skip if you do not want that name stored. Do not invent a person or an email here.</p>
@@ -1003,6 +1015,7 @@ body.is-demo .live-only { display: none !important; }
 
     var STORE_RESULTS = {};
     var CLIENT_BOOK = [];
+    var DNC_LIST = [];
 
     function isGithubIoHost() {
       return /github\.io$/i.test(String(location.hostname || ""));
@@ -1320,6 +1333,7 @@ body.is-demo .live-only { display: none !important; }
       "6. Enforce a 30-day duplicate suppression window using prior_sends.csv.",
       "7. Never reply to inbound emails.",
       "8. Existing clients in company_status.csv or the partner client book (private store): stop immediately, Table 2, no override, no draft. Never draft. Never send.",
+      "8b. Person on the partner do-not-contact list (private store): stop immediately, Table 2, no override, no draft to that person. Hold until a partner removes them. This is person-level, not company-wide.",
       "9. Name collisions and unconfirmed entities: Table 3, no draft before human verification.",
       "10. Approved sends in this capstone prototype route to sandbox only.",
       "11. Pre-qualified whitelist: if prequalified_match is present in case context, skip ICP re-qualification (do not No-go for size/revenue/backing/TA alone). Still require a qualifying event, verified email, and all hard stops. In plain-language Why, say this company was already partner-vetted. Put prequalified-whitelist.md and the whitelist company_id only in citations.",
@@ -2573,6 +2587,236 @@ body.is-demo .live-only { display: none !important; }
       });
       if (buttonEl) buttonEl.disabled = false;
       return { kind: "refused", detail: "existing_client" };
+    }
+
+    function normalizeEmailKey(email) {
+      return String(email || "").trim().toLowerCase();
+    }
+
+    function looksLikeEmail(email) {
+      var e = normalizeEmailKey(email);
+      return !!e && e.indexOf("@") !== -1 && e.indexOf(".") !== -1;
+    }
+
+    function normalizePersonKey(name) {
+      return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    }
+
+    function contactDisplayName(contact) {
+      if (!contact) return "";
+      return (String(contact.first_name || "") + " " + String(contact.last_name || "")).trim();
+    }
+
+    function personFromCase(ev, fields, contact) {
+      var name = String((fields && fields.poc_name) || "").trim() || contactDisplayName(contact);
+      var email = String((fields && (fields.poc_email || fields.draft_to)) || (contact && contact.email) || "").trim();
+      return {
+        person_name: name,
+        email: normalizeEmailKey(email),
+        company_name: ev && ev.company_name ? ev.company_name : "",
+        domain: ev && ev.domain ? normalizeDomainKey(ev.domain) : ""
+      };
+    }
+
+    function normalizeDncRow(row) {
+      if (!row || typeof row !== "object") return null;
+      var person_name = String(row.person_name || row.name || "").trim();
+      var email = normalizeEmailKey(row.email || "");
+      var company_name = String(row.company_name || "").trim();
+      var domain = normalizeDomainKey(row.domain || "");
+      if (!person_name && !looksLikeEmail(email)) return null;
+      return {
+        person_name: person_name,
+        email: looksLikeEmail(email) ? email : "",
+        company_name: company_name,
+        domain: domain,
+        added_at: String(row.added_at || new Date().toISOString())
+      };
+    }
+
+    function matchDncPerson(personName, email, companyName, domain) {
+      if (IS_PUBLIC_GITHUB_LIVE) return null;
+      var emailKey = looksLikeEmail(email) ? normalizeEmailKey(email) : "";
+      var nameKey = normalizePersonKey(personName);
+      for (var i = 0; i < DNC_LIST.length; i++) {
+        var row = DNC_LIST[i];
+        if (emailKey && row.email && emailKey === row.email) return row;
+        if (nameKey && nameKey.length >= 4 && normalizePersonKey(row.person_name) === nameKey) {
+          if (!companyName && !domain) return row;
+          if (sameQueuedCompany(companyName, domain, row.company_name, row.domain)) return row;
+          if (!row.company_name && !row.domain) return row;
+        }
+      }
+      return null;
+    }
+
+    function matchDncForCase(ev, fields, contact) {
+      var person = personFromCase(ev, fields, contact);
+      if (!person.person_name && !person.email) return null;
+      return matchDncPerson(person.person_name, person.email, person.company_name, person.domain);
+    }
+
+    function persistDncList() {
+      if (IS_PUBLIC_GITHUB_LIVE) return Promise.resolve(null);
+      return storePutBlob("dnc", DNC_LIST);
+    }
+
+    function setDncStatus(text, kind) {
+      var statusEl = document.getElementById("dnc-status");
+      if (!statusEl) return;
+      statusEl.textContent = text || "";
+      statusEl.classList.toggle("is-error", kind === "error");
+      statusEl.classList.toggle("is-ok", kind === "ok");
+    }
+
+    function renderDncList() {
+      var list = document.getElementById("dnc-list");
+      var panel = document.getElementById("dnc-book");
+      if (!list || !panel) return;
+      if (IS_PUBLIC_GITHUB_LIVE || !IS_LIVE) {
+        panel.hidden = true;
+        return;
+      }
+      panel.hidden = false;
+      list.innerHTML = "";
+      if (!DNC_LIST.length) {
+        var empty = document.createElement("p");
+        empty.className = "card-meta";
+        empty.textContent = "No stop requests saved yet. Use Do not contact this person on a card, or add a name here.";
+        list.appendChild(empty);
+        return;
+      }
+      DNC_LIST.forEach(function (row, idx) {
+        var line = document.createElement("div");
+        line.className = "client-book-row";
+        var label = document.createElement("div");
+        var nameEl = document.createElement("span");
+        nameEl.className = "name";
+        nameEl.textContent = row.person_name || row.email || "(no name)";
+        label.appendChild(nameEl);
+        if (row.company_name) {
+          label.appendChild(document.createTextNode(" "));
+          var coEl = document.createElement("span");
+          coEl.className = "domain";
+          coEl.textContent = row.company_name;
+          label.appendChild(coEl);
+        }
+        if (row.email) {
+          label.appendChild(document.createTextNode(" "));
+          var emEl = document.createElement("span");
+          emEl.className = "domain";
+          emEl.textContent = row.email;
+          label.appendChild(emEl);
+        }
+        var removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn";
+        removeBtn.textContent = "Remove";
+        removeBtn.addEventListener("click", function () {
+          DNC_LIST.splice(idx, 1);
+          persistDncList();
+          renderDncList();
+          setDncStatus("Removed. Future Runs can draft to this person again.", "ok");
+        });
+        line.appendChild(label);
+        line.appendChild(removeBtn);
+        list.appendChild(line);
+      });
+    }
+
+    function applyDncRefusal(ev, resultEl, buttonEl, person) {
+      var who = (person && (person.person_name || person.email)) || "This person";
+      var why =
+        who +
+        " asked not to be contacted. Do not draft or send to them. They stay on the do-not-contact list until a partner removes them.";
+      var labeled = [
+        "status: REFUSED-ESCALATE",
+        "table: Table 2",
+        "decision: Refused",
+        "confidence_rating: High",
+        "company_name: " + (ev.company_name || ""),
+        "domain: " + (ev.domain || ""),
+        "poc_name: " + ((person && person.person_name) || ""),
+        "poc_title: ",
+        "poc_email: ",
+        "fit_if_email_secured: Still-blocked",
+        "fit_if_email_note: This person is on the do-not-contact list. Do not outreach even if a new email is found.",
+        "reason_or_ambiguity: This person asked not to be contacted. Cold outreach is not allowed.",
+        "override_available: No",
+        "draft_to: ",
+        "draft_from: ",
+        "persona_assigned: ",
+        "persona_used: ",
+        "citations: partner_dnc_list, agent-rules.md#8b, " + (ev.case_id || "") + ", " + (ev.company_id || ""),
+        "why: " + why,
+        "draft_1_subject: ",
+        "draft_1_body: ",
+        "draft_2_subject: ",
+        "draft_2_body: ",
+        "draft_3_subject: ",
+        "draft_3_body: ",
+        "draft_4_subject: ",
+        "draft_4_body: "
+      ].join("\n");
+      resultEl.innerHTML = "";
+      renderParsedResult(resultEl, labeled, ev);
+      updateRowSummary(ev.case_id, resultEl._lastFields);
+      wireHumanGate(resultEl, ev);
+      persistCaseResult(ev, resultEl);
+      appendRunLog({
+        time: new Date().toLocaleTimeString(),
+        case_id: ev.case_id,
+        company_name: ev.company_name,
+        agent_decision: "REFUSED-ESCALATE/dnc",
+        human_action: "_system",
+        detail: "Blocked by do-not-contact list. No draft."
+      });
+      if (buttonEl) buttonEl.disabled = false;
+      return { kind: "refused", detail: "dnc" };
+    }
+
+    function addDncRow(row, statusFn) {
+      var normalized = normalizeDncRow(row);
+      var say = statusFn || setDncStatus;
+      if (!normalized) {
+        say("Need a person name, or an email.", "error");
+        return null;
+      }
+      if (matchDncPerson(normalized.person_name, normalized.email, normalized.company_name, normalized.domain)) {
+        say((normalized.person_name || normalized.email) + " is already on the do-not-contact list.", "ok");
+        return normalized;
+      }
+      DNC_LIST.push(normalized);
+      renderDncList();
+      persistDncList();
+      say((normalized.person_name || normalized.email) + " is on the do-not-contact list until a partner removes them.", "ok");
+      return normalized;
+    }
+
+    function addDncFromForm() {
+      if (IS_PUBLIC_GITHUB_LIVE) {
+        setDncStatus("Do not contact is only on the private Live site.", "error");
+        return;
+      }
+      if (!storeEnabled()) {
+        setDncStatus("Save API and Save code first, in the top bar. Then add the person again.", "error");
+        return;
+      }
+      var nameEl = document.getElementById("dnc-name");
+      var emailEl = document.getElementById("dnc-email");
+      var companyEl = document.getElementById("dnc-company");
+      var queued = queuedMatchForClient(String(companyEl && companyEl.value || "").trim(), "");
+      var added = addDncRow({
+        person_name: nameEl && nameEl.value,
+        email: emailEl && emailEl.value,
+        company_name: (companyEl && companyEl.value) || (queued && queued.company_name),
+        domain: queued && queued.domain
+      }, setDncStatus);
+      if (added) {
+        if (nameEl) nameEl.value = "";
+        if (emailEl) emailEl.value = "";
+        if (companyEl) companyEl.value = "";
+      }
     }
 
     function normalizeSourceUrlKey(url) {
@@ -5835,6 +6079,10 @@ body.is-demo .live-only { display: none !important; }
       if (matchClientBook(ev.company_name, ev.domain)) {
         return { ok: false, detail: "This company is already a client. Cold outreach is not allowed. Remove them from Existing clients first if that was a mistake." };
       }
+      var trialName = (String(poc.first_name || "").trim() + " " + String(poc.last_name || "").trim()).trim();
+      if (matchDncPerson(trialName, poc.email, ev.company_name, ev.domain)) {
+        return { ok: false, detail: "This person is on the do-not-contact list. Remove them there first if that was a mistake." };
+      }
       var first = String(poc.first_name || "").trim();
       var last = String(poc.last_name || "").trim();
       var title = String(poc.title || "").trim() || "Executive";
@@ -5955,7 +6203,7 @@ body.is-demo .live-only { display: none !important; }
       var fitHint = String(fields.fit_if_email_secured || "").trim();
       var fitNorm = fitHint.toLowerCase().replace(/\s+/g, "-");
       var emailChaseWorthIt = fitNorm === "would-go" || fitNorm.indexOf("would-go") === 0;
-      var showPocOverride = (!isGo || !hasSequence) && emailChaseWorthIt && !matchClientBook(ev.company_name, ev.domain);
+      var showPocOverride = (!isGo || !hasSequence) && emailChaseWorthIt && !matchClientBook(ev.company_name, ev.domain) && !matchDncForCase(ev, fields, contactsForCompany(ev.company_id)[0]);
 
       var gate = document.createElement("div");
       gate.className = "human-gate";
@@ -6002,6 +6250,9 @@ body.is-demo .live-only { display: none !important; }
         '<button type="button" class="btn primary btn-approve"' + (isGo && hasSequence ? "" : " disabled") + ">Approve</button> " +
         '<button type="button" class="btn btn-edit"' + (isGo && hasSequence ? "" : " disabled") + ">Edit</button> " +
         '<button type="button" class="btn danger btn-escalate">Escalate</button>' +
+        (!IS_PUBLIC_GITHUB_LIVE && IS_LIVE
+          ? ' <button type="button" class="btn danger btn-dnc">Do not contact this person</button>'
+          : "") +
         "</p>" +
         '<div class="edit-panel" style="display:none">' +
         editHtml +
@@ -6016,6 +6267,29 @@ body.is-demo .live-only { display: none !important; }
       var stateEl = gate.querySelector(".human-state");
       var editPanel = gate.querySelector(".edit-panel");
       var ui = CASE_UI[ev.case_id];
+
+      var dncBtn = gate.querySelector(".btn-dnc");
+      if (dncBtn) {
+        dncBtn.addEventListener("click", function () {
+          if (!storeEnabled()) {
+            if (stateEl) stateEl.textContent = "Save API and Save code first so the stop list can live in the private store.";
+            setDncStatus("Save API and Save code first, in the top bar.", "error");
+            return;
+          }
+          var person = personFromCase(ev, resultEl._lastFields || fields, contactsForCompany(ev.company_id)[0]);
+          if (!person.person_name && !person.email) {
+            if (stateEl) stateEl.textContent = "This card has no person yet. Type their name under Do not contact, then Add person.";
+            setDncStatus("Type the person name under Do not contact, then Add person.", "error");
+            return;
+          }
+          addDncRow(person, setDncStatus);
+          applyDncRefusal(ev, resultEl, null, person);
+        });
+      }
+      if (matchDncForCase(ev, fields, contactsForCompany(ev.company_id)[0])) {
+        var approveBlocked = gate.querySelector(".btn-approve");
+        if (approveBlocked) approveBlocked.disabled = true;
+      }
 
       function applyHumanOutcomeToRow(caseId, action) {
         var rowUi = CASE_UI[caseId];
@@ -6083,6 +6357,10 @@ body.is-demo .live-only { display: none !important; }
       }
 
       gate.querySelector(".btn-approve").addEventListener("click", function () {
+        if (matchDncForCase(ev, resultEl._lastFields || fields, contactsForCompany(ev.company_id)[0])) {
+          if (stateEl) stateEl.textContent = "This person is on the do-not-contact list. Approve is blocked.";
+          return;
+        }
         if (!hasGoDecision(resultEl._lastFields || fields) || !SEQUENCE_DRAFT_KEYS.some(function (key) {
           return String((resultEl._lastFields || fields)[key] || "").trim();
         })) return;
@@ -6180,6 +6458,10 @@ body.is-demo .live-only { display: none !important; }
       }
       if (matchClientBook(ev.company_name, ev.domain)) {
         return applyExistingClientRefusal(ev, resultEl, buttonEl);
+      }
+      var seedContactEarly = contactsForCompany(ev.company_id)[0] || null;
+      if (matchDncForCase(ev, null, seedContactEarly)) {
+        return applyDncRefusal(ev, resultEl, buttonEl, personFromCase(ev, null, seedContactEarly));
       }
       buttonEl.disabled = true;
       resultEl.innerHTML = '<span class="thinking">Running…</span>';
@@ -6335,6 +6617,9 @@ body.is-demo .live-only { display: none !important; }
       var statusRow = payload.company_status;
       var isClient = (profile && profile.status === "client") || (statusRow && statusRow.status === "client");
       var contact = payload.preferred_contact || payload.contact;
+      if (matchDncForCase(ev, null, contact)) {
+        return applyDncRefusal(ev, resultEl, buttonEl, personFromCase(ev, null, contact));
+      }
       var companyContacts = payload.company_contacts || [];
       var contactsWithEmail = companyContacts.filter(function (row) {
         return !!String(row.email || "").trim();
@@ -6465,6 +6750,9 @@ body.is-demo .live-only { display: none !important; }
         }
         content = content || rawText || "";
         renderParsedResult(resultEl, content, ev);
+        if (matchDncForCase(ev, resultEl._lastFields, contact)) {
+          return applyDncRefusal(ev, resultEl, buttonEl, personFromCase(ev, resultEl._lastFields, contact));
+        }
         if (resultEl._lastFields && hasGoDecision(resultEl._lastFields) && voiceNotesForPartner(partnerIdForCase(ev)).length) {
           var voiceNote = document.createElement("p");
           voiceNote.className = "card-meta";
@@ -6775,6 +7063,16 @@ body.is-demo .live-only { display: none !important; }
         });
       }
       renderClientBook();
+      DNC_LIST = [];
+      if (Array.isArray(data.dnc)) {
+        data.dnc.forEach(function (s) {
+          var row = normalizeDncRow(s);
+          if (!row) return;
+          if (matchDncPerson(row.person_name, row.email, row.company_name, row.domain)) return;
+          DNC_LIST.push(row);
+        });
+      }
+      renderDncList();
       remountQueue();
       Object.keys(STORE_RESULTS).forEach(function (id) {
         var ui = CASE_UI[id];
@@ -7325,6 +7623,22 @@ body.is-demo .live-only { display: none !important; }
     });
 
     renderClientBook();
+
+    var dncAddBtn = document.getElementById("dnc-add");
+    if (dncAddBtn) {
+      dncAddBtn.addEventListener("click", addDncFromForm);
+    }
+    ["dnc-name", "dnc-email", "dnc-company"].forEach(function (id) {
+      var input = document.getElementById(id);
+      if (!input) return;
+      input.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          addDncFromForm();
+        }
+      });
+    });
+    renderDncList();
 
     var refreshExaBtn = document.getElementById("btn-refresh-exa");
     if (refreshExaBtn) {

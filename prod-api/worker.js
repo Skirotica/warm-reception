@@ -328,7 +328,8 @@ async function storeSnapshot(env, cors) {
         },
         voice: (await kvGet(env, "voice")) || null,
         results: (await kvGet(env, "results")) || {},
-        clients: (await kvGet(env, "clients")) || []
+        clients: (await kvGet(env, "clients")) || [],
+        dnc: (await kvGet(env, "dnc")) || []
       },
       200,
       cors
@@ -374,7 +375,7 @@ async function storeAudit(request, env, cors) {
   }
 }
 
-var BLOB_KEYS = { extras: true, voice: true, results: true, clients: true };
+var BLOB_KEYS = { extras: true, voice: true, results: true, clients: true, dnc: true };
 
 async function storePutBlob(request, env, cors, key) {
   if (!env.DB) return storeMissing(cors);
@@ -385,8 +386,8 @@ async function storePutBlob(request, env, cors, key) {
   } catch (e) {
     return jsonResponse({ error: "JSON required" }, 400, cors);
   }
-  if (key === "clients" && !Array.isArray(body)) {
-    return jsonResponse({ error: "clients must be an array" }, 400, cors);
+  if ((key === "clients" || key === "dnc") && !Array.isArray(body)) {
+    return jsonResponse({ error: key + " must be an array" }, 400, cors);
   }
   try {
     await kvPut(env, key, body);
