@@ -1340,7 +1340,7 @@ body.is-demo .live-only { display: none !important; }
       "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. No-go only for known disqualifiers; insufficient info → Table 3 Ambiguous. Whitelist: skip ICP re-score. CTAs resolve from each email's send day. Partner Why names Exa.ai / Hunter.io.",
       "prequalified-whitelist.md": "Partner-vetted companies skip ICP re-qualification. Still require qualifying event, verified email, and hard stops. Cite whitelist in citations; say bypass in plain language in Why.",
       "campaign-routing.md": "Personas: Hiring Manager; CRO/CEO/Founder; Talent Acquisition; Head of Talent and HR. Legaltech sector notes only.",
-      "black_gavel_outreach_sequence.md": "Emails 1–4 from templates. Greeting: FirstName, only. Body + one CTA + Chad/CD sign-off last. CTA from that email's send day, with weekday and date. Only Email 1 may say tomorrow. Emails 2–4 never say tomorrow. Friday send: Monday or Tuesday with dates. Never ask to meet on the send day. Evening CTA Email 1 only before 2pm ET Mon–Thu. No em dashes.",
+      "black_gavel_outreach_sequence.md": "Emails 1–4 from templates. Greeting: FirstName, only. Body + one CTA + Chad/CD sign-off last. CTA from send day, human voice: tomorrow plus Weekday (the 27th) on the later option. Friday send: Monday (the 24th) or Tuesday, never tomorrow. Never ask to meet on the send day. Evening CTA Email 1 only before 2pm ET Mon–Thu. No em dashes.",
       "approved_email_examples_partnerC.md": "Synthetic Partner C voice samples; CTA style matches Black Gavel rules.",
       "approved_email_examples_partnerN.md": "Synthetic Partner N voice samples; CTA style matches Black Gavel rules.",
       "summary_table_example.md": "Tables 1–3 append LinkedIn via Hunter.io. Table 2/3 Why names Exa.ai or Hunter.io in plain language with a clear partner action."
@@ -1372,7 +1372,7 @@ body.is-demo .live-only { display: none !important; }
       "9. Name collisions and unconfirmed entities: Table 3, no draft before human verification.",
       "10. Approved sends in this capstone prototype route to sandbox only.",
       "11. Pre-qualified whitelist: if prequalified_match is present in case context, skip ICP re-qualification (do not No-go for size/revenue/backing/TA alone). Still require a qualifying event, verified email, and all hard stops. In plain-language Why, say this company was already partner-vetted. Put prequalified-whitelist.md and the whitelist company_id only in citations.",
-      "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1–4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Use CALENDAR send dates: Email 1 send is email_1_send (trigger day). Email 2 is email_2_send (+3 days). Email 3 is email_3_send (+7). Email 4 is email_4_send (+14). Resolve each CTA from THAT email's send day. Put the real weekday and date in the CTA (example: Wednesday, August 26th). Only Email 1 may say tomorrow, and only when sending today. Emails 2–4 must not say tomorrow. Never ask to meet on the send day itself. If the send day is Friday, offer Monday or Tuesday with dates. Do not propose Saturday or Sunday. Evening CTA only on Email 1 before 2pm Eastern Mon–Thu; never Friday evening. Emails 2–4 never use evening CTA. Prefer cta_session.picks_by_email. Use move/congrats-on-joining copy only when the POC is the named executive hire; otherwise use company-event templates (no your move to the wrong person).",
+      "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1–4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Resolve each CTA from that email's send day. Sound human: if the next day after send is a weekday, prefer Can I call you tomorrow, or Thursday (the 27th)? or Are you available tomorrow afternoon? Put the calendar check on the later option as Weekday (the 27th), not a full month date on every slot. Friday send: never tomorrow; offer Monday (the 24th) or Tuesday (the 25th). Never ask to meet on the send day. No Saturday or Sunday. Evening CTA only on Email 1 before 2pm Eastern Mon–Thu. Emails 2–4 never evening. Prefer cta_session.picks_by_email. Use move/congrats-on-joining copy only when the POC is the named executive hire; otherwise use company-event templates (no your move to the wrong person).",
       "13. Never use em dashes (Unicode — or –) in draft subjects or bodies. Use commas, periods, or restructure. Templates beat freeform prose.",
       "14. Treat hunter_io / contact email and linkedin_url as Hunter.io lookup results. Do not invent emails or LinkedIn URLs. Do not scrape LinkedIn. The console shows LinkedIn from Hunter.io when present, else a people-search fallback. In partner-facing Why, say Hunter.io found or did not find the email or LinkedIn URL. Never say on file, in our database, from ICP contacts, or synthetic.",
       "15. Partner-facing Why on Table 2 and Table 3: write why and reason_or_ambiguity in plain language a recruiting partner can understand and act on immediately. Never name internal files (agent-rules.md, confidence-rubric.md, icp-criteria.md, company_status.csv, etc.). Never cite rule numbers or table numbers. Never use unexplained jargon such as entity sourcing, confidence tier, or ambiguous tier. Put record IDs and policy file names only in citations. Name Exa.ai when the issue is event or article research. Name Hunter.io when the issue is email or LinkedIn. Always end Why with a clear next action.",
@@ -1494,7 +1494,7 @@ body.is-demo .live-only { display: none !important; }
       "- If evening CTA is on draft_1 and evening_cta_eligible is true, that is correct. Do not flag it.",
       "- If evening CTA is on draft_1 when evening_cta_eligible is false (including Friday), prefer needs attention.",
       "- Evening CTA is NEVER allowed on draft_2, draft_3, or draft_4.",
-      "- Each email's CTA is resolved from that email's send day and should name a real weekday and date. Flag if Email 2, 3, or 4 says tomorrow. Flag if a CTA asks to meet on the send day. Flag Saturday or Sunday meeting offers. Do not flag Are you available Wednesday, August 26th afternoon? on a Tuesday August 25th send.",
+      "- Each email's CTA is from that email's send day. Human phrasing is correct: Can I call you tomorrow, or Thursday (the 27th)? on a Tuesday send. Flag full month dates on every option (Wednesday August 26th or Thursday August 27th). Flag tomorrow on a Friday send. Flag meeting on the send day. Flag Saturday or Sunday.",
       "- CTA must appear once, immediately before the sign-off line. Sign-off (Chad or CD) must be the last non-empty line.",
       "- Prefer variety across emails when the pool allows; identical CTAs on every email is soft preference only, not an automatic needs attention unless structure is also wrong.",
       "",
@@ -4829,6 +4829,11 @@ body.is-demo .live-only { display: none !important; }
       return v + "th";
     }
 
+    function formatWeekdayTheDay(p) {
+      if (!p) return "";
+      return WEEKDAY_NAMES[p.weekday] + " (the " + dayOrdinal(p.day) + ")";
+    }
+
     function formatLongDate(p) {
       if (!p) return "";
       return WEEKDAY_NAMES[p.weekday] + " " + MONTH_NAMES[p.month - 1] + " " + dayOrdinal(p.day);
@@ -4978,35 +4983,30 @@ body.is-demo .live-only { display: none !important; }
         tomorrow_is_business_day: calendarTomorrowIsBusiness,
         tomorrow_day_of_week: WEEKDAY_NAMES[calendarTomorrow.weekday],
         tomorrow_date: formatLongDate(calendarTomorrow),
+        tomorrow_human: formatWeekdayTheDay(calendarTomorrow),
         next_working_day: WEEKDAY_NAMES[nextBiz.weekday],
         next_working_date: formatLongDate(nextBiz),
+        next_working_human: formatWeekdayTheDay(nextBiz),
         two_working_days: WEEKDAY_NAMES[two.weekday],
         two_working_dates: formatLongDate(two),
+        two_working_human: formatWeekdayTheDay(two),
         evening_cta_eligible: eveningEligible
       };
     }
 
-    function ctaBasePoolFromResolved(resolved, options) {
-      options = options || {};
-      var useTomorrow = !!options.useTomorrowWord && resolved.tomorrow_is_business_day;
-      var tomorrowLabel = resolved.tomorrow_date || resolved.tomorrow_day_of_week;
-      var nextLabel = resolved.next_working_date || resolved.next_working_day;
-      var twoLabel = resolved.two_working_dates || resolved.two_working_days;
+    function ctaBasePoolFromResolved(resolved) {
+      var twoH = resolved.two_working_human || resolved.two_working_days;
+      var nextH = resolved.next_working_human || resolved.next_working_day;
       if (resolved.tomorrow_is_business_day) {
-        if (useTomorrow) {
-          return [
-            "Can I call you tomorrow, " + tomorrowLabel + ", or " + twoLabel + "?",
-            "Are you available tomorrow afternoon, " + tomorrowLabel + "?"
-          ];
-        }
         return [
-          "Can I call you " + tomorrowLabel + " or " + twoLabel + "?",
-          "Are you available " + tomorrowLabel + " afternoon?"
+          "Can I call you tomorrow, or " + twoH + "?",
+          "Are you available tomorrow afternoon?",
+          "Would " + twoH + " work for a quick call?"
         ];
       }
       return [
-        "Can I call you " + nextLabel + " or " + twoLabel + "?",
-        "Are you available " + nextLabel + " afternoon?"
+        "Can I call you " + nextH + " or " + twoH + "?",
+        "Are you available " + nextH.replace(" (", " afternoon (") + "?"
       ];
     }
 
@@ -5062,7 +5062,7 @@ body.is-demo .live-only { display: none !important; }
           tz,
           { allowEvening: allowEvening }
         );
-        var pool = ctaBasePoolFromResolved(resolved, { useTomorrowWord: i === 0 && isTriggerToday });
+        var pool = ctaBasePoolFromResolved(resolved);
         if (allowEvening) pool = pool.concat([evening]);
         var pick = pickCtaPreferringVariety(pool, used);
         pick = String(pick || "").replace(/\s+/g, " ").replace(/\?+[A-Za-z]*\s*$/, "?").trim();
