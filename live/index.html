@@ -6587,7 +6587,7 @@ body.is-demo .live-only { display: none !important; }
       gate.innerHTML =
         '<div class="stage" data-n="4">Human review</div>' +
         (isGo && hasSequence
-          ? "<p><strong>Human gate</strong> — Approve the full 4-email sequence, or Edit any/all emails in one block, then Save edit. Escalate is case-level.</p>"
+          ? "<p><strong>Human gate</strong> — Edit any emails if needed, click Save edit, then Approve the sequence. Escalate is case-level.</p>"
           : nonGoGateCopy) +
         "<p>" +
         '<button type="button" class="btn primary btn-approve"' + (isGo && hasSequence ? "" : " disabled") + ">Approve</button> " +
@@ -6693,10 +6693,20 @@ body.is-demo .live-only { display: none !important; }
       }
 
       if (resultEl._humanComplete && ui && ui.humanStateText) {
-        stateEl.textContent = ui.humanStateText;
-        disableGate();
-        if (ui.humanOutcome) applyHumanOutcomeToRow(ev.case_id, ui.humanOutcome);
-        return;
+        var savedEditPending = ui.humanOutcome === "Edit" ||
+          /human action:\s*edit/i.test(ui.humanStateText) ||
+          /sequence edited/i.test(ui.humanStateText);
+        if (savedEditPending) {
+          resultEl._humanComplete = false;
+          resultEl._didEdit = true;
+          if (ui) ui.humanComplete = false;
+          stateEl.textContent = "Edits saved. Click Approve to authorize the sequence (sandbox only).";
+        } else {
+          stateEl.textContent = ui.humanStateText;
+          disableGate();
+          if (ui.humanOutcome) applyHumanOutcomeToRow(ev.case_id, ui.humanOutcome);
+          return;
+        }
       }
 
       gate.querySelector(".btn-approve").addEventListener("click", function () {
@@ -6704,10 +6714,22 @@ body.is-demo .live-only { display: none !important; }
           if (stateEl) stateEl.textContent = "This person is on the do-not-contact list. Approve is blocked.";
           return;
         }
-        if (!hasGoDecision(resultEl._lastFields || fields) || !SEQUENCE_DRAFT_KEYS.some(function (key) {
-          return String((resultEl._lastFields || fields)[key] || "").trim();
+        var liveFields = resultEl._lastFields || fields;
+        if (!hasGoDecision(liveFields) || !SEQUENCE_DRAFT_KEYS.some(function (key) {
+          return String(liveFields[key] || "").trim();
         })) return;
-        markComplete("Approve", "full 4-email sequence sandbox route authorized (no live send); " + formatEmailQualityTag(emailQualityFromApprove(resultEl._lastFields || fields)));
+        var q;
+        if (resultEl._didEdit && resultEl._preEditSnap) {
+          q = emailQualityFromEdit(resultEl._preEditSnap, snapshotSequenceDrafts(liveFields));
+        } else if (resultEl._didEdit) {
+          q = { accepted: 0, rewritten: countGeneratedEmails(liveFields) || 4 };
+        } else {
+          q = emailQualityFromApprove(liveFields);
+        }
+        var detail = resultEl._didEdit
+          ? ("edited sequence authorized (no live send); " + formatEmailQualityTag(q))
+          : ("full 4-email sequence sandbox route authorized (no live send); " + formatEmailQualityTag(q));
+        markComplete("Approve", detail);
       });
 
       gate.querySelector(".btn-edit").addEventListener("click", function () {
@@ -6715,6 +6737,7 @@ body.is-demo .live-only { display: none !important; }
         if (!hasGoDecision(liveFields) || !SEQUENCE_DRAFT_KEYS.some(function (key) {
           return String(liveFields[key] || "").trim();
         })) return;
+        if (!resultEl._preEditSnap) resultEl._preEditSnap = snapshotSequenceDrafts(liveFields);
         editPanel.style.display = "block";
         for (var n = 1; n <= 4; n++) {
           var s = gate.querySelector(".edit-subject-" + n);
@@ -6722,11 +6745,12 @@ body.is-demo .live-only { display: none !important; }
           if (s) s.value = liveFields["draft_" + n + "_subject"] || "";
           if (b) b.value = liveFields["draft_" + n + "_body"] || "";
         }
-        stateEl.textContent = "Human action: editing sequence… save to complete";
+        stateEl.textContent = "Editing. Save your changes, then click Approve to authorize.";
       });
 
       gate.querySelector(".btn-save-edit").addEventListener("click", async function () {
         var liveFields = resultEl._lastFields || fields;
+        if (!resultEl._preEditSnap) resultEl._preEditSnap = snapshotSequenceDrafts(liveFields);
         var beforeSnap = snapshotSequenceDrafts(liveFields);
         for (var n = 1; n <= 4; n++) {
           var s = gate.querySelector(".edit-subject-" + n);
@@ -6737,16 +6761,23 @@ body.is-demo .live-only { display: none !important; }
         var afterSnap = snapshotSequenceDrafts(liveFields);
         liveFields.approval_status = "Edited";
         resultEl._lastFields = liveFields;
+        resultEl._didEdit = true;
         renderSequenceDrafts(resultEl, liveFields);
         var partnerId = partnerIdForCase(ev);
         var saveBtn = gate.querySelector(".btn-save-edit");
         if (saveBtn) saveBtn.disabled = true;
-        stateEl.textContent = "Human action: saving edit and learning " + partnerDisplayName(partnerId) + "'s voice…";
+        stateEl.textContent = "Saving edit and learning " + partnerDisplayName(partnerId) + "'s voice…";
         var coach = await coachVoiceFromEdit(partnerId, beforeSnap, afterSnap, ev);
         var learnDetail = coach.ok
           ? ("voice memory updated for " + partnerDisplayName(partnerId) + " (" + (coach.notes || []).length + " rule(s))")
           : ("voice coach skipped: " + (coach.detail || "unavailable"));
-        markComplete("Edit", "sequence edited; " + learnDetail + "; " + formatEmailQualityTag(emailQualityFromEdit(beforeSnap, afterSnap)) + "; sandbox route authorized (no live send)");
+        if (saveBtn) saveBtn.disabled = false;
+        var approveBtn = gate.querySelector(".btn-approve");
+        if (approveBtn && !matchDncForCase(ev, liveFields, contactsForCompany(ev.company_id)[0])) {
+          approveBtn.disabled = false;
+        }
+        stateEl.textContent = "Edits saved (" + learnDetail + "). Click Approve to authorize the sequence (sandbox only).";
+        persistCaseResult(ev, resultEl);
       });
 
       gate.querySelector(".btn-escalate").addEventListener("click", function () {
