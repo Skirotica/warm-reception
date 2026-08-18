@@ -961,7 +961,7 @@ body.is-demo .live-only { display: none !important; }
                 <strong>Lookups and send:</strong> Event research cites Exa.ai through the production API worker (no Exa key in this page). Public GitHub Live is synthetic only: Hunter, Exa refresh, and the partner store stay off. On private Live after Access login, Hunter can find company emails after Save API and Save code. Some non-US cases stay out of the real-email path until Chad accepts extra legal load. Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 at the site root still demos embedded missing-email rules. Nothing leaves without human Approve.
               </li>
               <li>
-                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Private Live checks the partner client book in the private store (never outreach, no draft). Capstone demo checks embedded company_contacts (CE-08). Live public GitHub Pages does not run Hunter and does not load the client book. Private Live may run Hunter after Save API and Save code. Confirm never invents a person, an email, or a website from the company name. Real mailbox send stays locked until email quality is at 75% accepted-as-written on at least 8 reviewed sequences.
+                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Private Live checks the partner client book in the private store (never outreach, no draft). Capstone demo checks embedded company_contacts (CE-08). Live public GitHub Pages does not run Hunter and does not load the client book. Private Live may run Hunter after Save API and Save code. Confirm never invents a person, an email, or a website from the company name. Real mailbox send stays locked until 75% of emails are approved without edit, on at least 32 reviewed emails.
               </li>
               <li>
                 <strong>Review agent stretch:</strong> A second agent critiques the worker before the human gate (looks right / needs attention). It adds latency and token cost; the human still makes the final Approve / Edit / Escalate click.
@@ -980,7 +980,7 @@ body.is-demo .live-only { display: none !important; }
       <div class="panel-body log-wrap">
         <div class="sandbox-bar private-store-only" id="sandbox-bar">
           <h3>Email quality</h3>
-          <p class="intake-help">Of the four-email sequences the agent wrote, this is the share a partner accepted as written. Approve without edit is a pass. Edit is a rewrite. Escalates do not count. Need 75% pass on at least 8 reviewed sequences. Real mailbox send stays locked in this step.</p>
+          <p class="intake-help">Share of emails the agent wrote that a partner approved without editing. Each sequence has up to four emails. Approve as written counts those emails as passes. Edit counts only the emails that actually changed as rewrites. Escalates do not count. Need 75% of emails accepted as written, on at least 32 reviewed emails (about 8 sequences). Real mailbox send stays locked in this step.</p>
           <div class="sandbox-rate" id="sandbox-rate">-</div>
           <p class="sandbox-meta" id="sandbox-meta">Save API and Save code to load the partner log.</p>
         </div>
@@ -3508,7 +3508,7 @@ body.is-demo .live-only { display: none !important; }
           if (IS_PUBLIC_GITHUB_LIVE) {
             banner.innerHTML = "<strong>Public GitHub Live is a safe shell.</strong> Synthetic cases only. Real company and contact data is only on the Access-protected Live site at <a href=\"https://warm-reception-live.pages.dev\">https://warm-reception-live.pages.dev</a>. Hunter stays off here. Refresh from Exa is off. Capstone demo stays at the site root. Human Approve / Edit / Escalate still required before any send.";
           } else {
-            banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Existing clients and do-not-contact live in the private store. Email quality tracks whether partners accept the agent’s drafts as written (75% Approve without edit). Real mailbox send stays locked until that quality bar is met. Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+            banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Existing clients and do-not-contact live in the private store. Email quality is 75% of emails approved without edit. Real mailbox send stays locked until that quality bar is met. Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
           }
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
@@ -5608,12 +5608,72 @@ body.is-demo .live-only { display: none !important; }
       };
     }
 
+    function normalizeDraftText(s) {
+      return String(s || "").replace(/\s+/g, " ").trim();
+    }
+
+    function emailHadContent(snap, n) {
+      var sub = normalizeDraftText(snap && snap["draft_" + n + "_subject"]);
+      var body = normalizeDraftText(snap && snap["draft_" + n + "_body"]);
+      return !!(sub || body);
+    }
+
+    function countGeneratedEmails(fields) {
+      var snap = snapshotSequenceDrafts(fields);
+      var n = 0;
+      for (var i = 1; i <= 4; i++) {
+        if (emailHadContent(snap, i)) n += 1;
+      }
+      return n;
+    }
+
+    function emailQualityFromApprove(fields) {
+      var accepted = countGeneratedEmails(fields);
+      return { accepted: accepted, rewritten: 0 };
+    }
+
+    function emailQualityFromEdit(beforeSnap, afterSnap) {
+      var accepted = 0;
+      var rewritten = 0;
+      for (var n = 1; n <= 4; n++) {
+        if (!emailHadContent(beforeSnap, n) && !emailHadContent(afterSnap, n)) continue;
+        var sameSubject =
+          normalizeDraftText(beforeSnap["draft_" + n + "_subject"]) ===
+          normalizeDraftText(afterSnap["draft_" + n + "_subject"]);
+        var sameBody =
+          normalizeDraftText(beforeSnap["draft_" + n + "_body"]) ===
+          normalizeDraftText(afterSnap["draft_" + n + "_body"]);
+        if (sameSubject && sameBody) accepted += 1;
+        else rewritten += 1;
+      }
+      return { accepted: accepted, rewritten: rewritten };
+    }
+
+    function formatEmailQualityTag(q) {
+      var accepted = (q && q.accepted) || 0;
+      var rewritten = (q && q.rewritten) || 0;
+      return "emails " + accepted + " accepted " + rewritten + " rewritten";
+    }
+
+    function parseEmailQualityCounts(entry) {
+      var detail = String((entry && entry.detail) || "");
+      var m = detail.match(/emails\s+(\d+)\s+accepted\s+(\d+)\s+rewritten/i);
+      if (m) {
+        return { accepted: Number(m[1]), rewritten: Number(m[2]) };
+      }
+      var action = String((entry && entry.human_action) || "");
+      if (action === "Approve") return { accepted: 4, rewritten: 0 };
+      if (action === "Edit") return { accepted: 0, rewritten: 4 };
+      return null;
+    }
+
     function isSequenceQualityAction(entry) {
       var action = String((entry && entry.human_action) || "");
       if (action !== "Approve" && action !== "Edit") return false;
       var detail = String((entry && entry.detail) || "").toLowerCase();
       var decision = String((entry && entry.agent_decision) || "").toLowerCase();
       if (detail.indexOf("sequence") !== -1 || detail.indexOf("4-email") !== -1) return true;
+      if (detail.indexOf("emails ") !== -1 && detail.indexOf("accepted") !== -1) return true;
       if (decision.indexOf("go") !== -1 && decision.indexOf("no-go") === -1 && decision.indexOf("nogo") === -1) return true;
       return false;
     }
@@ -5624,17 +5684,19 @@ body.is-demo .live-only { display: none !important; }
         if (!isSequenceQualityAction(entry)) return;
         var id = String(entry.case_id || "").trim();
         if (!id) return;
-        latest[id] = String(entry.human_action || "");
+        var counts = parseEmailQualityCounts(entry);
+        if (!counts) return;
+        latest[id] = counts;
       });
       var approve = 0;
       var edit = 0;
       Object.keys(latest).forEach(function (id) {
-        if (latest[id] === "Approve") approve += 1;
-        else edit += 1;
+        approve += latest[id].accepted || 0;
+        edit += latest[id].rewritten || 0;
       });
       var total = approve + edit;
       var rate = total ? approve / total : 0;
-      var minN = 8;
+      var minN = 32;
       return {
         approve: approve,
         edit: edit,
@@ -5661,18 +5723,18 @@ body.is-demo .live-only { display: none !important; }
       rateEl.classList.toggle("is-met", stats.met);
       rateEl.classList.toggle("is-short", !stats.met && stats.total > 0);
       if (!stats.total) {
-        metaEl.textContent = "No reviewed sequences yet. Run a Go case, then Approve the emails as written or Edit them. That is the quality check. Real mailbox send stays locked.";
+        metaEl.textContent = "No reviewed emails yet. Run a Go case, then Approve the emails as written or Edit only what needs a rewrite. Real mailbox send stays locked.";
         return;
       }
       var split =
         stats.approve +
-        " accepted as written, " +
+        " emails accepted as written, " +
         stats.edit +
         " rewritten (" +
         stats.total +
-        " sequences the agent generated).";
+        " emails the agent generated).";
       if (stats.met) {
-        metaEl.textContent = split + " Quality bar met. Real mailbox send still locked until Chad opens that step.";
+        metaEl.textContent = split + " Quality bar met: 75% of emails approved without edit. Real mailbox send still locked until Chad opens that step.";
         return;
       }
       if (stats.total < stats.minN) {
@@ -5680,12 +5742,12 @@ body.is-demo .live-only { display: none !important; }
           split +
           " Need " +
           (stats.minN - stats.total) +
-          " more reviewed sequences (minimum " +
+          " more reviewed emails (minimum " +
           stats.minN +
           ") before this quality check can pass. Real mailbox send stays locked.";
         return;
       }
-      metaEl.textContent = split + " Below 75%. The agent’s emails need work. Real mailbox send stays locked.";
+      metaEl.textContent = split + " Below 75% of emails approved without edit. The agent’s drafts need work. Real mailbox send stays locked.";
     }
 
     function renderRunLog() {
@@ -6474,7 +6536,7 @@ body.is-demo .live-only { display: none !important; }
         if (!hasGoDecision(resultEl._lastFields || fields) || !SEQUENCE_DRAFT_KEYS.some(function (key) {
           return String((resultEl._lastFields || fields)[key] || "").trim();
         })) return;
-        markComplete("Approve", "full 4-email sequence sandbox route authorized (no live send)");
+        markComplete("Approve", "full 4-email sequence sandbox route authorized (no live send); " + formatEmailQualityTag(emailQualityFromApprove(resultEl._lastFields || fields)));
       });
 
       gate.querySelector(".btn-edit").addEventListener("click", function () {
@@ -6513,7 +6575,7 @@ body.is-demo .live-only { display: none !important; }
         var learnDetail = coach.ok
           ? ("voice memory updated for " + partnerDisplayName(partnerId) + " (" + (coach.notes || []).length + " rule(s))")
           : ("voice coach skipped: " + (coach.detail || "unavailable"));
-        markComplete("Edit", "sequence edited; " + learnDetail + "; sandbox route authorized (no live send)");
+        markComplete("Edit", "sequence edited; " + learnDetail + "; " + formatEmailQualityTag(emailQualityFromEdit(beforeSnap, afterSnap)) + "; sandbox route authorized (no live send)");
       });
 
       gate.querySelector(".btn-escalate").addEventListener("click", function () {

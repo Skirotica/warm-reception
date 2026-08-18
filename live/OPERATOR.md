@@ -198,20 +198,22 @@ GitHub Live does not show or load this list.
 
 Person-level. If someone says stop, a partner clicks **Do not contact this person** on that card, or adds the name under **Do not contact**. Future drafts to that person are blocked until a partner clicks Remove. Company-wide DNC is not in this step. The list lives only in the private store. GitHub Live does not load it. Do not paste real names or emails into chat, GitHub, or this file.
 
-## Email quality (Approve as written)
+## Email quality (75% of emails approved without edit)
 
-Private Live only. This is a **quality check on the emails the agent generated**. Of reviewed four-email sequences, the scoreboard shows how often a partner accepted the drafts as written (Approve, no Edit). Edit means the emails needed a rewrite. Escalates are a different path and do not count. Re-running the same company keeps the latest Approve or Edit for that company.
+Private Live only. This is a **quality check on the emails the agent generated**. The score is **emails**, not companies. Each sequence has up to four emails.
 
-The quality bar is met at **75% or more** accepted as written, and only after **at least 8** reviewed sequences. Below 75% means the agent’s emails need work. Real mailbox send stays locked until the bar is met and Chad opens send. Meeting the bar does not turn on Outlook.
+Approve as written counts those emails as passes. Edit counts only the emails that actually changed as rewrites. Unchanged emails in an Edit still count as accepted as written. Escalates do not count. Re-running the same company keeps the latest review for that company.
+
+The quality bar is met when **75% or more of emails** are approved without edit, and only after **at least 32 reviewed emails** (about 8 sequences). Below 75% means the agent’s drafts need work. Real mailbox send stays locked until the bar is met and Chad opens send. Meeting the bar does not turn on Outlook.
 
 GitHub Live does not show this scoreboard.
 
 ### Chad / Courtney: prove email quality (this turn)
 
 1. Open https://warm-reception-live.pages.dev (not GitHub Pages). After Access, Save API and Save code.
-2. Look at **Email quality** in the Run log sidebar. Past Approve / Edit reviews of generated sequences should already count.
-3. Pick a company that is not on Existing clients and not on Do not contact. Run until you have a four-email draft. Click **Approve** (no Edit). That is a pass: the agent’s emails were good enough. The percent should move.
-4. Run another (or the same after a new draft). Click **Edit**, change the emails, save. That is a rewrite: the agent’s emails needed work. The percent should drop or hold below 75% if rewrites are a large share.
+2. Look at **Email quality** in the Run log sidebar. It should talk about emails, not sequences.
+3. Pick a company that is not on Existing clients and not on Do not contact. Run until you have a four-email draft. Click **Approve** (no Edit). That should add four emails accepted as written.
+4. Run another. Click **Edit**, change only one email, save. That should add three accepted and one rewritten. The percent is emails approved without edit, not companies.
 5. Real send must still be locked. Nothing leaves the mailbox from this step.
 
 ### Courtney: Hunter on (this turn)
