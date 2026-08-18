@@ -198,6 +198,22 @@ GitHub Live does not show or load this list.
 
 Person-level. If someone says stop, a partner clicks **Do not contact this person** on that card, or adds the name under **Do not contact**. Future drafts to that person are blocked until a partner clicks Remove. Company-wide DNC is not in this step. The list lives only in the private store. GitHub Live does not load it. Do not paste real names or emails into chat, GitHub, or this file.
 
+## Sandbox bar (Approve without edit)
+
+Private Live only. The Run log sidebar shows the share of draft cases a partner **Approved without editing**. Escalates do not count in this number. Re-running the same company keeps the latest Approve or Edit for that company.
+
+The bar is met at **75% or more**, and only after **at least 8** Approve or Edit decisions. Below that, or below 8, real mailbox send stays locked. Meeting the bar does not turn on Outlook. That is a later step Chad opens.
+
+GitHub Live does not show this scoreboard.
+
+### Chad / Courtney: prove the sandbox bar (this turn)
+
+1. Open https://warm-reception-live.pages.dev (not GitHub Pages). After Access, Save API and Save code.
+2. Look at **Sandbox bar** in the Run log sidebar. Past Approve / Edit actions from the partner log should already count.
+3. Pick a company that is not on Existing clients and not on Do not contact. Run. Click **Approve** on a Go draft (no Edit). The percent should move.
+4. Run another (or the same after a new draft). Click **Edit**, change something, save. The percent should drop or hold below 75% if edits are a large share.
+5. Real send must still be locked. Nothing leaves the mailbox from this step.
+
 ### Courtney: Hunter on (this turn)
 
 `HUNTER_ENABLED` is `"true"` in `prod-api/wrangler.toml`. GitHub Pages Live stays Hunter-off in the browser and on Hunter Worker routes.
