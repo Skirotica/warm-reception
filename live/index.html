@@ -1337,10 +1337,10 @@ body.is-demo .live-only { display: none !important; }
       "icp-criteria.md": "Legaltech only; employees 50-350; revenue $15M-$50M; VC/PE backed; TA headcount 0-2. ICP from company record. Insufficient info → Table 3 Ambiguous, not No-go. Known out of ICP → Table 2. Whitelist exception applies.",
       "signal-taxonomy.md": "Qualifying: executive hire, funding, partnership, merger, acquisition, IPO. Disqualifying: bankruptcy, layoffs-as-primary, closure.",
       "confidence-rubric.md": "Tiers: High, Medium, Low, Ambiguous, Below Threshold. Ambiguous / insufficient info -> Table 3. Known hard disqualify -> Table 2. Never No-go only because data is missing.",
-      "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. No-go only for known disqualifiers; insufficient info → Table 3 Ambiguous. Whitelist: skip ICP re-score. CTAs use one CALENDAR for the whole sequence. Partner Why names Exa.ai / Hunter.io.",
+      "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. No-go only for known disqualifiers; insufficient info → Table 3 Ambiguous. Whitelist: skip ICP re-score. CTAs resolve from each email's send day. Partner Why names Exa.ai / Hunter.io.",
       "prequalified-whitelist.md": "Partner-vetted companies skip ICP re-qualification. Still require qualifying event, verified email, and hard stops. Cite whitelist in citations; say bypass in plain language in Why.",
       "campaign-routing.md": "Personas: Hiring Manager; CRO/CEO/Founder; Talent Acquisition; Head of Talent and HR. Legaltech sector notes only.",
-      "black_gavel_outreach_sequence.md": "Emails 1–4 from templates. Greeting: FirstName, only. Body + one CTA + Chad/CD sign-off last. One CALENDAR for the whole sequence (browser today). Never invent weekdays. Tomorrow must match CALENDAR. No Saturday/Sunday meetings. Evening CTA Email 1 only before 2pm ET Mon–Thu (never Friday). No em dashes.",
+      "black_gavel_outreach_sequence.md": "Emails 1–4 from templates. Greeting: FirstName, only. Body + one CTA + Chad/CD sign-off last. CTA from that email's send day (not today for all four). Email 2 +3 days, Email 3 +7, Email 4 +14. Friday send: Monday or Tuesday, never tomorrow. Never ask to meet on the send day. Evening CTA Email 1 only before 2pm ET Mon–Thu (never Friday). No em dashes.",
       "approved_email_examples_partnerC.md": "Synthetic Partner C voice samples; CTA style matches Black Gavel rules.",
       "approved_email_examples_partnerN.md": "Synthetic Partner N voice samples; CTA style matches Black Gavel rules.",
       "summary_table_example.md": "Tables 1–3 append LinkedIn via Hunter.io. Table 2/3 Why names Exa.ai or Hunter.io in plain language with a clear partner action."
@@ -1372,7 +1372,7 @@ body.is-demo .live-only { display: none !important; }
       "9. Name collisions and unconfirmed entities: Table 3, no draft before human verification.",
       "10. Approved sends in this capstone prototype route to sandbox only.",
       "11. Pre-qualified whitelist: if prequalified_match is present in case context, skip ICP re-qualification (do not No-go for size/revenue/backing/TA alone). Still require a qualifying event, verified email, and all hard stops. In plain-language Why, say this company was already partner-vetted. Put prequalified-whitelist.md and the whitelist company_id only in citations.",
-      "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1–4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Use ONE CALENDAR block for the whole 4-email sequence (browser local today). Do not switch implied send-day or today between emails. You must use CALENDAR only. Never invent a weekday. If you say tomorrow, it must match CALENDAR tomorrow_weekday. Do not propose a meeting on Saturday or Sunday. If tomorrow is weekend, offer next_weekday instead of tomorrow. Do not write tomorrow afternoon, Tuesday unless CALENDAR tomorrow_weekday is Tuesday. Do not write tomorrow, Friday unless tomorrow is Friday. Ban false appositions (tomorrow and a weekday that is not CALENDAR tomorrow). Do not require a weekday after the word tomorrow. Prefer Can I call you tomorrow or {two_weekdays}? when that matches CALENDAR (good pattern). Prefer a specific weekday + date over a relative day if clearer. Evening CTA only on Email 1 before 2pm Eastern Mon–Thu; never Friday evening. Emails 2–4 never use evening CTA. Use move/congrats-on-joining copy only when the POC is the named executive hire; otherwise use company-event templates (no your move to the wrong person).",
+      "12. Draft CTAs and bodies: For Go decisions, the console fills Emails 1–4 from black_gavel_outreach_sequence.md templates (greeting first_name comma only, body paragraphs, one CTA, then Chad/CD sign-off last). Never use Hi/Hey on email-step greetings. Use CALENDAR send dates: Email 1 send is email_1_send (trigger day). Email 2 is email_2_send (+3 days). Email 3 is email_3_send (+7). Email 4 is email_4_send (+14). Resolve each CTA from THAT email's send day, not from today for all four. If you say tomorrow, it must be the weekday after that email's send day. Never ask to meet on the send day itself (no Friday ask on a Friday send, no Tuesday ask on a Tuesday send). If the send day is Friday, do not say tomorrow; offer Monday or Tuesday. Do not propose Saturday or Sunday. Evening CTA only on Email 1 before 2pm Eastern Mon–Thu; never Friday evening. Emails 2–4 never use evening CTA. Prefer cta_session.picks_by_email. Use move/congrats-on-joining copy only when the POC is the named executive hire; otherwise use company-event templates (no your move to the wrong person).",
       "13. Never use em dashes (Unicode — or –) in draft subjects or bodies. Use commas, periods, or restructure. Templates beat freeform prose.",
       "14. Treat hunter_io / contact email and linkedin_url as Hunter.io lookup results. Do not invent emails or LinkedIn URLs. Do not scrape LinkedIn. The console shows LinkedIn from Hunter.io when present, else a people-search fallback. In partner-facing Why, say Hunter.io found or did not find the email or LinkedIn URL. Never say on file, in our database, from ICP contacts, or synthetic.",
       "15. Partner-facing Why on Table 2 and Table 3: write why and reason_or_ambiguity in plain language a recruiting partner can understand and act on immediately. Never name internal files (agent-rules.md, confidence-rubric.md, icp-criteria.md, company_status.csv, etc.). Never cite rule numbers or table numbers. Never use unexplained jargon such as entity sourcing, confidence tier, or ambiguous tier. Put record IDs and policy file names only in citations. Name Exa.ai when the issue is event or article research. Name Hunter.io when the issue is email or LinkedIn. Always end Why with a clear next action.",
@@ -1494,7 +1494,7 @@ body.is-demo .live-only { display: none !important; }
       "- If evening CTA is on draft_1 and evening_cta_eligible is true, that is correct. Do not flag it.",
       "- If evening CTA is on draft_1 when evening_cta_eligible is false (including Friday), prefer needs attention.",
       "- Evening CTA is NEVER allowed on draft_2, draft_3, or draft_4.",
-      "- All four emails use the same CALENDAR / cta_session today. Do not expect Email 2 or Email 4 to invent a later send-day weekday. Flag if tomorrow is paired with a weekday that is not CALENDAR tomorrow_weekday (example: tomorrow afternoon, Friday when tomorrow is Tuesday). Flag Saturday or Sunday meeting offers. Do not flag Can I call you tomorrow or Wednesday? when that matches CALENDAR. Do not require a weekday after the word tomorrow. No Sunday-as-today unless CALENDAR today is Sunday.",
+      "- Each email's CTA is resolved from that email's send day (cta_session.per_email.draft_1..draft_4). Flag if a CTA asks to meet on the send day (example: tomorrow afternoon, Friday on a Friday send). Flag if Email 2–4 say tomorrow when that send day's next calendar day is a weekend. Flag Saturday or Sunday meeting offers. Do not flag Can I call you tomorrow or Thursday? on a Tuesday send when that matches that email's tomorrow/two_working_days.",
       "- CTA must appear once, immediately before the sign-off line. Sign-off (Chad or CD) must be the last non-empty line.",
       "- Prefer variety across emails when the pool allows; identical CTAs on every email is soft preference only, not an automatic needs attention unless structure is also wrong.",
       "",
@@ -4327,6 +4327,7 @@ body.is-demo .live-only { display: none !important; }
       "- Apply the partner voice rules lightly. Keep greeting FirstName comma, one CTA before sign-off, sign-off last.",
       "- Do not invent company facts or change the core event reason.",
       "- Do not change trigger-vs-recipient framing. Keep your recent move to {company} when the POC is the person who joined. Never rewrite that to your recent CRO hire, your CRO hire, or the CRO hire at {company}. Keep Noting the {event} at {company} when the POC is not the hire.",
+      "- Keep the existing CTA line and its weekday. Do not change meeting days. Voice polish only.",
       "- Never use em dashes.",
       "- No markdown fences."
     ].join("\n");
@@ -4953,7 +4954,7 @@ body.is-demo .live-only { display: none !important; }
         "email_2_send: " + (cal.email_2_send || "") + " (" + (cal.email_2_send_iso || "") + ", +3 days)",
         "email_3_send: " + (cal.email_3_send || "") + " (" + (cal.email_3_send_iso || "") + ", +7 days)",
         "email_4_send: " + (cal.email_4_send || "") + " (" + (cal.email_4_send_iso || "") + ", +14 days)",
-        "If you say tomorrow, the weekday must be " + cal.tomorrow_weekday + ". Do not propose Saturday or Sunday. If tomorrow is weekend, offer " + cal.next_weekday + " instead. Do not write tomorrow, Friday unless tomorrow_weekday is Friday. Allow Can I call you tomorrow or " + cal.two_weekdays + "? when tomorrow is a business day. Do not switch today between emails. No Sunday-as-today unless today_weekday is Sunday. Scheduled send dates are email_1_send through email_4_send from this same CALENDAR."
+        "Scheduled send dates are email_1_send through email_4_send. Resolve each email's CTA from that send day. Never ask to meet on the send day. Friday send: Monday or Tuesday, never tomorrow."
       ].join("\n");
     }
 
@@ -4989,8 +4990,7 @@ body.is-demo .live-only { display: none !important; }
       if (resolved.tomorrow_is_business_day) {
         var pool = [
           "Can I call you tomorrow or " + twoDay + "?",
-          "Are you available tomorrow afternoon?",
-          "Are you available " + tomorrowName + " afternoon?"
+          "Are you available tomorrow afternoon, " + tomorrowName + "?"
         ];
         if (tomorrowName && twoDay && tomorrowName !== twoDay) {
           pool.push("Can I call you " + tomorrowName + " or " + twoDay + "?");
@@ -5031,36 +5031,48 @@ body.is-demo .live-only { display: none !important; }
       var when = now || new Date();
       var calendar = buildCalendarBlock(when);
       var eastern = partsInTimeZone(when, "America/New_York");
-      var eveningEligible = eastern.hour < 14 && eastern.weekday >= 1 && eastern.weekday <= 4;
+      var sendParts = sequenceSendDateParts(calendar);
+      var eveningEligibleNow = eastern.hour < 14 && eastern.weekday >= 1 && eastern.weekday <= 4;
       var evening = "Are you around this evening for 10 minutes?";
-      var shared = {
-        tomorrow_is_business_day: calendar.tomorrow_is_business_day,
-        tomorrow_day_of_week: calendar.tomorrow_weekday,
-        next_working_day: calendar.next_weekday,
-        two_working_days: calendar.two_weekdays
-      };
-      var basePool = ctaBasePoolFromResolved(shared);
       var picks = {};
       var perEmail = {};
       var used = [];
       var local = localParts(when);
+      var tz = timeZone || calendar.timezone;
 
       for (var i = 0; i < 4; i++) {
-        var pool = basePool.slice();
-        if (i === 0 && eveningEligible) pool = pool.concat([evening]);
+        var send = sendParts[i];
+        var sendIso = isoFromYmd(send);
+        var isTriggerToday = sendIso === calendar.today_iso;
+        var allowEvening = i === 0 && isTriggerToday && eveningEligibleNow;
+        var resolved = resolveBusinessDayTargetsFromParts(
+          {
+            year: send.year,
+            month: send.month,
+            day: send.day,
+            weekday: send.weekday,
+            hour: allowEvening ? eastern.hour : 9
+          },
+          tz,
+          { allowEvening: allowEvening }
+        );
+        var pool = ctaBasePoolFromResolved(resolved);
+        if (allowEvening) pool = pool.concat([evening]);
         var pick = pickCtaPreferringVariety(pool, used);
         used.push(pick);
         var key = "draft_" + (i + 1);
         picks[key] = pick;
         perEmail[key] = {
-          calendar_source: "sequence_today",
+          calendar_source: "send_day",
+          send_iso: sendIso,
+          send_weekday: WEEKDAY_NAMES[send.weekday],
           today_iso: calendar.today_iso,
           today_weekday: calendar.today_weekday,
-          tomorrow_is_business_day: calendar.tomorrow_is_business_day,
-          tomorrow_day_of_week: calendar.tomorrow_weekday,
-          next_working_day: calendar.next_weekday,
-          two_working_days: calendar.two_weekdays,
-          evening_cta_eligible: i === 0 && eveningEligible,
+          tomorrow_is_business_day: resolved.tomorrow_is_business_day,
+          tomorrow_day_of_week: resolved.tomorrow_day_of_week,
+          next_working_day: resolved.next_working_day,
+          two_working_days: resolved.two_working_days,
+          evening_cta_eligible: allowEvening,
           eligible_pool: pool.slice(),
           cta: pick
         };
@@ -5071,7 +5083,7 @@ body.is-demo .live-only { display: none !important; }
         timezone_source: "browser_local",
         calendar: calendar,
         local_hour: local.hour,
-        evening_cta_eligible: eveningEligible,
+        evening_cta_eligible: eveningEligibleNow,
         tomorrow_is_business_day: calendar.tomorrow_is_business_day,
         tomorrow_day_of_week: calendar.tomorrow_weekday,
         next_working_day: calendar.next_weekday,
@@ -5081,6 +5093,61 @@ body.is-demo .live-only { display: none !important; }
         per_email: perEmail,
         picks_by_email: picks
       };
+    }
+
+    function looksLikeCtaLine(text) {
+      var s = String(text || "").trim().toLowerCase();
+      return s.indexOf("can i call you") === 0 ||
+        s.indexOf("are you available") === 0 ||
+        s.indexOf("are you around") === 0;
+    }
+
+    function isSignoffLine(text) {
+      var s = String(text || "").trim();
+      if (!s) return false;
+      if (/^(chad|cd)\b/i.test(s)) return true;
+      if (/^black gavel$/i.test(s)) return true;
+      return false;
+    }
+
+    function replaceBodyCta(body, cta) {
+      if (!cta) return body;
+      var lines = String(body || "").split("\n");
+      var i = lines.length - 1;
+      while (i >= 0 && !String(lines[i]).trim()) i -= 1;
+      while (i >= 0 && isSignoffLine(lines[i])) {
+        i -= 1;
+        while (i >= 0 && !String(lines[i]).trim()) i -= 1;
+      }
+      if (i >= 0 && looksLikeCtaLine(lines[i])) {
+        lines[i] = cta;
+        return lines.join("\n");
+      }
+      if (i >= 0) {
+        lines.splice(i + 1, 0, "", cta);
+        return lines.join("\n");
+      }
+      return String(body || "") + "\n\n" + cta;
+    }
+
+    function stampSequenceCtas(fields, ctaSession) {
+      if (!fields || !ctaSession || !ctaSession.picks_by_email) return fields;
+      for (var n = 1; n <= 4; n++) {
+        var key = "draft_" + n + "_body";
+        var cta = ctaSession.picks_by_email["draft_" + n];
+        if (!cta) continue;
+        fields[key] = replaceBodyCta(fields[key], cta);
+      }
+      return fields;
+    }
+
+    function ensureCtaSession(resultEl, ev) {
+      var session = (resultEl && resultEl._ctaSession) ||
+        (ev && CASE_UI[ev.case_id] && CASE_UI[ev.case_id]._ctaSession) ||
+        buildCtaSession(new Date());
+      if (resultEl) resultEl._ctaSession = session;
+      if (ev && CASE_UI[ev.case_id]) CASE_UI[ev.case_id]._ctaSession = session;
+      return session;
     }
 
     function stripEmDashes(text) {
@@ -6006,7 +6073,7 @@ body.is-demo .live-only { display: none !important; }
         lead.textContent = cadence[n - 1].lead;
         var date = document.createElement("span");
         date.className = "seq-date";
-        date.textContent = cadence[n - 1].date;
+        date.textContent = " " + cadence[n - 1].date;
         title.appendChild(lead);
         title.appendChild(date);
         head.appendChild(title);
@@ -6060,7 +6127,11 @@ body.is-demo .live-only { display: none !important; }
         parsed.fields.draft_3_body = parsed.fields.draft_3_body || "";
         parsed.fields.draft_4_subject = parsed.fields.draft_4_subject || "";
         parsed.fields.draft_4_body = parsed.fields.draft_4_body || "";
-        parsed.fields = enforceCompanyEventTemplates(parsed.fields, ev, resultEl._ctaSession);
+        parsed.fields = applyBlackGavelSequence(
+          parsed.fields,
+          ev,
+          ensureCtaSession(resultEl, ev)
+        );
         resultEl._lastFields = parsed.fields;
         var failDecision = document.createElement("div");
         failDecision.className = "stage";
@@ -6074,7 +6145,11 @@ body.is-demo .live-only { display: none !important; }
         resultEl.insertBefore(failOutput, notice);
       } else {
         normalizeSequenceDraftFields(parsed.fields);
-        parsed.fields = enforceCompanyEventTemplates(parsed.fields, ev, resultEl._ctaSession);
+        parsed.fields = applyBlackGavelSequence(
+          parsed.fields,
+          ev,
+          ensureCtaSession(resultEl, ev)
+        );
         resultEl._lastFields = parsed.fields;
         var statusVal = String(parsed.fields.status || "").trim().toUpperCase();
         var isRefused = statusVal.indexOf("REFUSED") !== -1;
@@ -6972,7 +7047,7 @@ body.is-demo .live-only { display: none !important; }
         emailGuidance,
         whitelistGuidance,
         calendarContextLines(payload.calendar || (payload.cta_session && payload.cta_session.calendar)),
-        "CTA SESSION: Prefer black_gavel_outreach_sequence.md. For Go drafts, end email 1–4 bodies with the resolved CTA strings in cta_session.picks_by_email (draft_1..draft_4). Those strings already use CALENDAR. Do not invent other CTAs or weekdays. Never use em dashes in subjects or bodies.",
+        "CTA SESSION: Prefer black_gavel_outreach_sequence.md. For Go drafts, end email 1–4 bodies with cta_session.picks_by_email (draft_1..draft_4). Those strings are already resolved from each email's send day. Do not invent other CTAs or weekdays. Never ask to meet on the send day. Never use em dashes in subjects or bodies.",
         "",
         "CASE CONTEXT (JSON):",
         JSON.stringify(payload, null, 2)
@@ -7017,9 +7092,12 @@ body.is-demo .live-only { display: none !important; }
           voiceNote.textContent = "Applying " + partnerDisplayName(partnerIdForCase(ev)) + "'s voice memory…";
           resultEl.appendChild(voiceNote);
           await applyVoiceMemoryToFields(resultEl._lastFields, ev);
-          resultEl._lastFields = enforceCompanyEventTemplates(
-            resultEl._lastFields,
-            ev,
+          resultEl._lastFields = stampSequenceCtas(
+            enforceCompanyEventTemplates(
+              resultEl._lastFields,
+              ev,
+              resultEl._ctaSession || buildCtaSession(new Date())
+            ),
             resultEl._ctaSession || buildCtaSession(new Date())
           );
           renderSequenceDrafts(resultEl, resultEl._lastFields);
@@ -7193,12 +7271,11 @@ body.is-demo .live-only { display: none !important; }
 
     function refreshStoredGoDrafts(ui, resultEl) {
       if (!ui || !ui.ev || !ui.lastFields || !hasGoDecision(ui.lastFields)) return false;
-      var ctaSession = ui._ctaSession || resultEl._ctaSession ||
-        buildCtaSession(new Date());
-      var refreshed = enforceCompanyEventTemplates(Object.assign({}, ui.lastFields), ui.ev, ctaSession);
-      if (refreshed.persona_used === ui.lastFields.persona_used && !draftHasMoveCopy(ui.lastFields)) {
-        return false;
-      }
+      if (ui.humanComplete) return false;
+      var ctaSession = buildCtaSession(new Date());
+      ui._ctaSession = ctaSession;
+      resultEl._ctaSession = ctaSession;
+      var refreshed = applyBlackGavelSequence(Object.assign({}, ui.lastFields), ui.ev, ctaSession);
       ui.lastFields = refreshed;
       resultEl._lastFields = refreshed;
       var personaRow = resultEl.querySelector('.field[data-field="persona_used"] .field-value');
