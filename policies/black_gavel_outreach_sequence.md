@@ -146,7 +146,7 @@ Sign-off: CD
 Body:
 {{first_name}},
 
-Short bump in case the timing was off. Happy to share a one-pager on how we staff revenue and leadership roles after a move like the {{CV1}}.
+Short bump in case the timing was off. Happy to share a one-pager on how we staff revenue and leadership roles after the {{CV1}}.
 
 No pitch deck required. Just a short conversation if useful.
 
