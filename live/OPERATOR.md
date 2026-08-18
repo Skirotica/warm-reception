@@ -198,20 +198,20 @@ GitHub Live does not show or load this list.
 
 Person-level. If someone says stop, a partner clicks **Do not contact this person** on that card, or adds the name under **Do not contact**. Future drafts to that person are blocked until a partner clicks Remove. Company-wide DNC is not in this step. The list lives only in the private store. GitHub Live does not load it. Do not paste real names or emails into chat, GitHub, or this file.
 
-## Sandbox bar (Approve without edit)
+## Email quality (Approve as written)
 
-Private Live only. The Run log sidebar shows the share of draft cases a partner **Approved without editing**. Escalates do not count in this number. Re-running the same company keeps the latest Approve or Edit for that company.
+Private Live only. This is a **quality check on the emails the agent generated**. Of reviewed four-email sequences, the scoreboard shows how often a partner accepted the drafts as written (Approve, no Edit). Edit means the emails needed a rewrite. Escalates are a different path and do not count. Re-running the same company keeps the latest Approve or Edit for that company.
 
-The bar is met at **75% or more**, and only after **at least 8** Approve or Edit decisions. Below that, or below 8, real mailbox send stays locked. Meeting the bar does not turn on Outlook. That is a later step Chad opens.
+The quality bar is met at **75% or more** accepted as written, and only after **at least 8** reviewed sequences. Below 75% means the agent’s emails need work. Real mailbox send stays locked until the bar is met and Chad opens send. Meeting the bar does not turn on Outlook.
 
 GitHub Live does not show this scoreboard.
 
-### Chad / Courtney: prove the sandbox bar (this turn)
+### Chad / Courtney: prove email quality (this turn)
 
 1. Open https://warm-reception-live.pages.dev (not GitHub Pages). After Access, Save API and Save code.
-2. Look at **Sandbox bar** in the Run log sidebar. Past Approve / Edit actions from the partner log should already count.
-3. Pick a company that is not on Existing clients and not on Do not contact. Run. Click **Approve** on a Go draft (no Edit). The percent should move.
-4. Run another (or the same after a new draft). Click **Edit**, change something, save. The percent should drop or hold below 75% if edits are a large share.
+2. Look at **Email quality** in the Run log sidebar. Past Approve / Edit reviews of generated sequences should already count.
+3. Pick a company that is not on Existing clients and not on Do not contact. Run until you have a four-email draft. Click **Approve** (no Edit). That is a pass: the agent’s emails were good enough. The percent should move.
+4. Run another (or the same after a new draft). Click **Edit**, change the emails, save. That is a rewrite: the agent’s emails needed work. The percent should drop or hold below 75% if rewrites are a large share.
 5. Real send must still be locked. Nothing leaves the mailbox from this step.
 
 ### Courtney: Hunter on (this turn)

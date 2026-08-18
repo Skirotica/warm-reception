@@ -961,7 +961,7 @@ body.is-demo .live-only { display: none !important; }
                 <strong>Lookups and send:</strong> Event research cites Exa.ai through the production API worker (no Exa key in this page). Public GitHub Live is synthetic only: Hunter, Exa refresh, and the partner store stay off. On private Live after Access login, Hunter can find company emails after Save API and Save code. Some non-US cases stay out of the real-email path until Chad accepts extra legal load. Partners can add a POC email in the human gate to move No-go → Go and generate Black Gavel. Capstone CE-08 at the site root still demos embedded missing-email rules. Nothing leaves without human Approve.
               </li>
               <li>
-                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Private Live checks the partner client book in the private store (never outreach, no draft). Capstone demo checks embedded company_contacts (CE-08). Live public GitHub Pages does not run Hunter and does not load the client book. Private Live may run Hunter after Save API and Save code. Confirm never invents a person, an email, or a website from the company name. Real mailbox send stays locked until the sandbox bar is at 75% on at least 8 Approve or Edit decisions.
+                <strong>Hard stops and POC coverage:</strong> Existing-client and entity-collision cases must refuse or escalate rather than auto-send. Private Live checks the partner client book in the private store (never outreach, no draft). Capstone demo checks embedded company_contacts (CE-08). Live public GitHub Pages does not run Hunter and does not load the client book. Private Live may run Hunter after Save API and Save code. Confirm never invents a person, an email, or a website from the company name. Real mailbox send stays locked until email quality is at 75% accepted-as-written on at least 8 reviewed sequences.
               </li>
               <li>
                 <strong>Review agent stretch:</strong> A second agent critiques the worker before the human gate (looks right / needs attention). It adds latency and token cost; the human still makes the final Approve / Edit / Escalate click.
@@ -979,9 +979,9 @@ body.is-demo .live-only { display: none !important; }
       <div class="panel-head">Run log</div>
       <div class="panel-body log-wrap">
         <div class="sandbox-bar private-store-only" id="sandbox-bar">
-          <h3>Sandbox bar</h3>
-          <p class="intake-help">Share of draft cases a partner approved without editing. Need 75% on at least 8 Approve or Edit actions before any real mailbox. Real send stays locked in this step.</p>
-          <div class="sandbox-rate" id="sandbox-rate">—</div>
+          <h3>Email quality</h3>
+          <p class="intake-help">Of the four-email sequences the agent wrote, this is the share a partner accepted as written. Approve without edit is a pass. Edit is a rewrite. Escalates do not count. Need 75% pass on at least 8 reviewed sequences. Real mailbox send stays locked in this step.</p>
+          <div class="sandbox-rate" id="sandbox-rate">-</div>
           <p class="sandbox-meta" id="sandbox-meta">Save API and Save code to load the partner log.</p>
         </div>
         <div id="run-log" class="log"></div>
@@ -3508,7 +3508,7 @@ body.is-demo .live-only { display: none !important; }
           if (IS_PUBLIC_GITHUB_LIVE) {
             banner.innerHTML = "<strong>Public GitHub Live is a safe shell.</strong> Synthetic cases only. Real company and contact data is only on the Access-protected Live site at <a href=\"https://warm-reception-live.pages.dev\">https://warm-reception-live.pages.dev</a>. Hunter stays off here. Refresh from Exa is off. Capstone demo stays at the site root. Human Approve / Edit / Escalate still required before any send.";
           } else {
-            banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Existing clients and do-not-contact live in the private store. Sandbox bar tracks Approve-without-edit. Real mailbox send stays locked until that bar is met. Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
+            banner.innerHTML = "<strong>Chad production mode.</strong> Live Exa cases only. Provider keys stay on the Cloudflare Worker. Partner access code required to Run. Existing clients and do-not-contact live in the private store. Email quality tracks whether partners accept the agent’s drafts as written (75% Approve without edit). Real mailbox send stays locked until that quality bar is met. Email lookup (Hunter) can run on this private Live host after Save API and Save code. GitHub Pages Live still has Hunter off. Capstone demo stays at the site root (synthetic). Human Approve / Edit / Escalate still required before any send.";
           }
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
@@ -5608,14 +5608,23 @@ body.is-demo .live-only { display: none !important; }
       };
     }
 
+    function isSequenceQualityAction(entry) {
+      var action = String((entry && entry.human_action) || "");
+      if (action !== "Approve" && action !== "Edit") return false;
+      var detail = String((entry && entry.detail) || "").toLowerCase();
+      var decision = String((entry && entry.agent_decision) || "").toLowerCase();
+      if (detail.indexOf("sequence") !== -1 || detail.indexOf("4-email") !== -1) return true;
+      if (decision.indexOf("go") !== -1 && decision.indexOf("no-go") === -1 && decision.indexOf("nogo") === -1) return true;
+      return false;
+    }
+
     function sandboxDraftStats() {
       var latest = {};
       (RUN_LOG || []).forEach(function (entry) {
-        var action = String(entry.human_action || "");
-        if (action !== "Approve" && action !== "Edit") return;
+        if (!isSequenceQualityAction(entry)) return;
         var id = String(entry.case_id || "").trim();
         if (!id) return;
-        latest[id] = action;
+        latest[id] = String(entry.human_action || "");
       });
       var approve = 0;
       var edit = 0;
@@ -5652,36 +5661,31 @@ body.is-demo .live-only { display: none !important; }
       rateEl.classList.toggle("is-met", stats.met);
       rateEl.classList.toggle("is-short", !stats.met && stats.total > 0);
       if (!stats.total) {
-        metaEl.textContent = "No draft decisions yet. Approve or Edit a Go sequence to start the count. Real mailbox send stays locked.";
+        metaEl.textContent = "No reviewed sequences yet. Run a Go case, then Approve the emails as written or Edit them. That is the quality check. Real mailbox send stays locked.";
         return;
       }
+      var split =
+        stats.approve +
+        " accepted as written, " +
+        stats.edit +
+        " rewritten (" +
+        stats.total +
+        " sequences the agent generated).";
       if (stats.met) {
-        metaEl.textContent =
-          stats.approve +
-          " approved without edit, " +
-          stats.edit +
-          " edited (" +
-          stats.total +
-          " draft decisions). Bar met. Real mailbox send still locked until Chad opens that step.";
+        metaEl.textContent = split + " Quality bar met. Real mailbox send still locked until Chad opens that step.";
         return;
       }
       if (stats.total < stats.minN) {
         metaEl.textContent =
-          stats.approve +
-          " approved without edit, " +
-          stats.edit +
-          " edited. Need " +
+          split +
+          " Need " +
           (stats.minN - stats.total) +
-          " more Approve or Edit actions (minimum " +
+          " more reviewed sequences (minimum " +
           stats.minN +
-          "). Real mailbox send stays locked.";
+          ") before this quality check can pass. Real mailbox send stays locked.";
         return;
       }
-      metaEl.textContent =
-        stats.approve +
-        " approved without edit, " +
-        stats.edit +
-        " edited. Below 75%. Real mailbox send stays locked.";
+      metaEl.textContent = split + " Below 75%. The agent’s emails need work. Real mailbox send stays locked.";
     }
 
     function renderRunLog() {
