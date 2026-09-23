@@ -560,6 +560,9 @@ body {
 .live-toolbar.visible { display: flex; }
 body.is-live .demo-only { display: none !important; }
 body.is-demo .live-only { display: none !important; }
+body.is-geetm-demo .eval-only { display: none !important; }
+body.is-geetm-demo .topbar .settings { display: none !important; }
+body.is-geetm-demo #run-all-btn { display: none !important; }
 
   </style>
 </head>
@@ -593,7 +596,7 @@ body.is-demo .live-only { display: none !important; }
       <div class="panel-body main">
         <div class="view-tabs" role="tablist" aria-label="Console views">
           <button type="button" class="tab active" data-view="queue" id="tab-queue">Review Queue</button>
-          <button type="button" class="tab demo-only" data-view="evals" id="tab-evals">Evals</button>
+          <button type="button" class="tab demo-only eval-only" data-view="evals" id="tab-evals">Evals</button>
         </div>
 
         <div class="view-panel" id="view-queue" role="tabpanel">
@@ -603,7 +606,7 @@ body.is-demo .live-only { display: none !important; }
             <span class="meta" id="live-refresh-status"></span>
           </div>
           <div class="run-all-summary" id="run-all-summary"></div>
-          <div class="demo-chips demo-only" id="demo-chips" aria-label="One-click demo cases"></div>
+          <div class="demo-chips demo-only eval-only" id="demo-chips" aria-label="One-click demo cases"></div>
           <div id="queue-groups">
             <section class="queue-group go" data-group="go">
               <div class="queue-group-head">
@@ -667,14 +670,14 @@ body.is-demo .live-only { display: none !important; }
               <summary>Policy files</summary>
               <ul id="policy-list"></ul>
             </details>
-            <details>
+            <details class="eval-only">
               <summary>Eval cases (<span id="eval-count">0</span>)</summary>
               <div id="eval-list"></div>
             </details>
           </div>
         </div>
 
-        <div class="view-panel" id="view-evals" role="tabpanel" hidden>
+        <div class="view-panel eval-only" id="view-evals" role="tabpanel" hidden>
           <div class="scoreboard" id="eval-scoreboard" aria-label="Eval scoreboard">
             <div class="stat ok"><div class="n" id="stat-pass">0</div><div class="l">Pass</div></div>
             <div class="stat warn"><div class="n" id="stat-needs">0</div><div class="l">Needs work</div></div>
@@ -826,8 +829,16 @@ body.is-demo .live-only { display: none !important; }
       if (/(?:^|\/)live\/(?:index\.html)?$/.test(path) || /\/live\/?$/.test(path)) return "live";
       return "demo";
     }
+    function isGeetmDemoHost() {
+      var host = String(location.hostname || "").toLowerCase();
+      if (/(^|\.)demo\.geetm\.ai$/i.test(host)) return true;
+      if (/(^|\.)geetm-demo\.pages\.dev$/i.test(host)) return true;
+      return false;
+    }
     var APP_MODE = detectAppMode();
     var IS_LIVE = APP_MODE === "live";
+    var IS_GEETM_DEMO = !IS_LIVE && isGeetmDemoHost();
+    const GEETM_FAVICON = "./geetm-favicon.png";
 
     // Five Design PRD eval cases for the Evals view (Prompt 16). Expected text comes from EVAL_CASES.
     const NAMED_EVAL_RUNNER = [
@@ -942,7 +953,7 @@ body.is-demo .live-only { display: none !important; }
       { contact_id: "CT-L01", company_id: "CO-L01", first_name: "Raj", last_name: "Patel", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/raj-patel-discern" },
       { contact_id: "CT-L02", company_id: "CO-L02", first_name: "Tim", last_name: "Dorris", title: "CRO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/timdorris" },
       { contact_id: "CT-L03", company_id: "CO-L03", first_name: "Rafael", last_name: "Bagolin", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/rafaelbagolin", full_name: "Rafael Saccol Bagolin" },
-      { contact_id: "CT-L04", company_id: "CO-L04", first_name: "Andrew", last_name: "Baker", title: "Chief AI and Data Strategy Officer", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/andrew-baker" },
+      { contact_id: "CT-L04", company_id: "CO-L04", first_name: "Andrew", last_name: "Baker", title: "Chief AI and Data Strategy Officer", email: "", employment_confirmed: "yes", linkedin_url: "https://www.linkedin.com/in/andrewmichaelbaker/", full_name: "Andrew Michael Baker" },
       { contact_id: "CT-L05", company_id: "CO-L05", first_name: "Hanna", last_name: "Roos", title: "CEO", email: "", employment_confirmed: "yes", linkedin_url: "https://linkedin.com/in/hannaroos" }
     ];
 
@@ -1096,14 +1107,18 @@ body.is-demo .live-only { display: none !important; }
       "PERSONA SHEET SELECTION (read all sheets in black_gavel_outreach_sequence.md before Go):",
       "Black Gavel has separate 4-email sheets by POC type. You must compare all of them for each Go case and set persona_used to exactly one sheet name. The console fills drafts from your persona_used choice.",
       "Sheets (exact persona_used values):",
-      "1. CRO / CEO / Founder — use only when the POC is the executive named in an executive_hire event (they joined/were appointed). Move/congrats-on-joining copy.",
+      "1. New Hire — use only when the POC is the executive named in an executive_hire event (they joined/were appointed). Congratulatory move copy (Congrats on your recent move to {{company}}).",
       "2. CRO / CEO / Founder (company event) — use when POC is CRO/CEO/Founder/VP Sales but the trigger is someone else's hire, or the event is funding/partnership/IPO/merger. References the event at the company; never your move to the wrong person.",
       "3. Head of Talent and HR — POC is Head of Talent, VP Talent, CHRO, Chief People.",
       "4. Talent Acquisition — POC is TA lead, recruiter, talent acquisition.",
       "5. Hiring Manager — POC is a hiring manager or none of the above sheets fit.",
+      "6. CRO / CEO / Founder — legacy alias; console maps this to company-event leadership copy when the POC is not the named hire.",
       "persona_assigned: your first-pass sheet from POC title alone.",
       "persona_used: the sheet you chose after comparing all sheets against POC role, event type, and whether the POC is the named hire. Put a one-line rationale in trigger_reference (example: Andrew Baker hired; emailing CEO Tom Baldwin; company-event leadership sheet, not move copy).",
-      "If the named hire has a verified email and is the best POC, prefer emailing the hire with CRO / CEO / Founder (move). Do not email the CEO with move copy when someone else was hired.",
+      "If the named hire has a verified email and is the best POC, prefer emailing the hire with New Hire (congrats / move copy). Do not email the CEO with move copy when someone else was hired.",
+      "",
+      "FUNDING / CV3: When the trigger is a funding_round or IPO, the console fills {{CV3}} with a fund-raising milestone line (congrats on the round + typical post-round hiring needs). CV3 is not a job search. Do not treat a Series B like an open req. Lead with congratulations and the hiring wave that usually follows, then offer quiet help filling those seats.",
+      "FUNDING SEQUENCE: For funding_round or IPO Go cases, the console uses Fund Raising templates (live: persona-specific 13-step sheets). Priorities: congratulate on the round; reference the 60-90 day post-funding hiring wave; never open-req language.",
       "",
       "OUTPUT:",
       "Return exactly these labeled fields (one per line as Field: value):",
@@ -1948,6 +1963,7 @@ body.is-demo .live-only { display: none !important; }
     function applyAppModeShell() {
       document.body.classList.toggle("is-live", IS_LIVE);
       document.body.classList.toggle("is-demo", !IS_LIVE);
+      document.body.classList.toggle("is-geetm-demo", IS_GEETM_DEMO);
       var titleEl = document.getElementById("product-title");
       var banner = document.getElementById("mode-banner");
       var liveToolbar = document.getElementById("live-toolbar");
@@ -1962,6 +1978,19 @@ body.is-demo .live-only { display: none !important; }
         }
         if (liveToolbar) liveToolbar.classList.add("visible");
         activeVoicePartnerId = "partner_c";
+      } else if (IS_GEETM_DEMO) {
+        document.title = "GeeTM";
+        var favEl = document.querySelector('link[rel="icon"]');
+        if (favEl) {
+          favEl.type = "image/png";
+          favEl.href = GEETM_FAVICON;
+        }
+        if (titleEl) titleEl.textContent = "GeeTM";
+        if (panelHead) panelHead.textContent = "Warm Reception ? Review Queue";
+        if (banner) {
+          banner.classList.add("visible");
+          banner.innerHTML = "<strong>GeeTM demo.</strong> Twenty synthetic cases auto-run on load with scripted agent decisions. No API keys. Production live queue is on <a href=\"https://blackgavel.geetm.ai\">blackgavel.geetm.ai</a>. Human Approve / Edit / Escalate still required before any send.";
+        }
       } else {
         document.title = "Warm Reception ? Capstone demo";
         if (titleEl) titleEl.textContent = "Warm Reception";
@@ -2619,6 +2648,9 @@ body.is-demo .live-only { display: none !important; }
     ].join("\n");
 
     async function coachVoiceFromEdit(partnerId, beforeSnap, afterSnap, ev) {
+      if (IS_GEETM_DEMO) {
+        return { ok: false, detail: "voice_coach_off_demo", notes: [] };
+      }
       var key = localStorage.getItem(API_KEY_STORAGE) || "";
       if (!key) {
         return { ok: false, detail: "no_key", notes: [] };
@@ -2778,7 +2810,7 @@ body.is-demo .live-only { display: none !important; }
     // Structured Black Gavel sequence (source of truth for Go drafts). Prefer this over agent prose.
     // Subjects may say "CRO hire"; body copy addresses the recipient as the hire when they are the person who moved.
     const BLACK_GAVEL_TEMPLATES = {
-      "CRO / CEO / Founder": [
+      "New Hire": [
         {
           subject: "Congrats on the {{CV1}}, quick note from Black Gavel",
           signoff: "Chad",
@@ -2811,13 +2843,79 @@ body.is-demo .live-only { display: none !important; }
           ]
         }
       ],
+      "CRO / CEO / Founder": [
+        {
+          subject: "The {{CV1}} at {{company}}, quick note from Black Gavel",
+          signoff: "Chad",
+          paragraphs: [
+            "{{event_notice}}",
+            "{{post_event_hire_line}}"
+          ]
+        },
+        {
+          subject: "{{company}}, seats peers fill after the {{CV1}}",
+          signoff: "Chad",
+          paragraphs: [
+            "Following up on the {{CV1}} at {{company}}. Teams in your stage often need one or two critical hires within 60-90 days after news like that.",
+            "We run scoped searches so you stay focused on the business, not inbox noise."
+          ]
+        },
+        {
+          subject: "Quick bump, {{company}} hiring after the {{CV1}}",
+          signoff: "CD",
+          paragraphs: [
+            "Short bump in case the timing was off. Happy to share a one-pager on how we staff revenue and leadership roles after a move like the {{CV1}}.",
+            "No pitch deck required. Just a short conversation if useful."
+          ]
+        },
+        {
+          subject: "Closing the loop on {{company}}",
+          signoff: "CD",
+          paragraphs: [
+            "I will close the loop on outreach about the {{CV1}} at {{company}}. If hiring becomes urgent later, we are easy to reopen."
+          ]
+        }
+      ],
+      "Fund Raising": [
+        {
+          subject: "Congrats on the {{funding_round_label}}, {{company}}",
+          signoff: "Chad",
+          paragraphs: [
+            "{{event_notice}}",
+            "{{post_event_hire_line}}"
+          ]
+        },
+        {
+          subject: "{{company}}, staffing after the {{funding_round_label}}",
+          signoff: "Chad",
+          paragraphs: [
+            "Following up on the {{funding_round_label}} at {{company}}. {{post_funding_priority}}",
+            "We run quiet, scoped searches so you stay focused on scaling, not inbox noise."
+          ]
+        },
+        {
+          subject: "Quick bump, post-round hiring at {{company}}",
+          signoff: "CD",
+          paragraphs: [
+            "Short bump in case the timing was off after the round. Happy to share how peers fill revenue and leadership seats in the first 90 days post-funding.",
+            "No pitch deck required. Just a short conversation if useful."
+          ]
+        },
+        {
+          subject: "Closing the loop on {{company}}",
+          signoff: "CD",
+          paragraphs: [
+            "I will close the loop on outreach about the {{funding_round_label}} at {{company}}. If the post-round hiring wave picks up, we are easy to reopen."
+          ]
+        }
+      ],
       "CRO / CEO / Founder (company event)": [
         {
           subject: "The {{CV1}} at {{company}}, quick note from Black Gavel",
           signoff: "Chad",
           paragraphs: [
-            "Noting the {{CV1}} at {{company}}. {{CV2}}",
-            "When leadership teams add a senior hire on news like that, they often need one or two critical revenue or leadership seats filled quickly. We help growth-stage legaltech companies do that without the usual noise."
+            "{{event_notice}}",
+            "{{post_event_hire_line}}"
           ]
         },
         {
@@ -2849,7 +2947,7 @@ body.is-demo .live-only { display: none !important; }
           subject: "The {{CV1}} at {{company}}",
           signoff: "Chad",
           paragraphs: [
-            "Saw the {{CV1}} at {{company}}. {{CV2}}",
+            "{{event_notice}}",
             "We partner with talent leaders at 50-350 person companies to fill critical roles quickly when the business just shifted."
           ]
         },
@@ -2880,7 +2978,7 @@ body.is-demo .live-only { display: none !important; }
           subject: "Support for {{company}} after the {{CV1}}",
           signoff: "Chad",
           paragraphs: [
-            "Noting the {{CV1}} at {{company}}. {{CV2}}",
+            "{{event_notice}}",
             "If bandwidth is tight, we can take a scoped search so your team stays focused on core reqs."
           ]
         },
@@ -2911,7 +3009,7 @@ body.is-demo .live-only { display: none !important; }
           subject: "{{company}}, the {{CV1}}",
           signoff: "Chad",
           paragraphs: [
-            "Congrats on the recent {{CV1}} news at {{company}}. {{CV2}}",
+            "{{event_notice}}",
             "If hiring is on your plate because of it, we can help quietly and quickly."
           ]
         },
@@ -3000,6 +3098,7 @@ body.is-demo .live-only { display: none !important; }
       for (var i = 0; i < keys.length; i++) {
         if (keys[i].toLowerCase() === lower) return keys[i];
       }
+      if (/new hire|named hire|recent hire/.test(lower)) return "New Hire";
       if (/company event/.test(lower) && /cro|ceo|founder/.test(lower)) {
         return "CRO / CEO / Founder (company event)";
       }
@@ -3011,11 +3110,10 @@ body.is-demo .live-only { display: none !important; }
     }
 
     function defaultPersonaSheet(ev, contact) {
+      if (pocIsEventHiree(ev, contact)) return "New Hire";
       var fromTitle = personaFromTitle(contact && contact.title);
       if (fromTitle === "CRO / CEO / Founder") {
-        return pocIsEventHiree(ev, contact)
-          ? "CRO / CEO / Founder"
-          : "CRO / CEO / Founder (company event)";
+        return "CRO / CEO / Founder (company event)";
       }
       return fromTitle;
     }
@@ -3024,8 +3122,10 @@ body.is-demo .live-only { display: none !important; }
       var chosen = normalizePersonaSheet(agentPersonaUsed);
       if (!chosen) chosen = defaultPersonaSheet(ev, contact);
       if (pocIsEventHiree(ev, contact)) {
-        if (chosen === "CRO / CEO / Founder (company event)") return "CRO / CEO / Founder";
-        return chosen;
+        return "New Hire";
+      }
+      if (chosen === "New Hire") {
+        return "CRO / CEO / Founder (company event)";
       }
       if (chosen === "CRO / CEO / Founder") {
         return "CRO / CEO / Founder (company event)";
@@ -3066,6 +3166,51 @@ body.is-demo .live-only { display: none !important; }
       if (days <= 7) return "This came through last week.";
       if (days <= 21) return "This is recent news.";
       return "This landed in the last few weeks.";
+    }
+
+    function isFundingMilestoneEvent(ev) {
+      var type = String(ev && ev.event_type || "").toLowerCase();
+      return type === "funding_round" || type === "ipo";
+    }
+
+    function fundingRoundLabelFromEvent(ev) {
+      var summary = String((ev && ev.event_summary) || "");
+      var type = String(ev && ev.event_type || "").toLowerCase();
+      if (type === "ipo") return "IPO";
+      var round = summary.match(/Series\s+[A-Z0-9]+|pre-seed|pre seed|seed(?:\s+extension|\s+round)?|growth\s+round/i);
+      if (round) {
+        var label = String(round[0]).replace(/\s+/g, " ").trim();
+        if (/^seed/i.test(label) && !/round/i.test(label)) label += " round";
+        return label;
+      }
+      return "funding round";
+    }
+
+    function cv3FromEvent(ev) {
+      if (!isFundingMilestoneEvent(ev)) return "";
+      var roundLabel = fundingRoundLabelFromEvent(ev);
+      var article = /^(series|pre-seed|pre seed|seed|growth)/i.test(roundLabel) ? "a " + roundLabel : "the " + roundLabel;
+      if (/^the IPO$/i.test(article)) article = "the IPO";
+      return (
+        "Congrats on " +
+        article +
+        ". Teams at your stage often need one or two critical revenue or leadership hires within 60-90 days after a round like this."
+      );
+    }
+
+    function eventNoticeFromTokens(ev, tokens) {
+      if (tokens.CV3) return tokens.CV3 + " " + tokens.CV2;
+      return "Noting the " + tokens.CV1 + " at " + tokens.company + ". " + tokens.CV2;
+    }
+
+    function postEventHireLineFromEvent(ev) {
+      if (isFundingMilestoneEvent(ev)) {
+        return "We help growth-stage legaltech teams fill those post-round seats without the usual noise.";
+      }
+      if (String(ev && ev.event_type || "").toLowerCase() === "executive_hire") {
+        return "When leadership teams add a senior hire on news like that, they often need one or two critical revenue or leadership seats filled quickly. We help growth-stage legaltech companies do that without the usual noise.";
+      }
+      return "When news like this lands, teams often need one or two critical seats filled quickly. We help growth-stage legaltech companies do that without the usual noise.";
     }
 
     function fillTokens(text, tokens) {
@@ -3228,9 +3373,9 @@ body.is-demo .live-only { display: none !important; }
           send_weekday: WEEKDAY_NAMES[send.weekday],
           send_offset_calendar_days: offsets[i],
           tomorrow_is_business_day: resolved.tomorrow_is_business_day,
-          tomorrow_day_of_week: resolved.tomorrow_day_of_week,
+        tomorrow_day_of_week: resolved.tomorrow_day_of_week,
           next_working_day: resolved.next_working_day,
-          two_working_days: resolved.two_working_days,
+        two_working_days: resolved.two_working_days,
           evening_cta_eligible: resolved.evening_cta_eligible,
           eligible_pool: pool.slice(),
           cta: pick
@@ -3263,13 +3408,23 @@ body.is-demo .live-only { display: none !important; }
     function buildBlackGavelSequence(ev, contact, ctaSession, agentPersonaUsed, agentPersonaAssigned) {
       var persona = resolveTemplatePersona(ev, contact, agentPersonaUsed);
       var sheets = BLACK_GAVEL_TEMPLATES[persona] || BLACK_GAVEL_TEMPLATES["Hiring Manager"];
+      if (isFundingMilestoneEvent(ev) && BLACK_GAVEL_TEMPLATES["Fund Raising"]) {
+        sheets = BLACK_GAVEL_TEMPLATES["Fund Raising"];
+      }
       var firstName = (contact && contact.first_name) || "there";
       var tokens = {
         first_name: firstName,
         company: (ev && ev.company_name) || "",
         CV1: cv1FromEvent(ev),
-        CV2: cv2FromEventDate(ev && ev.event_date)
+        CV2: cv2FromEventDate(ev && ev.event_date),
+        CV3: cv3FromEvent(ev),
+        funding_round_label: fundingRoundLabelFromEvent(ev)
       };
+      tokens.event_notice = eventNoticeFromTokens(ev, tokens);
+      tokens.post_event_hire_line = postEventHireLineFromEvent(ev);
+      tokens.post_funding_priority = isFundingMilestoneEvent(ev)
+        ? "Most teams prioritise revenue leadership, a few quota carriers, and RevOps support in the first 60-90 days after a round like this."
+        : "";
       var out = {
         persona_assigned: normalizePersonaSheet(agentPersonaAssigned) || personaFromTitle(contact && contact.title),
         persona_used: persona
@@ -3326,14 +3481,49 @@ body.is-demo .live-only { display: none !important; }
         blob.indexOf("your recent cro hire") !== -1;
     }
 
+    function draftHasOpenReqCopy(fields) {
+      if (!fields) return false;
+      var blob = "";
+      for (var n = 1; n <= 4; n++) {
+        blob += " " + String(fields["draft_" + n + "_subject"] || "") + " " + String(fields["draft_" + n + "_body"] || "");
+      }
+      blob = blob.toLowerCase();
+      return /\byour open\b/.test(blob) ||
+        /\bopening at\b/.test(blob) ||
+        /\bposted [^.\n]{0,48}\bsearch\b/.test(blob) ||
+        (/\bthe [^.\n]{0,40}\bsearch\b/.test(blob) && blob.indexOf("post-round") === -1) ||
+        /\bsearch is handled\b/.test(blob);
+    }
+
+    function draftHasFundingMilestoneCopy(fields) {
+      if (!fields) return false;
+      var blob = "";
+      for (var n = 1; n <= 4; n++) {
+        blob += " " + String(fields["draft_" + n + "_body"] || "");
+      }
+      blob = blob.toLowerCase();
+      return blob.indexOf("congrats on") !== -1 ||
+        blob.indexOf("post-round") !== -1 ||
+        blob.indexOf("after a round") !== -1 ||
+        blob.indexOf("post-funding") !== -1;
+    }
+
     function enforceCompanyEventTemplates(fields, ev, ctaSession) {
       if (!fields || !ev || !hasGoDecision(fields)) return fields;
-      if (String(ev.event_type || "").toLowerCase() !== "executive_hire") return fields;
       var contact = contactFromFields(fields);
       var expected = resolveTemplatePersona(ev, contact, fields.persona_used);
       var hybrid = draftHasHybridHireCopy(fields);
+
+      if (isFundingMilestoneEvent(ev)) {
+        if (draftHasOpenReqCopy(fields) || !draftHasFundingMilestoneCopy(fields)) {
+          return applyBlackGavelSequence(fields, ev, ctaSession);
+        }
+        return fields;
+      }
+
+      if (String(ev.event_type || "").toLowerCase() !== "executive_hire") return fields;
       if (pocIsEventHiree(ev, contact)) {
-        if (expected !== "CRO / CEO / Founder") return fields;
+        if (expected !== "New Hire") return fields;
         if (fields.persona_used === expected && draftHasMoveCopy(fields) && !hybrid) return fields;
         return applyBlackGavelSequence(fields, ev, ctaSession);
       }
@@ -4583,7 +4773,172 @@ body.is-demo .live-only { display: none !important; }
       }
     }
 
-    async function runAgentForCase(ev, resultEl, buttonEl) {
+    var DEMO_SCRIPT = {
+      "CE-01": { table: "Table 1", decision: "Go", status: "OK", confidence: "High", why: "Rapid Accounting fits ICP and Exa.ai confirms the CRO hire. Jordan Ellis has a verified email. Ready for a four-email Go sequence after your review.", fit: "Would-go", fit_note: "Already a Go with verified POC email." },
+      "CE-02": { table: "Table 1", decision: "Go", status: "OK", confidence: "High", why: "Rubber Boat Legal Tec fits ICP and the Series B is a qualifying event. Samira Okoye has a verified email. Draft the four-email sequence after review.", fit: "Would-go", fit_note: "Already a Go with verified POC email." },
+      "CE-03": { table: "Table 1", decision: "Go", status: "OK", confidence: "High", why: "Payit River Legal fits ICP and the court e-filing partnership is a qualifying event. Noah Park has a verified email. This is the partnership case, not the CE-16 Series A collision.", fit: "Would-go", fit_note: "Already a Go with verified POC email." },
+      "CE-04": { table: "Table 1", decision: "Go", status: "OK", confidence: "High", why: "Riviing Inc. fits ICP and the VP Talent hire is a qualifying event. Maya Chen has a verified email. Ready for outreach after review.", fit: "Would-go", fit_note: "Already a Go with verified POC email." },
+      "CE-05": { table: "Table 3", decision: "Ambiguous", status: "OK", confidence: "Ambiguous", why: "Exa.ai found funding news but the source does not confirm which legal entity raised the round or name the company domain. Verify the legal entity on LinkedIn or the company website before approving any outreach.", fit: "Ambiguous", fit_note: "Entity must be confirmed before email research is worth it.", reason: "Entity not confirmed in the news source." },
+      "CE-06": { table: "Table 3", decision: "Ambiguous", status: "OK", confidence: "Ambiguous", why: "The hire signal conflicts with other employer listings for Squirly Squirts. Confirm who employs the new Head of Sales before drafting.", fit: "Ambiguous", fit_note: "Entity certainty must be resolved first.", reason: "Conflicting employer signals." },
+      "CE-07": { table: "Table 2", decision: "No-go", status: "OK", confidence: "Below Threshold", why: "Thwart is consumer edtech with 18 employees and no VC backing. It is out of ICP on sector, size, and backing. Do not chase email for this case.", fit: "Still-blocked", fit_note: "Out of ICP even if a POC email existed.", reason: "Out of ICP sector and size." },
+      "CE-08": { table: "Table 2", decision: "No-go", status: "OK", confidence: "Medium", why: "Raft Financial otherwise fits ICP, but neither Avery Kim (CRO) nor Blair Sato (Head of Talent) has a verified email in company contacts. Do not invent an address. Look them up on LinkedIn or add a qualified POC email to continue.", fit: "Would-go", fit_note: "Company and event would support outreach if a qualified POC email is secured.", reason: "No verified email for preferred or alternate POC." },
+      "CE-09": { table: "Table 3", decision: "Ambiguous", status: "OK", confidence: "Ambiguous", why: "Go Left Legal Tech is missing employee count, revenue, and TA headcount, so ICP fit cannot be scored yet. Confirm size and revenue before outreach.", fit: "Ambiguous", fit_note: "Need ICP fields before judging fit.", reason: "Two or more ICP fields missing." },
+      "CE-10": { table: "Table 2", decision: "No-go", status: "OK", confidence: "High", why: "Crouch Tech filed for bankruptcy, a disqualifying opposite signal. No cold outreach regardless of POC email.", fit: "Still-blocked", fit_note: "Bankruptcy hard stop.", reason: "Bankruptcy / restructuring signal." },
+      "CE-11": { table: "Table 2", decision: "Refused", status: "REFUSED-ESCALATE", confidence: "High", why: "ENARRESS is an existing Black Gavel client. Cold outreach is not allowed. Use the existing relationship instead of a new sequence.", fit: "Still-blocked", fit_note: "Existing client hard stop.", reason: "Existing client.", override: "No" },
+      "CE-12": { table: "Table 3", decision: "Ambiguous", status: "OK", confidence: "Ambiguous", why: "The merger report may refer to more than one Outlaw Legal entity. Confirm which company the event belongs to before drafting.", fit: "Ambiguous", fit_note: "Entity collision risk.", reason: "Ambiguous merger entity." },
+      "CE-13": { table: "Table 1", decision: "Go", status: "OK", confidence: "High", why: "Duckee fits ICP and the IPO filing is a qualifying event with recruiting expansion noted. Chris Nguyen has a verified email. Ready for review.", fit: "Would-go", fit_note: "Already a Go with verified POC email." },
+      "CE-14": { table: "Table 3", decision: "Ambiguous", status: "OK", confidence: "Ambiguous", why: "The partnership news may refer to Champagne HQ or Champagne Labs. Confirm the correct legal entity before outreach.", fit: "Ambiguous", fit_note: "Two similarly named entities.", reason: "Ambiguous Champagne entity." },
+      "CE-15": { table: "Table 3", decision: "Ambiguous", status: "OK", confidence: "Ambiguous", why: "The Wave Train hire mention lacks company domain and role clarity. Verify the employer and POC before drafting.", fit: "Ambiguous", fit_note: "Thin entity certainty.", reason: "Thin hire detail." },
+      "CE-16": { table: "Table 3", decision: "Ambiguous", status: "OK", confidence: "Ambiguous", why: "One Series A article names both Payette River LLC and Payit River Legal. Do not congratulate either firm on the fundraise until a human confirms which legal entity raised the round.", fit: "Ambiguous", fit_note: "Entity collision between two in-ICP firms.", reason: "Series A entity collision." },
+      "CE-17": { table: "Table 1", decision: "Go", status: "OK", confidence: "High", why: "Floating Legal is on the partner whitelist, so classic ICP re-score is skipped. The CRO hire is a qualifying event and Quinn Hale has a verified email. Ready for a four-email sequence.", fit: "Would-go", fit_note: "Whitelist bypass with verified email.", whitelist: true },
+      "CE-18": { table: "Table 1", decision: "Go", status: "OK", confidence: "High", why: "Cataract Legal LLC is partner-vetted on the whitelist. The Series A is a qualifying event and Sasha Ortiz has a verified email. Ready for review.", fit: "Would-go", fit_note: "Whitelist bypass with verified email.", whitelist: true },
+      "CE-19": { table: "Table 1", decision: "Go", status: "OK", confidence: "High", why: "Frame Em LLC is on the pre-qualified whitelist. The Harbor Docket partnership is a qualifying event and Devon Blake has a verified email.", fit: "Would-go", fit_note: "Whitelist bypass with verified email.", whitelist: true },
+      "CE-20": { table: "Table 1", decision: "Go", status: "OK", confidence: "Medium", why: "Plunge Inc. is below classic ICP size but is partner-vetted on the whitelist. The VP Sales hire is a qualifying event and Reese Lang has a verified email. Do not No-go on size alone.", fit: "Would-go", fit_note: "Whitelist bypass despite smaller size.", whitelist: true }
+    };
+
+    function demoScriptRow(ev) {
+      return DEMO_SCRIPT[ev.case_id] || {
+        table: "Table 3",
+        decision: "Ambiguous",
+        status: "OK",
+        confidence: "Ambiguous",
+        why: "Synthetic demo case. Review before outreach.",
+        fit: "Ambiguous",
+        fit_note: "Demo placeholder.",
+        reason: "Unscripted case id."
+      };
+    }
+
+    function buildScriptedDemoRaw(ev) {
+      var script = demoScriptRow(ev);
+      var profile = byCompanyId(COMPANY_PROFILES, ev.company_id) || {};
+      var contacts = contactsForCompany(ev.company_id);
+      var contact = contacts.filter(function (c) { return !!String(c.email || "").trim(); })[0] || contacts[0] || {};
+      var icp = resolveIcpNumbers(ev);
+      var isGo = String(script.decision || "").toLowerCase() === "go";
+      var pocName = ((contact.first_name || "") + " " + (contact.last_name || "")).trim();
+      var pocTitle = contact.title || "";
+      var pocEmail = String(contact.email || "").trim();
+      var personaUsed = isGo ? resolveTemplatePersona(ev, contact, null) : "";
+      var personaAssigned = isGo ? personaFromTitle(pocTitle) : "";
+      var citeParts = [ev.case_id, ev.company_id];
+      if (contact.contact_id) citeParts.push(contact.contact_id);
+      citeParts.push("icp-criteria.md", "agent-rules.md");
+      if (script.whitelist) citeParts.push("prequalified-whitelist.md");
+      if (String(script.status || "").indexOf("REFUSED") !== -1) citeParts.push("company_status:" + ev.company_name);
+
+      var lines = [
+        "status: " + script.status,
+        "table: " + script.table,
+        "decision: " + script.decision,
+        "confidence_rating: " + script.confidence,
+        "company_name: " + ev.company_name,
+        "domain: " + (ev.domain || profile.domain || ""),
+        "poc_name: " + (isGo ? pocName : ""),
+        "poc_title: " + (isGo ? pocTitle : ""),
+        "poc_email: " + (isGo ? pocEmail : ""),
+        "fit_if_email_secured: " + script.fit,
+        "fit_if_email_note: " + script.fit_note,
+        "sector: " + (icp.sector || ev.sector || ""),
+        "employee_count: " + (icpFieldPresent(icp.employee_count) ? icp.employee_count : ""),
+        "revenue_estimate: " + (icpFieldPresent(icp.revenue_estimate_mm) ? icp.revenue_estimate_mm + "M" : ""),
+        "vc_pe_backed: " + (icp.vc_pe_backed != null ? icp.vc_pe_backed : ""),
+        "ta_headcount: " + (icpFieldPresent(icp.ta_headcount) ? icp.ta_headcount : ""),
+        "persona_assigned: " + personaAssigned,
+        "trigger_event: " + (ev.event_summary || ""),
+        "event_date: " + (ev.event_date || ""),
+        "event_source_url: " + (ev.source_url || ""),
+        "reason_or_ambiguity: " + (script.reason || script.why || ""),
+        "override_available: " + (script.override || (String(script.table || "").indexOf("3") !== -1 ? "Yes" : "No")),
+        "draft_to: " + (isGo ? pocEmail : ""),
+        "draft_from: chad@blackgavel.example",
+        "draft_1_subject:",
+        "draft_1_body:",
+        "draft_2_subject:",
+        "draft_2_body:",
+        "draft_3_subject:",
+        "draft_3_body:",
+        "draft_4_subject:",
+        "draft_4_body:",
+        "persona_used: " + personaUsed,
+        "trigger_reference: Synthetic demo script for " + ev.case_id,
+        "citations: " + citeParts.join(", "),
+        "why: " + script.why
+      ];
+      return lines.join("\n");
+    }
+
+    function demoReviewerVerdict(ev, fields) {
+      if (!fields) return { verdict: "needs attention", reason: "Demo script returned no fields." };
+      var script = demoScriptRow(ev);
+      if (String(script.status || "").indexOf("REFUSED") !== -1) {
+        return { verdict: "looks right", reason: "Demo script correctly refused an existing client." };
+      }
+      if (String(script.decision || "").toLowerCase() === "go") {
+        return { verdict: "looks right", reason: "Demo script filled a Go sequence for synthetic review." };
+      }
+      if (String(script.table || "").indexOf("3") !== -1) {
+        return { verdict: "needs attention", reason: "Demo script flagged ambiguity for partner verification." };
+      }
+      return { verdict: "looks right", reason: "Demo script correctly blocked outreach." };
+    }
+
+    async function runScriptedDemoCase(ev, resultEl, buttonEl, opts) {
+      var batch = opts && opts.batch;
+      buttonEl.disabled = true;
+      resultEl.innerHTML = batch
+        ? '<span class="thinking">Demo script…</span>'
+        : '<span class="thinking">Running demo script…</span>';
+      var metaEl = document.getElementById("topbar-meta");
+      if (metaEl && !batch) metaEl.textContent = "Demo script " + ev.case_id;
+      await new Promise(function (resolve) { setTimeout(resolve, batch ? 40 : 450); });
+
+      var payload = buildCasePayload(ev, null, null);
+      resultEl._ctaSession = payload.cta_session;
+      if (CASE_UI[ev.case_id]) CASE_UI[ev.case_id]._ctaSession = payload.cta_session;
+      if (CASE_UI[ev.case_id] && CASE_UI[ev.case_id].summaryPocEl) {
+        CASE_UI[ev.case_id].summaryPocEl.textContent = initialPocName(ev);
+      }
+
+      var raw = buildScriptedDemoRaw(ev);
+      renderParsedResult(resultEl, raw, ev);
+      if (resultEl._lastFields && hasGoDecision(resultEl._lastFields)) {
+        resultEl._lastFields = enforceCompanyEventTemplates(
+          resultEl._lastFields,
+          ev,
+          resultEl._ctaSession || buildCtaSession(new Date(), "America/New_York")
+        );
+        renderSequenceDrafts(resultEl, resultEl._lastFields);
+      }
+      updateRowSummary(ev.case_id, resultEl._lastFields);
+      renderReviewerPanel(resultEl, demoReviewerVerdict(ev, resultEl._lastFields));
+      wireHumanGate(resultEl, ev);
+      persistCaseResult(ev, resultEl);
+
+      appendRunLog({
+        time: new Date().toLocaleTimeString(),
+        case_id: ev.case_id,
+        company_name: ev.company_name,
+        agent_decision: (resultEl._lastFields && resultEl._lastFields.decision) || "demo_script",
+        human_action: "_system",
+        detail: "Scripted demo run (no API)"
+      });
+
+      buttonEl.disabled = false;
+      if (metaEl && selectedCaseId) metaEl.textContent = "Selected " + selectedCaseId;
+      else if (metaEl) metaEl.textContent = "Ready";
+
+      var fields = resultEl._lastFields || {};
+      var statusVal = String(fields.status || "").toUpperCase();
+      if (statusVal.indexOf("REFUSED") !== -1) return { kind: "refused", detail: fields.decision || "" };
+      if (statusVal.indexOf("OK") !== -1) return { kind: "ok", detail: fields.decision || "" };
+      return { kind: "error", detail: "demo_script" };
+    }
+
+    async function runAgentForCase(ev, resultEl, buttonEl, opts) {
+      if (IS_GEETM_DEMO) {
+        return runScriptedDemoCase(ev, resultEl, buttonEl, opts);
+      }
       var key = localStorage.getItem(API_KEY_STORAGE) || "";
       if (!key) {
         resultEl.innerHTML = '<div class="error-note">No Anthropic API key saved. Paste your key in the top bar and click Save first.</div>';
@@ -5424,6 +5779,7 @@ body.is-demo .live-only { display: none !important; }
     });
 
     buildEvalsTable();
+    if (IS_GEETM_DEMO) setActiveView("queue");
 
     var resetEvalsBtn = document.getElementById("btn-reset-evals");
     if (resetEvalsBtn) {
@@ -5440,29 +5796,36 @@ body.is-demo .live-only { display: none !important; }
       var progressEl = document.getElementById("run-all-progress");
       var summaryEl = document.getElementById("run-all-summary");
       var key = localStorage.getItem(API_KEY_STORAGE) || "";
-      if (!key) {
+      if (!IS_GEETM_DEMO && !key) {
         summaryEl.textContent = "Save an API key before Run All.";
         return;
       }
-      runAllBtn.disabled = true;
+      if (runAllBtn) runAllBtn.disabled = true;
       summaryEl.textContent = "";
       var ok = 0;
       var refused = 0;
       var errors = 0;
       var total = QUEUE_EVENTS.length;
+      var batchOpts = IS_GEETM_DEMO ? { batch: true } : null;
 
       for (var i = 0; i < QUEUE_EVENTS.length; i++) {
         var ev = QUEUE_EVENTS[i];
         var ui = CASE_UI[ev.case_id];
-        progressEl.textContent = "Running " + (i + 1) + " / " + total + " ? " + ev.case_id + " " + ev.company_name;
-        if (!ui.rowEl.classList.contains("open")) toggleRow(ev.case_id);
-        else {
-          selectedCaseId = ev.case_id;
-          var metaEl = document.getElementById("topbar-meta");
-          if (metaEl) metaEl.textContent = "Selected " + ev.case_id + " ? " + ev.company_name;
+        if (progressEl) {
+          progressEl.textContent = IS_GEETM_DEMO
+            ? "Auto-running " + (i + 1) + " / " + total + " …"
+            : "Running " + (i + 1) + " / " + total + " ? " + ev.case_id + " " + ev.company_name;
         }
-        ui.rowEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        var outcome = await runAgentForCase(ev, ui.resultEl, ui.runBtn);
+        if (!IS_GEETM_DEMO) {
+          if (!ui.rowEl.classList.contains("open")) toggleRow(ev.case_id);
+          else {
+            selectedCaseId = ev.case_id;
+            var metaEl = document.getElementById("topbar-meta");
+            if (metaEl) metaEl.textContent = "Selected " + ev.case_id + " ? " + ev.company_name;
+          }
+          ui.rowEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+        var outcome = await runAgentForCase(ev, ui.resultEl, ui.runBtn, batchOpts);
         updateRowSummary(ev.case_id, ui.resultEl._lastFields);
         if (!outcome || outcome.kind === "error") errors += 1;
         else if (outcome.kind === "refused") refused += 1;
@@ -5470,7 +5833,11 @@ body.is-demo .live-only { display: none !important; }
         else errors += 1;
       }
 
-      progressEl.textContent = "Done. " + total + " / " + total;
+      if (progressEl) {
+        progressEl.textContent = IS_GEETM_DEMO
+          ? "Demo ready. " + total + " / " + total + " scripted."
+          : "Done. " + total + " / " + total;
+      }
       summaryEl.textContent =
         "Summary: " + ok + " OK, " + refused + " REFUSED-ESCALATE, " + errors + " errors (of " + total + " cases).";
       appendRunLog({
@@ -5481,12 +5848,18 @@ body.is-demo .live-only { display: none !important; }
         human_action: "run_all",
         detail: summaryEl.textContent
       });
-      runAllBtn.disabled = false;
+      if (runAllBtn) runAllBtn.disabled = false;
     }
 
     document.getElementById("run-all-btn").addEventListener("click", function () {
       runAllCases();
     });
+
+    if (IS_GEETM_DEMO) {
+      setTimeout(function () {
+        runAllCases();
+      }, 350);
+    }
 
     function refreshKeyStatus() {
       var saved = localStorage.getItem(API_KEY_STORAGE) || "";

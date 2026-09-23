@@ -112,7 +112,7 @@ Access is on. One-time PIN is the Chad / Nick / Courtney login. Hunter is **on**
 
 Hunter stays **off** on `https://skirotica.github.io/warm-reception/live/`. That page is a public synthetic shell: no real companies in the queue, no store extras, no Exa refresh. The browser refuses Hunter, store, and Exa on any `github.io` host. The Worker also 403s those routes if Origin is github.io, even with `HUNTER_ENABLED=true`.
 
-Class demo at the site root stays public and synthetic. Jusfy (Brazil) and Aavalynx (UK/EU) stay out of the real-email path until Chad accepts that extra legal load.
+Class demo at the site root stays public and synthetic. Non-US companies (for example Jusfy Brazil, Aavalynx UK/EU) are no longer hard-blocked from Hunter on private Live. Chad accepted that extra legal load; the case shows a notice when location evidence is outside the US.
 
 ### Courtney: put Live on Cloudflare Pages
 
@@ -198,6 +198,17 @@ GitHub Live does not show or load this list.
 
 Person-level. If someone says stop, a partner clicks **Do not contact this person** on that card, or adds the name under **Do not contact**. Future drafts to that person are blocked until a partner clicks Remove. Company-wide DNC is not in this step. The list lives only in the private store. GitHub Live does not load it. Do not paste real names or emails into chat, GitHub, or this file.
 
+## Stop remaining emails / In conversation
+
+On a Go card with a four-email sequence, private Live only. If they reply after email 1, 2, or 3, pick **Last email sent**, then **In conversation** or **Stop remaining emails**. Leftover sequence emails show as Cancelled. This does not add the person to do-not-contact. Use Do not contact only for stop / unsubscribe requests. The stamp lives in the private store. Run again clears it. Nothing is sent. Real mailbox stays locked.
+
+### Courtney: prove sequence stop (this turn)
+
+1. Open https://warm-reception-live.pages.dev. Save API and Save code.
+2. Open a Go card with four drafts. Pick Last email sent = Email 1. Click **In conversation**. Emails 2, 3, and 4 should show Cancelled. The queue badge should read In conversation. Do not contact should still be empty for that person.
+3. Refresh, Save code, reopen the card. The cancelled emails and In conversation stamp should still be there.
+4. Real send must still be locked.
+
 ## Email quality (75% of emails approved without edit)
 
 Private Live only. This is a **quality check on the emails the agent generated**. The score is **emails**, not companies. Each sequence has up to four emails.
@@ -215,6 +226,54 @@ GitHub Live does not show this scoreboard.
 3. Pick a company that is not on Existing clients and not on Do not contact. Run until you have a four-email draft. Click **Approve** (no Edit). That should add four emails accepted as written.
 4. Run another. Click **Edit**, change only one email, save. That should add three accepted and one rewritten. The percent is emails approved without edit, not companies.
 5. Real send must still be locked. Nothing leaves the mailbox from this step.
+
+## Sequence Dispatch Bot (post-approve email only)
+
+Private Live only. Approve still means **sandbox / In Sequence**. A Worker cron (`:15` every hour, plus after Exa ingest) is the Sequence Dispatch Bot. It does not invent outreach.
+
+What it does:
+
+1. Reads authorized Go packages from the private store (human Approve already required).
+2. For each **Email** step that is approved or edited: checks cadence day offset from `authorized_at`, recipient email present, not DNC, not existing client, not already sent, sequence not stopped.
+3. **Out-of-sequence gate:** never skip ahead. A later Email is stopped until earlier Email steps are `sent`. Also stops unapproved steps, missing recipient, empty subject/body. Status `out_of_sequence` with a clear `report` string. Does **not** send.
+4. LinkedIn / phone / SMS: never auto-sent (manual only). Reported as **Out of sequence** (“email bot will not send”).
+5. If a later Email would skip ahead of an earlier unsent Email: **stops** and reports (example: “Step 3 email attempted before Step 1 was sent”).
+6. On schedule match without Microsoft Graph secrets: marks **Held for mail server** (dry-run). Does **not** use Resend for prospects.
+7. Live Graph send only when all of these are true: quality bar met, `LIVE_SEND_UNLOCK=true`, and Graph secrets set.
+
+Partners see status under **Email quality → Sequence dispatch** (summary + stopped list), on each step badge, and a case notice when a step was blocked out of sequence.
+
+### Chad: Graph secrets (Exchange 365) before true live delivery
+
+From `prod-api` (same Worker Live already uses):
+
+```
+npx wrangler secret put MS_TENANT_ID
+npx wrangler secret put MS_CLIENT_ID
+npx wrangler secret put MS_CLIENT_SECRET
+npx wrangler secret put MS_SEND_AS
+```
+
+`MS_SEND_AS` is Chad’s mailbox UPN (the From address Graph sends as). App registration needs **Mail.Send** application permission, admin consented.
+
+Then Chad unlock (fail-closed without this; value must be exactly `true`):
+
+```
+npx wrangler secret put LIVE_SEND_UNLOCK
+```
+
+Manual dry-run check (partner code header required on private origins):
+
+`POST /v1/sequence-dispatch` or `GET /v1/sequence-dispatch` for last status.
+
+Until Graph secrets and unlock are set, the bot only verifies schedule and holds. Nothing leaves Outlook.
+
+### Courtney: prove sequence dispatch (this turn)
+
+1. Open private Live. Save API and Save code.
+2. Approve a Go sequence (sandbox). Open **Run log → Sequence dispatch**. After the next hourly pass (or POST `/v1/sequence-dispatch`), Email steps should show Sandbox authorized or Held for mail server, not Sent.
+3. If a later Email would skip ahead of an unsent earlier Email, the badge and the dispatch list show **Out of sequence: …** and nothing sends.
+4. Real mailbox must still stay locked.
 
 ### Courtney: Hunter on (this turn)
 
@@ -253,9 +312,15 @@ A fresh session forgets API URL and partner code. After Access login:
 1. Open https://warm-reception-live.pages.dev (not GitHub Pages).
 2. Paste `https://warm-reception-prod-api.cryandean.workers.dev` and click **Save API**.
 3. Type the partner access code and click **Save code**.
-4. Pick Discern, Wordsmith AI, or Entegrata. Do not pick Jusfy or Aavalynx.
+4. Pick Discern, Wordsmith AI, Entegrata, or Jusfy. Jusfy should show a non-US notice and still allow Hunter when size/sector allow. Aavalynx may stay Hunter-skipped for ICP size (headcount), not for legal load.
 5. Click Run. You should see Hunter try (Domain Search / company contacts). Confirm never invents a person, an email, or a `.com` from a company name. Approve / Edit / Escalate still required. No mailbox send.
 6. On https://skirotica.github.io/warm-reception/live/ the queue must be synthetic (no Discern / Wordsmith / Jusfy / Entegrata / Aavalynx). Hunter must still refuse. Refresh from Exa must stay off.
+
+## Rerun research (wrong Hunter / wrong domain)
+
+On private Live (`blackgavel.geetm.ai` or `warm-reception-live.pages.dev`), open any Review Queue card that already has a decision (Ambiguous, Pending Review, Go, or No-go). Under **Human review**, click **Rerun research**. That clears Hunter contacts pulled for the wrong website, re-checks the company domain, runs Hunter Domain Search again on the correct site, re-scores the case, and **writes the new result to the durable Live store** (survives refresh; status shows Saved). When the case qualifies (real company domain + persona-fit POC email + no hard disqualifier), Rerun **promotes to Go waiting approval** automatically. It does not Approve or send. Use this when Hunter returned the wrong company (for example monday.com people on a Chamelio card). If a leftover news-publisher husk still shows after a hard refresh, open it and click **Confirm No-Go** to archive it off the queue.
+
+**Persona-only POCs:** Approve packages keep Email Template personas only (CEO/COO/CRO/Founder, Head of Talent/HR, TA/Recruiter, finance/legal Hiring Manager, New Hire). IC/tech titles (QA, Product Management, Software Engineering, IT/IS, DevOps, Data Scientist) are dropped on load and on Rerun research.
 
 ## What not to paste on Live
 
