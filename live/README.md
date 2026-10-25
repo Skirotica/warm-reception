@@ -18,7 +18,6 @@ The class prototype at the repository root stays frozen. Changes for partners be
 | `index.html` | The Live console. |
 | `OPERATOR.md` | How to deploy the gate, save the partner code, and use the private store. |
 | `PRIVACY_REVIEW.md` | Why real names, emails, and the client book stay off the public page. |
-| `favicon.png` | Warm Reception icon. |
 | `geetm-favicon.png` | GeeTM icon used when that brand is on. |
 
 ## Queue rule

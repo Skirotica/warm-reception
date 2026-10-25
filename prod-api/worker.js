@@ -1607,6 +1607,10 @@ async function enrichAndPromoteLexroom(env, extras, results) {
     var slug = slugifyTokenWorker(ev.company_name).replace(/-/g, "");
     var caseId = String(ev.case_id || "").toUpperCase();
     if (slug !== "lexroom" && caseId.indexOf("CE-LX-LEXROOM") !== 0) continue;
+    extras.repairs = extras.repairs || {};
+    if (extras.repairs.lexroom_enrich_v1 || String(ev.entity_note || "").indexOf("lexroom_enrich_v1") !== -1) {
+      continue;
+    }
 
     ev.company_name = "Lexroom";
     if (normalizeHost(ev.domain) !== "lexroom.ai") {
@@ -1664,6 +1668,12 @@ async function enrichAndPromoteLexroom(env, extras, results) {
     }
 
     if (!persona) {
+      if (hunter && hunter.ok) {
+        extras.repairs.lexroom_enrich_v1 = true;
+        if (String(ev.entity_note || "").indexOf("lexroom_enrich_v1") === -1) {
+          ev.entity_note = (ev.entity_note ? String(ev.entity_note) + "; " : "") + "lexroom_enrich_v1";
+        }
+      }
       actions.push({
         action: "lexroom_repaired_awaiting_poc",
         case_id: ev.case_id,
@@ -1684,6 +1694,10 @@ async function enrichAndPromoteLexroom(env, extras, results) {
       String(fields.poc_email || "").trim() &&
       normalizeHost(fields.domain) === "lexroom.ai";
     if (alreadyGo) {
+      extras.repairs.lexroom_enrich_v1 = true;
+      if (String(ev.entity_note || "").indexOf("lexroom_enrich_v1") === -1) {
+        ev.entity_note = (ev.entity_note ? String(ev.entity_note) + "; " : "") + "lexroom_enrich_v1";
+      }
       if (rec && !rec.partner_rerun) {
         rec.partner_rerun = true;
         if (!rec.last_rerun_at) rec.last_rerun_at = new Date().toISOString();
@@ -1760,6 +1774,10 @@ async function enrichAndPromoteLexroom(env, extras, results) {
       activePocId: "poc-lexroom-hunter"
     };
     changed = true;
+    extras.repairs.lexroom_enrich_v1 = true;
+    if (String(ev.entity_note || "").indexOf("lexroom_enrich_v1") === -1) {
+      ev.entity_note = (ev.entity_note ? String(ev.entity_note) + "; " : "") + "lexroom_enrich_v1";
+    }
     actions.push({
       action: "lexroom_promote_go",
       case_id: ev.case_id,
@@ -1923,7 +1941,7 @@ function storeMissing(cors) {
   return jsonResponse(
     {
       error: "Store not configured",
-      detail: "Create D1 with wrangler d1 create warm-reception, paste database_id in wrangler.toml, run schema.sql, then deploy."
+      detail: "The D1 binding DB is missing on this Worker. Confirm database_id in wrangler.toml, then redeploy prod-api."
     },
     503,
     cors
@@ -4046,7 +4064,8 @@ function knownSubjectDomainWorker(companyName) {
     chameilo: "chamelio.ai",
     newcode: "newcode.ai",
     lexroom: "lexroom.ai",
-    crimson: "crimson.law"
+    crimson: "crimson.law",
+    smithai: "smith.ai"
   };
   return map[slug] || "";
 }
@@ -4680,6 +4699,9 @@ function sameCompanyWorker(nameA, domainA, nameB, domainB) {
   var nb = String(nameB || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
   if (da && db && looksLikeRealDomainWorker(da) && looksLikeRealDomainWorker(db) && da === db) return true;
   if (na && nb && na.length >= 3 && na === nb) return true;
+  // smith.ai must not collapse into wordsmith.ai. Fuzzy matching is for a
+  // missing website, not two different confirmed domains.
+  if (da && db && looksLikeRealDomainWorker(da) && looksLikeRealDomainWorker(db) && da !== db) return false;
   // "Legal-tech Newcode" should match Newcode.
   if (na && nb && na.length >= 4 && nb.length >= 4 && (na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1)) {
     return true;
@@ -5144,7 +5166,7 @@ async function handleExaIngestRequest(request, env, cors) {
  * Without Graph secrets: dry-run hold. Never uses Resend for prospects.
  */
 
-var EMAIL4_DAY_OFFSETS = { 1: 0, 2: 3, 3: 7, 4: 14 };
+var SEQUENCE_DAY_OFFSETS = [0, 1, 3, 5, 7, 9, 11, 13, 15, 18, 21, 25, 29];
 
 function graphSecretsReady(env) {
   return !!(
@@ -5212,7 +5234,6 @@ function outreachTestCase(caseId) {
 }
 
 function sequenceStartYmd(caseId, rec, authorizedAt) {
-  if (outreachTestCase(caseId)) return "2026-10-01";
   var pinned = rec && rec.sequence_started_on;
   if (/^\d{4}-\d{2}-\d{2}/.test(String(pinned || ""))) return String(pinned).slice(0, 10);
   return "";
@@ -5221,7 +5242,7 @@ function sequenceStartYmd(caseId, rec, authorizedAt) {
 function stepDayOffset(fields, stepNum, caseId) {
   var day = parseInt(String((fields && fields["draft_" + stepNum + "_day"]) || ""), 10);
   if (day >= 1) return outreachTestCase(caseId) ? day : day - 1;
-  if (EMAIL4_DAY_OFFSETS[stepNum] != null) return EMAIL4_DAY_OFFSETS[stepNum];
+  if (SEQUENCE_DAY_OFFSETS[stepNum - 1] != null) return SEQUENCE_DAY_OFFSETS[stepNum - 1];
   return Math.max(0, stepNum - 1);
 }
 

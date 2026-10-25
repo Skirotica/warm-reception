@@ -2,7 +2,7 @@
 
 A small Cloudflare Worker that searches Exa for the browser without putting the Exa key in the page.
 
-Live no longer needs this worker. The partner app calls the search route on [prod-api/](../prod-api/). Keep this folder for the older Exa-only URL until that Settings field is fully switched.
+Live no longer calls this worker. The partner app uses the search route on prod-api, and it clears any saved Exa proxy URL. This folder remains only so an old deploy can be deleted from Cloudflare. Do not point a new Settings field here.
 
 ## What is here
 

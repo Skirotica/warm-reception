@@ -2,7 +2,7 @@
 
 A Cloudflare Worker that looks up work emails and company rosters through Hunter.io without putting the Hunter key in the page.
 
-Live no longer needs this worker. The partner app calls Hunter through [prod-api/](../prod-api/), and only from a private host. Public GitHub Pages must not call Hunter. This folder stays as the older standalone proxy.
+Live no longer calls this worker. The partner app calls Hunter through prod-api, and it clears any saved Hunter proxy URL. Public GitHub Pages must not call Hunter. This folder remains only so an old deploy can be deleted from Cloudflare. The class prototype at the repository root can still save a proxy URL for its own demo.
 
 ## What is here
 

@@ -122,7 +122,7 @@ From the project folder (the one that contains the `live` folder):
 npx wrangler pages deploy live --project-name warm-reception-live
 ```
 
-Wrangler prints a URL like `https://warm-reception-live.pages.dev` (stable) and sometimes a hashed preview such as `https://5fe9b356.warm-reception-live.pages.dev`. Use the stable URL as Live. Put both on `ALLOWED_ORIGINS` along with GitHub Pages and localhost.
+Wrangler prints a URL like `https://warm-reception-live.pages.dev` (stable) and sometimes a hashed preview. Use the stable URL as Live. Do not pin a preview hostname in `ALLOWED_ORIGINS`. Preview hostnames change. Put the stable Pages URL on `ALLOWED_ORIGINS` along with GitHub Pages and localhost.
 
 Open `prod-api/wrangler.toml`. Add that Pages URL to `ALLOWED_ORIGINS` (comma, no spaces unless you trim). Example:
 

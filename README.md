@@ -12,8 +12,8 @@ This repository is also the Agentic AI Capstone Develop kit that the prototype w
 | [demo/](demo/) | GeeTM-branded demo of the same console. |
 | [live/](live/) | Partner Live app. This is the screen partners use. |
 | [prod-api/](prod-api/) | Cloudflare Worker that holds the API keys and the private store. |
-| [exa-proxy/](exa-proxy/) | Older Exa search proxy. Live now calls `prod-api` instead. |
-| [hunter-proxy/](hunter-proxy/) | Older Hunter.io proxy. Live now calls `prod-api` instead. |
+| [exa-proxy/](exa-proxy/) | Retired Exa proxy. Live ignores it and calls `prod-api`. |
+| [hunter-proxy/](hunter-proxy/) | Retired Hunter proxy for Live. The class prototype can still use it. |
 | [data/](data/) | Synthetic companies, contacts, events, and eval cases for the class prototype. |
 | [policies/](policies/) | The rules the agent follows: who qualifies, what to draft, when to stop. |
 | [design/](design/) | Locked colors, type, and the three skins. |
