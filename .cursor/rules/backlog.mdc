@@ -1,0 +1,16 @@
+---
+description: Keep the GeeTM backlog current when the user names an item
+alwaysApply: true
+---
+
+# GeeTM backlog
+
+The living backlog is this canvas:
+
+`C:\Users\c_rya\.cursor\projects\c-Users-c-rya-OneDrive-Documents-Maven-AI-Product-Management-Agentic-AI-Capstone-Develop-Companion-agentic-ai-capstone-develop-companion-v0-3\canvases\geetm-backlog.canvas.tsx`
+
+When the user asks to add a backlog item, add that item to the `ITEMS` list in their words. Set `added` to the date they named it. Do not invent extra items. Do not drop earlier rows.
+
+Backlog items stay on this canvas. Do not copy them onto the roadmap unless the user asks to move that item.
+
+Items the user types into the backlog panel are stored beside the canvas. Leave those rows in place when you edit `ITEMS`.
