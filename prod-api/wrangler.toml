@@ -6,15 +6,32 @@ compatibility_date = "2026-08-01"
 # Partners type the code in Live. It is not in the HTML.
 # Hunter is on for private Cloudflare Pages. github.io is still refused on Hunter routes.
 [vars]
-ALLOWED_ORIGINS = "https://skirotica.github.io,https://warm-reception-live.pages.dev,https://5fe9b356.warm-reception-live.pages.dev,http://localhost:8765,http://127.0.0.1:8765"
+ALLOWED_ORIGINS = "https://skirotica.github.io,https://warm-reception-live.pages.dev,https://blackgavel.geetm.ai,http://localhost:8765,http://127.0.0.1:8765"
 HUNTER_ENABLED = "true"
+
+# Exa ingest twice a day. The cron is UTC and does not follow daylight saving.
+# Summer (EDT, UTC-4): 13:00 UTC is 9:00 Eastern, and 00:00 UTC is 20:00 Eastern.
+# Winter (EST, UTC-5): 13:00 UTC is 8:00 Eastern, and 00:00 UTC is 19:00 Eastern.
+# Sequence Dispatch Bot: hourly at :15 UTC (email-only, post-approve; dry-run without Graph secrets).
+[triggers]
+crons = ["0 13 * * *", "0 0 * * *", "15 * * * *"]
 
 # Secrets (set after deploy, never commit):
 #   npx wrangler secret put ANTHROPIC_API_KEY
 #   npx wrangler secret put EXA_API_KEY
 #   npx wrangler secret put PARTNER_ACCESS_CODE
 #
-# Step 5 D1 store. Uncomment after you create it and paste database_id:
+# Sequence Dispatch Bot / Microsoft Graph (Chad's Exchange 365 mailbox). Optional until live send:
+#   npx wrangler secret put MS_TENANT_ID
+#   npx wrangler secret put MS_CLIENT_ID
+#   npx wrangler secret put MS_CLIENT_SECRET
+#   npx wrangler secret put MS_SEND_AS
+# Chad unlock for live mailbox (fail-closed without this):
+#   npx wrangler secret put LIVE_SEND_UNLOCK
+#   (value must be exactly: true)
+#
+# D1 store is already created. database_id below is the live database.
+# Rebuild only if you mean to replace it:
 #   npx wrangler d1 create warm-reception
 #   npx wrangler d1 execute warm-reception --remote --file=./schema.sql
  [[d1_databases]]

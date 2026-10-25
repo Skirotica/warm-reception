@@ -50,7 +50,7 @@ Chad must accept each, or block going further.
 4. No treating every visitor as Chad. Approve, Edit, and Escalate belong to a signed-in person.
 5. No treating the fake ENARRESS row as production client protection.
 6. No adding more real people to the public files, including via Refresh from Exa, until the live product is private.
-7. Jusfy (Brazil) and Aavalynx (UK/EU founder) stay out of any real-email path until Chad accepts that extra legal load. Public news is already on the page. Email lookup would make it worse.
+7. Non-US companies (for example Jusfy in Brazil, Aavalynx UK/EU) may appear in the private Live queue. Chad has accepted extra legal load for those cases. The page shows a non-US notice when location evidence is clear. Hunter may run on private Live when the case is otherwise eligible. Client-book and do-not-contact hard stops stay unchanged.
 
 ## 9. Chad’s recommended defaults this week
 

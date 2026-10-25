@@ -1,0 +1,20 @@
+---
+description: Keep the GeeTM roadmap current when the tool changes or the user adds an item
+alwaysApply: true
+---
+
+# GeeTM roadmap
+
+The living roadmap is this canvas:
+
+`C:\Users\c_rya\.cursor\projects\c-Users-c-rya-OneDrive-Documents-Maven-AI-Product-Management-Agentic-AI-Capstone-Develop-Companion-agentic-ai-capstone-develop-companion-v0-3\canvases\geetm-roadmap.canvas.tsx`
+
+North star, fixed unless the user changes it: twelve existing customers and 100% of signals detected and processed, counted together. The full definitions, supporting metrics, and six guardrails live on the GeeTM roadmap canvas. Do not shorten that star back to a one-line target. No end date is set until the user names one. Do not invent initiatives.
+
+When the user asks to add a roadmap item, add that item to the `ITEMS` list in their words. Do not invent extra items. A backlog item goes on the GeeTM backlog canvas instead, unless the user asks to move it here.
+
+When the user pushes a change to the tool, or a product change lands in this repo during the conversation, update the canvas in the same turn. Mark the matching item `Shipped` and name the change in `movedBy`. If the change was not already an item, add one short shipped row. Keep shipped history.
+
+Do not rewrite the north star. Do not drop earlier rows.
+
+Monthly cleanup is due on the 21st of each month. The first review is 21 Nov 2026. Do not run an October 2026 review. On or after the 21st, if that month has no review yet, review the code for technical debt and record the findings on the roadmap under Monthly cleanup. Note the date. Do not run it before the 21st.
