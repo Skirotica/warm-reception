@@ -8033,8 +8033,11 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       return /^["'“”]?[A-Z0-9]/.test(String(text || "").trim());
     }
 
-    function firstPunctuatedSentence(text) {
+    function splitSentences(text) {
       var raw = String(text || "").replace(/\s+/g, " ").trim();
+      var out = [];
+      if (!raw) return out;
+      var start = 0;
       var i;
       for (i = 0; i < raw.length; i++) {
         var ch = raw.charAt(i);
@@ -8044,38 +8047,89 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         if (ch === "." && /\d/.test(prev) && /\d/.test(next)) continue;
         if (ch === "." && /[A-Za-z]/.test(prev) && /[A-Za-z]/.test(next)) continue;
         if (next && next !== " " && next !== '"' && next !== "'" && next !== "”") continue;
-        var piece = raw.slice(0, i + 1).trim();
-        if (piece.length >= 12 && looksLikeSentenceStart(piece)) return piece;
+        var piece = raw.slice(start, i + 1).trim();
+        if (piece) out.push(piece);
+        start = i + 1;
+        while (start < raw.length && raw.charAt(start) === " ") start++;
+        i = start - 1;
       }
-      return "";
+      return out;
     }
 
-    function firstWholeSentence(raw) {
-      var text = String(raw || "").replace(/\s+/g, " ").trim();
-      if (!text) return "";
-      if (!looksLikeSentenceStart(text)) {
-        var jump = text.match(/[.!?]["'”]?\s+([A-Z0-9][\s\S]*)$/);
-        if (!jump) return "";
-        text = String(jump[1] || "").trim();
+    function sentenceClosesEarly(sentence) {
+      return /\b(and|or|the|a|an|of|to|for|with|in|on|at|by|from|as|that|which|who|its|their|into|after|before)\s*[.!?]"?$/i.test(sentence);
+    }
+
+    function looksLikeEventSummary(sentence) {
+      return /\b(hire|hired|hires|hiring|appoint|appointed|named|names|joins|joined|rais|raised|raises|closes|closed|funding|series|seed|partner|acqui|merger|ipo|announc|launch|welcom)\b/i.test(sentence);
+    }
+
+    function isCompleteSummarySentence(sentence) {
+      var s = String(sentence || "").replace(/\s+/g, " ").trim();
+      if (s.length < 36 || s.length > 220) return false;
+      if (!looksLikeSentenceStart(s)) return false;
+      if (!/[.!?]"?$/.test(s)) return false;
+      if (sentenceClosesEarly(s)) return false;
+      if (!looksLikeEventSummary(s)) return false;
+      if (/^(according to|in a statement|the company said|sources say|click |read more|photo:|image:)/i.test(s)) return false;
+      return true;
+    }
+
+    function bestSummarySentence(text, company) {
+      var parts = splitSentences(text);
+      var companyKey = String(company || "").toLowerCase();
+      var best = "";
+      var bestScore = -1;
+      var i;
+      for (i = 0; i < parts.length; i++) {
+        if (!isCompleteSummarySentence(parts[i])) continue;
+        var score = 1;
+        if (companyKey && parts[i].toLowerCase().indexOf(companyKey) !== -1) score += 4;
+        if (parts[i].length >= 48 && parts[i].length <= 180) score += 2;
+        if (score > bestScore) {
+          best = parts[i];
+          bestScore = score;
+        }
       }
-      var found = firstPunctuatedSentence(text);
-      if (found) return found;
-      if (looksLikeSentenceStart(text) && text.length >= 12 && text.length <= 220) {
-        return /[.!?]$/.test(text) ? text : text + ".";
-      }
-      return "";
+      return best;
+    }
+
+    function headlineAsSummarySentence(headline) {
+      var s = cleanArticleTitle(headline);
+      if (!s) return "";
+      s = s.replace(/\s+/g, " ").trim();
+      if (s.length < 24 || s.length > 180) return "";
+      if (!looksLikeSentenceStart(s)) return "";
+      if (!looksLikeEventSummary(s)) return "";
+      if (!/[.!?]"?$/.test(s)) s += ".";
+      if (sentenceClosesEarly(s)) return "";
+      if (!isCompleteSummarySentence(s) && s.length < 36) return "";
+      return s;
+    }
+
+    function articleFor(label) {
+      return /^[aeiou]/i.test(String(label || "")) ? "an" : "a";
+    }
+
+    function composedSignalSentence(ev) {
+      var company = displayCompanyName(ev && ev.company_name);
+      var label = String(cv1FromEvent(ev) || "").replace(/\s+/g, " ").trim();
+      if (!company) return "No signal on file.";
+      if (!label || label === "recent company event") return company + " has a recent company event.";
+      if (/news$/i.test(label)) return company + " announced " + label + ".";
+      var verb = /hire$/i.test(label) ? "made" : "announced";
+      return company + " " + verb + " " + articleFor(label) + " " + label + ".";
     }
 
     function queueSignalSentence(ev) {
       var summary = String((ev && ev.event_summary) || "").replace(/\s+/g, " ").trim();
       var headline = String((ev && ev.event_headline) || "").replace(/\s+/g, " ").trim();
-      var fromSummary = firstWholeSentence(summary);
+      var company = displayCompanyName(ev && ev.company_name);
+      var fromSummary = bestSummarySentence(summary, company);
       if (fromSummary) return fromSummary;
-      var fromHead = firstWholeSentence(headline);
+      var fromHead = headlineAsSummarySentence(headline);
       if (fromHead) return fromHead;
-      var kind = String((ev && ev.event_type) || "").replace(/_/g, " ").trim();
-      if (kind) return kind.charAt(0).toUpperCase() + kind.slice(1) + ".";
-      return "No signal on file.";
+      return composedSignalSentence(ev);
     }
 
     function mountQueueRows(events) {
