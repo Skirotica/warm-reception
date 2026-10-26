@@ -2563,10 +2563,70 @@ function personaSheetFromTitle(title) {
   return "";
 }
 
+function stripIcpCriterionPhrases(text) {
+  var dash = "(?:-|–|—|\\bto\\b)";
+  return String(text || "")
+    .replace(new RegExp("\\b50\\s*" + dash + "\\s*350\\s*(?:\\+?\\s*)?(?:employees|people|staff|persons?|person)?\\b", "gi"), " ")
+    .replace(new RegExp("\\b(?:employees|people|staff|headcount)\\s*(?:of\\s+|between\\s+|from\\s+|is\\s+|are\\s+)?50\\s*" + dash + "\\s*350\\b", "gi"), " ")
+    .replace(new RegExp("\\$\\s*15\\s*(?:m|mm|million)\\s*" + dash + "\\s*\\$?\\s*50\\s*(?:m|mm|million)\\b", "gi"), " ")
+    .replace(new RegExp("\\b15\\s*" + dash + "\\s*50\\s*(?:m|mm|million)\\b", "gi"), " ")
+    .replace(/[ \t]{2,}/g, " ");
+}
+
+function employeeCountIsBandEcho(value, blob) {
+  var v = String(value || "").replace(/,/g, "").trim().toLowerCase();
+  if (/^50\s*(?:to|-|–|—)\s*350$/.test(v)) v = "50 to 350";
+  else if (/^350\b/.test(v)) v = "350";
+  else if (/^50\b/.test(v)) v = "50";
+  else return false;
+  if (!/\b50\s*(?:-|–|—|\bto\b)\s*350\b/i.test(String(blob || ""))) return false;
+  var stripped = stripIcpCriterionPhrases(blob);
+  if (v.indexOf("350") !== -1 && /\b350\+?\s*(?:employees|people|staff|persons?|person)\b/i.test(stripped)) return false;
+  if (v === "50" && /\b50\+?\s*(?:employees|people|staff|persons?|person)\b/i.test(stripped)) return false;
+  return true;
+}
+
+function revenueIsBandEcho(value, blob) {
+  var compact = String(value || "").replace(/\s/g, "").toLowerCase();
+  var n = "";
+  if (compact === "$15m" || compact === "15m" || compact === "$15million" || compact === "15") n = "15";
+  else if (compact === "$50m" || compact === "50m" || compact === "$50million" || compact === "50") n = "50";
+  else return false;
+  if (!/\$\s*15\s*(?:m|mm|million)\s*(?:-|–|—|to)\s*\$?\s*50\s*(?:m|mm|million)\b/i.test(String(blob || "")) &&
+      !/\b15\s*(?:-|–|—|to)\s*50\s*(?:m|mm|million)\b/i.test(String(blob || ""))) {
+    return false;
+  }
+  var stripped = stripIcpCriterionPhrases(blob);
+  var re = new RegExp("\\$\\s*" + n + "\\s*(?:m|mm|million)\\b", "i");
+  return !re.test(stripped);
+}
+
+function scrubInventedIcpDisplays(fields, blob) {
+  if (!fields) return fields;
+  if (employeeCountIsBandEcho(fields.employee_count, blob)) fields.employee_count = "";
+  if (revenueIsBandEcho(fields.revenue_estimate, blob)) fields.revenue_estimate = "";
+  var vc = String(fields.vc_pe_backed || "");
+  var drop15 = /\$\s*15\s*m\b/i.test(vc) && revenueIsBandEcho("$15M", blob);
+  var drop50 = /\$\s*50\s*m\b/i.test(vc) && revenueIsBandEcho("$50M", blob);
+  if (drop15 || drop50) {
+    var next = vc;
+    if (drop15) next = next.replace(/,?\s*\$15M\b/ig, "");
+    if (drop50) next = next.replace(/,?\s*\$50M\b/ig, "");
+    next = next.replace(/\s{2,}/g, " ").replace(/,\s*$/, "").trim();
+    if (/^yes$/i.test(next) || /^yes,$/i.test(next)) next = "Yes";
+    else if (/^yes\b/i.test(next)) next = next.replace(/^yes\b/, "Yes");
+    fields.vc_pe_backed = next;
+  }
+  return fields;
+}
+
 function extractEmployeeLabel(blob) {
-  var text = String(blob || "");
-  var range = text.match(/(\d{2,4})\s*(?:-|to)\s*(\d{2,4})\s*(?:\+?\s*)?(?:employees|people|staff)\b/i);
-  if (range) return range[1] + " to " + range[2];
+  var text = stripIcpCriterionPhrases(blob);
+  var range = text.match(/(\d{2,4})\s*(?:-|–|—|to)\s*(\d{2,4})\s*(?:\+?\s*)?(?:employees|people|staff)\b/i);
+  if (range) {
+    if (String(range[1]) === "50" && String(range[2]) === "350") return "";
+    return range[1] + " to " + range[2];
+  }
   var single = text.match(
     /(?:about|around|approximately|nearly|over|more than|~)\s*(\d{2,4})\+?\s*(?:employees|people|staff)\b/i
   );
@@ -2577,7 +2637,7 @@ function extractEmployeeLabel(blob) {
 }
 
 function extractRevenueLabel(blob) {
-  var text = String(blob || "");
+  var text = stripIcpCriterionPhrases(blob);
   var m = text.match(/\$\s*(\d{1,3}(?:\.\d+)?)\s*(billion|bn|million|mm|m)\b/i);
   if (!m) return "";
   var unit = String(m[2] || "").toLowerCase();
@@ -2588,7 +2648,7 @@ function extractRevenueLabel(blob) {
 }
 
 function extractVcLabel(blob) {
-  var text = String(blob || "");
+  var text = stripIcpCriterionPhrases(blob);
   var slugRaise = text.match(
     /(\d{1,3}(?:\.\d+)?)\s*[-_ ]?(million|mm|m|billion|bn)\s*[-_ ]?(?:series[\s_-]*([a-d])|seed)/i
   );
@@ -2732,6 +2792,7 @@ function fillIcpDetailFields(fields, ev, profile) {
         ".";
     }
   }
+  scrubInventedIcpDisplays(fields, blob);
   return fields;
 }
 
@@ -4473,12 +4534,50 @@ function storyCompanyInScope(name, title, text) {
   return !!(storyLegal || localLegal);
 }
 
+function snapSnippetStart(blob, rough, anchor) {
+  if (rough <= 0) return 0;
+  var back = Math.max(0, anchor - 280);
+  var region = blob.slice(back, anchor);
+  var re = /[.!?]["'”]?\s+(?=[A-Z0-9])/g;
+  var last = -1;
+  var m;
+  while ((m = re.exec(region))) last = m.index + m[0].length;
+  if (last >= 0) return back + last;
+  var i = rough;
+  if (i > 0 && /[A-Za-z0-9]/.test(blob.charAt(i)) && /[A-Za-z0-9]/.test(blob.charAt(i - 1))) {
+    while (i < anchor && /[A-Za-z0-9'’]/.test(blob.charAt(i))) i++;
+    while (i < anchor && /\s/.test(blob.charAt(i))) i++;
+  }
+  return i;
+}
+
+function snapSnippetEnd(blob, rough) {
+  if (rough >= blob.length) return blob.length;
+  var region = blob.slice(rough, Math.min(blob.length, rough + 180));
+  var m = region.match(/[.!?]["'”]?(?=\s|$)/);
+  if (m) return rough + m.index + m[0].length;
+  var i = rough;
+  while (i < blob.length && /[A-Za-z0-9'’]/.test(blob.charAt(i))) i++;
+  return i;
+}
+
 function snippetAroundCompany(name, title, text) {
-  var blob = String(text || "");
+  var blob = String(text || "").replace(/\s+/g, " ").trim();
+  var head = String(title || "").replace(/\s+/g, " ").trim();
   var needle = String(name || "").toLowerCase();
-  var idx = needle ? blob.toLowerCase().indexOf(needle) : -1;
-  var slice = idx >= 0 ? blob.slice(Math.max(0, idx - 90), idx + 420) : String(text || title || "");
-  return slice.replace(/\s+/g, " ").trim().slice(0, 500);
+  var idx = needle && blob ? blob.toLowerCase().indexOf(needle) : -1;
+  if (idx < 0) {
+    var fallback = blob || head;
+    return fallback.slice(0, 500);
+  }
+  var start = snapSnippetStart(blob, Math.max(0, idx - 90), idx);
+  var end = snapSnippetEnd(blob, Math.min(blob.length, idx + needle.length + 420));
+  if (end <= start) end = Math.min(blob.length, start + 420);
+  var slice = blob.slice(start, end).replace(/\s+/g, " ").trim();
+  if (slice && !/^["'“”]?[A-Z0-9]/.test(slice) && head && /^["'“”]?[A-Z0-9]/.test(head)) {
+    slice = head.replace(/[.!?]$/, "") + ". " + slice;
+  }
+  return slice.slice(0, 500);
 }
 
 function isJunkIngestCompanyName(name) {
