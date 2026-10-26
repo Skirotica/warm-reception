@@ -4080,6 +4080,24 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       return s;
     }
 
+    function clipWholeSentences(text, max) {
+      var s = scrubArticleSnippet(text);
+      if (!s) return "";
+      if (!/^["'“”]?[A-Z0-9]/.test(s)) {
+        var jump = s.match(/[.!?]["'”]?\s+([A-Z0-9][\s\S]*)$/);
+        if (jump) s = String(jump[1] || "").trim();
+        else s = s.replace(/^[a-z0-9'’"-]+/, "").trim();
+      }
+      var limit = max || 280;
+      if (s.length <= limit) return s;
+      var cut = s.slice(0, limit);
+      var last = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+      if (last >= 40) return cut.slice(0, last + 1).trim();
+      var sp = cut.lastIndexOf(" ");
+      if (sp >= 40) cut = cut.slice(0, sp);
+      return cut.trim();
+    }
+
     function cleanArticleTitle(title) {
       var s = String(title || "").replace(/[\|｜¦]/g, "|").replace(/\s+/g, " ").trim();
       s = s.replace(/^\|+|\|+$/g, "").trim();
@@ -5252,7 +5270,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       var caseId = "CE-LX-" + slug + "-" + stamp;
       var companyId = "CO-LX-" + slug + "-" + stamp;
       var contactId = "CT-LX-" + slug + "-" + stamp;
-      var summary = (text || title).replace(/\s+/g, " ").trim().slice(0, 280);
+      var summary = clipWholeSentences(text || title, 280);
       var confirmed = !!(overrides && overrides.confirmed);
       var sourceUrls = [];
       function addSource(u) {
@@ -5270,7 +5288,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         }).join("\n");
         var comboType = inferEventTypeFromText(combo);
         if (comboType) eventType = comboType;
-        var longer = scrubArticleSnippet(combo).slice(0, 280);
+        var longer = clipWholeSentences(scrubArticleSnippet(combo), 280);
         if (longer) summary = longer;
       }
       var bundleEv = {
@@ -8011,11 +8029,12 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       selectedCaseId = null;
     }
 
-    function queueSignalSentence(ev) {
-      var raw = String((ev && (ev.event_summary || ev.event_headline)) || "")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (!raw) return "No signal on file.";
+    function looksLikeSentenceStart(text) {
+      return /^["'“”]?[A-Z0-9]/.test(String(text || "").trim());
+    }
+
+    function firstPunctuatedSentence(text) {
+      var raw = String(text || "").replace(/\s+/g, " ").trim();
       var i;
       for (i = 0; i < raw.length; i++) {
         var ch = raw.charAt(i);
@@ -8024,16 +8043,39 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         var next = i + 1 < raw.length ? raw.charAt(i + 1) : "";
         if (ch === "." && /\d/.test(prev) && /\d/.test(next)) continue;
         if (ch === "." && /[A-Za-z]/.test(prev) && /[A-Za-z]/.test(next)) continue;
-        if (next && next !== " ") continue;
+        if (next && next !== " " && next !== '"' && next !== "'" && next !== "”") continue;
         var piece = raw.slice(0, i + 1).trim();
-        if (piece.length >= 12) return piece;
+        if (piece.length >= 12 && looksLikeSentenceStart(piece)) return piece;
       }
-      if (raw.length > 200) {
-        var cut = raw.slice(0, 197).replace(/\s+\S*$/, "").trim();
-        if (cut && !/[.!?]$/.test(cut)) cut += ".";
-        return cut || raw.slice(0, 197).trim() + ".";
+      return "";
+    }
+
+    function firstWholeSentence(raw) {
+      var text = String(raw || "").replace(/\s+/g, " ").trim();
+      if (!text) return "";
+      if (!looksLikeSentenceStart(text)) {
+        var jump = text.match(/[.!?]["'”]?\s+([A-Z0-9][\s\S]*)$/);
+        if (!jump) return "";
+        text = String(jump[1] || "").trim();
       }
-      return /[.!?]$/.test(raw) ? raw : raw + ".";
+      var found = firstPunctuatedSentence(text);
+      if (found) return found;
+      if (looksLikeSentenceStart(text) && text.length >= 12 && text.length <= 220) {
+        return /[.!?]$/.test(text) ? text : text + ".";
+      }
+      return "";
+    }
+
+    function queueSignalSentence(ev) {
+      var summary = String((ev && ev.event_summary) || "").replace(/\s+/g, " ").trim();
+      var headline = String((ev && ev.event_headline) || "").replace(/\s+/g, " ").trim();
+      var fromSummary = firstWholeSentence(summary);
+      if (fromSummary) return fromSummary;
+      var fromHead = firstWholeSentence(headline);
+      if (fromHead) return fromHead;
+      var kind = String((ev && ev.event_type) || "").replace(/_/g, " ").trim();
+      if (kind) return kind.charAt(0).toUpperCase() + kind.slice(1) + ".";
+      return "No signal on file.";
     }
 
     function mountQueueRows(events) {
@@ -12133,10 +12175,70 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       return "";
     }
 
+    function stripIcpCriterionPhrases(text) {
+      var dash = "(?:-|–|—|\\bto\\b)";
+      return String(text || "")
+        .replace(new RegExp("\\b50\\s*" + dash + "\\s*350\\s*(?:\\+?\\s*)?(?:employees|people|staff|persons?|person)?\\b", "gi"), " ")
+        .replace(new RegExp("\\b(?:employees|people|staff|headcount)\\s*(?:of\\s+|between\\s+|from\\s+|is\\s+|are\\s+)?50\\s*" + dash + "\\s*350\\b", "gi"), " ")
+        .replace(new RegExp("\\$\\s*15\\s*(?:m|mm|million)\\s*" + dash + "\\s*\\$?\\s*50\\s*(?:m|mm|million)\\b", "gi"), " ")
+        .replace(new RegExp("\\b15\\s*" + dash + "\\s*50\\s*(?:m|mm|million)\\b", "gi"), " ")
+        .replace(/[ \t]{2,}/g, " ");
+    }
+
+    function employeeCountIsBandEcho(value, blob) {
+      var v = String(value || "").replace(/,/g, "").trim().toLowerCase();
+      if (/^50\s*(?:to|-|–|—)\s*350$/.test(v)) v = "50 to 350";
+      else if (/^350\b/.test(v)) v = "350";
+      else if (/^50\b/.test(v)) v = "50";
+      else return false;
+      if (!/\b50\s*(?:-|–|—|\bto\b)\s*350\b/i.test(String(blob || ""))) return false;
+      var stripped = stripIcpCriterionPhrases(blob);
+      if (v.indexOf("350") !== -1 && /\b350\+?\s*(?:employees|people|staff|persons?|person)\b/i.test(stripped)) return false;
+      if (v === "50" && /\b50\+?\s*(?:employees|people|staff|persons?|person)\b/i.test(stripped)) return false;
+      return true;
+    }
+
+    function revenueIsBandEcho(value, blob) {
+      var compact = String(value || "").replace(/\s/g, "").toLowerCase();
+      var n = "";
+      if (compact === "$15m" || compact === "15m" || compact === "$15million" || compact === "15") n = "15";
+      else if (compact === "$50m" || compact === "50m" || compact === "$50million" || compact === "50") n = "50";
+      else return false;
+      if (!/\$\s*15\s*(?:m|mm|million)\s*(?:-|–|—|to)\s*\$?\s*50\s*(?:m|mm|million)\b/i.test(String(blob || "")) &&
+          !/\b15\s*(?:-|–|—|to)\s*50\s*(?:m|mm|million)\b/i.test(String(blob || ""))) {
+        return false;
+      }
+      var stripped = stripIcpCriterionPhrases(blob);
+      var re = new RegExp("\\$\\s*" + n + "\\s*(?:m|mm|million)\\b", "i");
+      return !re.test(stripped);
+    }
+
+    function scrubInventedIcpDisplays(fields, blob) {
+      if (!fields) return fields;
+      if (employeeCountIsBandEcho(fields.employee_count, blob)) fields.employee_count = "";
+      if (revenueIsBandEcho(fields.revenue_estimate, blob)) fields.revenue_estimate = "";
+      var vc = String(fields.vc_pe_backed || "");
+      var drop15 = /\$\s*15\s*m\b/i.test(vc) && revenueIsBandEcho("$15M", blob);
+      var drop50 = /\$\s*50\s*m\b/i.test(vc) && revenueIsBandEcho("$50M", blob);
+      if (drop15 || drop50) {
+        var next = vc;
+        if (drop15) next = next.replace(/,?\s*\$15M\b/ig, "");
+        if (drop50) next = next.replace(/,?\s*\$50M\b/ig, "");
+        next = next.replace(/\s{2,}/g, " ").replace(/,\s*(Series)?\s*$/i, "").replace(/,\s*$/, "").trim();
+        if (/^yes$/i.test(next) || /^yes,$/i.test(next)) next = "Yes";
+        else if (/^yes\b/i.test(next)) next = next.replace(/^yes\b/, "Yes");
+        fields.vc_pe_backed = next;
+      }
+      return fields;
+    }
+
     function extractEmployeeLabelLive(blob) {
-      var text = String(blob || "");
-      var range = text.match(/(\d{2,4})\s*(?:-|to)\s*(\d{2,4})\s*(?:\+?\s*)?(?:employees|people|staff)\b/i);
-      if (range) return range[1] + " to " + range[2];
+      var text = stripIcpCriterionPhrases(blob);
+      var range = text.match(/(\d{2,4})\s*(?:-|–|—|to)\s*(\d{2,4})\s*(?:\+?\s*)?(?:employees|people|staff)\b/i);
+      if (range) {
+        if (String(range[1]) === "50" && String(range[2]) === "350") return "";
+        return range[1] + " to " + range[2];
+      }
       var single = text.match(
         /(?:about|around|approximately|nearly|over|more than|~)\s*(\d{2,4})\+?\s*(?:employees|people|staff)\b/i
       );
@@ -12147,7 +12249,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     }
 
     function extractRevenueLabelLive(blob) {
-      var text = String(blob || "");
+      var text = stripIcpCriterionPhrases(blob);
       var m = text.match(/\$\s*(\d{1,3}(?:\.\d+)?)\s*(billion|bn|million|mm|m)\b/i);
       if (!m) return "";
       var unit = String(m[2] || "").toLowerCase();
@@ -12158,7 +12260,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     }
 
     function extractVcLabelLive(blob) {
-      var text = String(blob || "");
+      var text = stripIcpCriterionPhrases(blob);
       var slugRaise = text.match(
         /(\d{1,3}(?:\.\d+)?)\s*[-_ ]?(million|mm|m|billion|bn)\s*[-_ ]?(?:series[\s_-]*([a-d])|seed)/i
       );
@@ -12292,6 +12394,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
             ".";
         }
       }
+      scrubInventedIcpDisplays(fields, blob);
       if (!/^go$/i.test(String(fields.decision || "").trim())) {
         if (icpDetailBlank(fields.employee_count)) fields.employee_count = "unknown";
         if (icpDetailBlank(fields.revenue_estimate)) fields.revenue_estimate = "unknown";
