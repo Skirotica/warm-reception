@@ -2979,7 +2979,8 @@ function AUTO_ANALYZE_SYSTEM_PROMPT() {
     "ta_headcount:",
     "persona_assigned:",
     "persona_used:",
-    "trigger_event:",
+    "trigger_event: short label only (CRO hire, Series B raise). Never paste story text or a headline.",
+    "Signal summary is one sentence naming the company and the signal. If two stories cover the same company, do not repeat both.",
     "event_date:",
     "event_source_url:",
     "reason_or_ambiguity:",
@@ -4561,6 +4562,35 @@ function snapSnippetEnd(blob, rough) {
   return i;
 }
 
+function signalSummarySentence(name, blob, eventType) {
+  var company = String(name || "").replace(/\s+/g, " ").trim();
+  if (!company) return "No signal on file.";
+  var text = String(blob || "");
+  var type = String(eventType || inferEventTypeWorker(text) || "").toLowerCase();
+  var label = "recent company event";
+  if (type === "executive_hire") {
+    if (/\bCRO\b|chief revenue/i.test(text)) label = "CRO hire";
+    else if (/\bCEO\b|chief executive/i.test(text)) label = "CEO hire";
+    else if (/\bCFO\b|chief financial/i.test(text)) label = "CFO hire";
+    else if (/\bCOO\b|chief operating/i.test(text)) label = "COO hire";
+    else label = "executive hire";
+  } else if (type === "funding_round" || type === "ipo") {
+    var round = text.match(/Series\s+[A-Z]|pre-seed|seed round|\bseed\b|IPO/i);
+    label = type === "ipo" ? "IPO filing" : "funding round";
+    if (round) {
+      label = String(round[0]).replace(/\s+/g, " ").trim();
+      if (/^seed$/i.test(label)) label = "seed round";
+      if (!/raise|round|filing|IPO/i.test(label)) label += " raise";
+    }
+  } else if (type === "strategic_partnership") label = "strategic partnership";
+  else if (type === "merger") label = "merger";
+  if (/news$/i.test(label)) return company + " announced " + label + ".";
+  if (!label || label === "recent company event") return company + " has a recent company event.";
+  var verb = /hire$/i.test(label) ? "made" : "announced";
+  var article = /^[aeiou]/i.test(label) ? "an" : "a";
+  return company + " " + verb + " " + article + " " + label + ".";
+}
+
 function snippetAroundCompany(name, title, text) {
   var blob = String(text || "").replace(/\s+/g, " ").trim();
   var head = String(title || "").replace(/\s+/g, " ").trim();
@@ -5037,7 +5067,7 @@ async function runExaIngest(env, source) {
     var contactId = "CT-LX-" + slug + "-" + stamp;
     var blob = String(r.title || "") + " " + String(r.text || "");
     var eventType = inferEventTypeWorker(blob);
-    var summary = snippetAroundCompany(gatedName, r.title, r.text);
+    var summary = signalSummarySentence(gatedName, blob, eventType);
     var note = domainUnconfirmed
       ? "live_exa_refresh; domain_unconfirmed"
       : "live_exa_refresh; auto_confirmed_domain";

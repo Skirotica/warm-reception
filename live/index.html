@@ -3518,6 +3518,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       "ta_headcount:",
       "persona_assigned:",
       "trigger_event: short event label only (CRO hire, Series B raise). Never paste a press-release or LinkedIn title.",
+      "Signal summary: one sentence that names the company and the signal. Do not paste story text. Do not copy a headline. If two published stories cover the same company, write one sentence, not both.",
       "event_date:",
       "event_source_url:",
       "reason_or_ambiguity:",
@@ -5270,7 +5271,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       var caseId = "CE-LX-" + slug + "-" + stamp;
       var companyId = "CO-LX-" + slug + "-" + stamp;
       var contactId = "CT-LX-" + slug + "-" + stamp;
-      var summary = clipWholeSentences(text || title, 280);
       var confirmed = !!(overrides && overrides.confirmed);
       var sourceUrls = [];
       function addSource(u) {
@@ -5278,19 +5278,20 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         if (u && sourceUrls.indexOf(u) === -1) sourceUrls.push(u);
       }
       addSource(url);
+      var classifyText = String(text || "");
       ((overrides && overrides.articles) || []).forEach(function (a) {
         addSource(a && a.url);
+        var raw = a && a.raw ? a.raw : {};
+        classifyText += " " + String(raw.title || a.title || "") + " " + String(raw.text || "");
       });
-      if ((overrides && overrides.articles || []).length) {
-        var combo = (overrides.articles || []).map(function (a) {
-          var raw = a && a.raw ? a.raw : {};
-          return String(raw.title || a.title || "") + " " + String(raw.text || "");
-        }).join("\n");
-        var comboType = inferEventTypeFromText(combo);
-        if (comboType) eventType = comboType;
-        var longer = clipWholeSentences(scrubArticleSnippet(combo), 280);
-        if (longer) summary = longer;
-      }
+      var comboType = inferEventTypeFromText(classifyText);
+      if (comboType) eventType = comboType;
+      var summary = composedSignalSentence({
+        company_name: companyGuess,
+        event_type: eventType,
+        event_headline: "",
+        event_summary: classifyText
+      });
       var bundleEv = {
         company_name: companyGuess,
         event_type: eventType,
@@ -5302,10 +5303,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         companyGuess,
         title + " " + text + " " + summary
       ) || title;
-      if (isDumpSnippet(summary) || looksLikePressHeadline(title)) {
-        var label = hireRoleLabelFromText(title + " " + text + " " + summary) || cv1FromEvent(bundleEv);
-        summary = (label || "company event") + " at " + companyGuess;
-      }
       return {
         event: {
           case_id: caseId,
@@ -8121,14 +8118,30 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       return company + " " + verb + " " + articleFor(label) + " " + label + ".";
     }
 
+    function unpunctuatedSummarySentence(text, company) {
+      var s = String(text || "").replace(/\s+/g, " ").trim();
+      if (!s || splitSentences(s).length) return "";
+      var semi = s.indexOf("; ");
+      if (semi >= 36) s = s.slice(0, semi).trim();
+      s = s.replace(/[;,:\s]+$/, "").trim();
+      if (s.length < 24 || s.length > 200) return "";
+      if (!looksLikeEventSummary(s)) return "";
+      if (sentenceClosesEarly(s + ".")) return "";
+      var companyName = String(company || "").trim();
+      if (
+        companyName &&
+        s.toLowerCase().indexOf(companyName.toLowerCase()) === -1 &&
+        /^(closed|raised|appointed|hired|named|announced|joined|launched|welcomed|acquired)\b/i.test(s)
+      ) {
+        s = companyName + " " + s.charAt(0).toLowerCase() + s.slice(1);
+      }
+      if (!looksLikeSentenceStart(s)) return "";
+      if (!/[.!?]$/.test(s)) s += ".";
+      if (s.length < 36 || s.length > 220) return "";
+      return s;
+    }
+
     function queueSignalSentence(ev) {
-      var summary = String((ev && ev.event_summary) || "").replace(/\s+/g, " ").trim();
-      var headline = String((ev && ev.event_headline) || "").replace(/\s+/g, " ").trim();
-      var company = displayCompanyName(ev && ev.company_name);
-      var fromSummary = bestSummarySentence(summary, company);
-      if (fromSummary) return fromSummary;
-      var fromHead = headlineAsSummarySentence(headline);
-      if (fromHead) return fromHead;
       return composedSignalSentence(ev);
     }
 
@@ -10848,7 +10861,10 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       } else {
         ev.event_headline = cleanArticleTitle(ev.event_headline).slice(0, 160);
       }
-      if (isDumpSnippet(ev.event_summary) || (looksLikePressHeadline(ev.event_summary) && String(ev.event_summary || "").length < 120)) {
+      var oneSentence = composedSignalSentence(ev);
+      if (oneSentence && oneSentence !== "No signal on file.") {
+        ev.event_summary = oneSentence;
+      } else if (isDumpSnippet(ev.event_summary) || (looksLikePressHeadline(ev.event_summary) && String(ev.event_summary || "").length < 120)) {
         ev.event_summary = (label || "company event") + (co ? " at " + co : "");
       }
       return ev;
