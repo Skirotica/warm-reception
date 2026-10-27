@@ -1522,22 +1522,6 @@ body {
   padding-top: var(--sp-3);
   border-top: var(--border-w) solid var(--line);
 }
-.seq-stop-panel .seq-last-sent-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-3);
-  margin: var(--sp-2) 0;
-}
-.seq-stop-panel .seq-last-sent-row label {
-  margin: 0;
-  font-size: var(--fs-0);
-  color: var(--ink-2);
-}
-.seq-stop-panel .seq-last-sent-row select {
-  width: auto;
-  min-width: 8rem;
-}
 .edit-panel .seq-edit {
   margin-bottom: var(--sp-4);
   padding-bottom: var(--sp-3);
@@ -2396,7 +2380,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
                   <p class="sandbox-meta" id="sandbox-meta">Save API and Save code to load the partner log.</p>
                   <div class="dispatch-bar" id="dispatch-bar">
                     <h3>Sequence dispatch</h3>
-                    <p class="intake-help">After Approve, email steps send on schedule until you stop the sequence. LinkedIn, phone, and SMS are yours. Use Step Completed on those steps when you have sent them. They do not hold up the emails.</p>
+                    <p class="intake-help">After Approve, the sequence moves on the calendar. Email steps send on schedule. LinkedIn, phone, and SMS are yours. Use Step Completed when you have sent one. If that day passes and you did not send it, the step is marked skipped and the sequence continues.</p>
                     <p class="dispatch-summary" id="dispatch-summary">Save API and Save code to load dispatch status.</p>
                     <p class="dispatch-meta" id="dispatch-meta"></p>
                     <ul class="dispatch-oos-list" id="dispatch-oos-list" hidden></ul>
@@ -3008,18 +2992,18 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
 
     function buildEntityStatusReport(ev, fields, resultEl) {
       var lines = [];
-      lines.push("Case: " + (ev.case_id || "—"));
-      lines.push("Company: " + (fields.company_name || ev.company_name || "—"));
-      lines.push("Domain: " + (fields.domain || ev.domain || "—"));
-      lines.push("Event type: " + (ev.event_type || "—"));
-      lines.push("Event: " + String(ev.event_summary || fields.trigger_event || "—").slice(0, 280));
-      lines.push("Agent: " + (fields.status || "—") + " / " + (fields.decision || "—") + " / " + (fields.table || "—"));
-      lines.push("Persona: " + (fields.persona_used || "—"));
-      lines.push("POC: " + (fields.poc_name || "—") + " · " + (fields.poc_title || "—"));
-      lines.push("POC email: " + (fields.poc_email || "—"));
+      lines.push("Case: " + (ev.case_id || "none"));
+      lines.push("Company: " + (fields.company_name || ev.company_name || "none"));
+      lines.push("Domain: " + (fields.domain || ev.domain || "none"));
+      lines.push("Event type: " + (ev.event_type || "none"));
+      lines.push("Event: " + String(ev.event_summary || fields.trigger_event || "none").slice(0, 280));
+      lines.push("Agent: " + (fields.status || "none") + " / " + (fields.decision || "none") + " / " + (fields.table || "none"));
+      lines.push("Persona: " + (fields.persona_used || "none"));
+      lines.push("POC: " + (fields.poc_name || "none") + " · " + (fields.poc_title || "none"));
+      lines.push("POC email: " + (fields.poc_email || "none"));
       var liContact = resolveLinkedInContactForCase(fields, ev);
       var liUrl = resolveContactLinkedInUrl(liContact);
-      lines.push("LinkedIn (resolved): " + (liUrl || "—"));
+      lines.push("LinkedIn (resolved): " + (liUrl || "none"));
       if (fields.why) lines.push("Why (excerpt): " + String(fields.why).slice(0, 400));
       if (resultEl) {
         var rev = resultEl.querySelector(".review-agent");
@@ -3034,7 +3018,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     }
 
     function submitHelpdeskEscalation(ev, fields, entityReport, partnerNote) {
-      var subject = "Black Gavel escalation: " + (ev.case_id || "") + " — " + (ev.company_name || fields.company_name || "");
+      var subject = "Black Gavel escalation: " + (ev.company_name || fields.company_name || ev.case_id || "company");
       var body = [
         "Warm Reception help desk escalation",
         "",
@@ -3074,8 +3058,24 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
             detail: res.data.detail || ""
           };
         }
+        if (typeof IS_GEETM_MANAGED !== "undefined" && IS_GEETM_MANAGED) {
+          return {
+            ok: false,
+            via: "failed",
+            to: HELPDESK_EMAIL,
+            detail: (res && res.data && (res.data.detail || res.data.error)) || "The help desk email was not sent."
+          };
+        }
         return mailtoFallback();
       }).catch(function () {
+        if (typeof IS_GEETM_MANAGED !== "undefined" && IS_GEETM_MANAGED) {
+          return {
+            ok: false,
+            via: "failed",
+            to: HELPDESK_EMAIL,
+            detail: "Could not reach the help desk mailer."
+          };
+        }
         return mailtoFallback();
       });
     }
@@ -3119,6 +3119,15 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           sendBtn.textContent = "Sending…";
         }
         submitHelpdeskEscalation(ev, fields, entityReport, note).then(function (out) {
+          var sent = !!(out && out.ok && (out.via === "email" || out.via === "mailto"));
+          if (!sent) {
+            if (sendBtn) {
+              sendBtn.disabled = false;
+              sendBtn.textContent = "Send to help desk";
+            }
+            window.alert((out && out.detail) || "The help desk email was not sent.");
+            return;
+          }
           closeModal();
           if (typeof onSubmit === "function") onSubmit(note, out);
         });
@@ -3426,7 +3435,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     ];
 
     const POLICIES = {
-      "icp-criteria.md": "Legaltech only (software sold to law firms or in-house legal teams for practice-of-law, litigation, e-discovery, or court workflows). Adjacent sectors such as entity management, corp sec, registered-agent automation, KYC/AML, AI due diligence, or OSINT research platforms (example: Xapien) sold to finance/ops/compliance are out of scope. Employees 50-350; revenue $15M-$50M; VC/PE backed; TA headcount 0-2. ICP from company record. Insufficient info → Table 3 Ambiguous, not No-go. Known out of ICP → Table 2. Whitelist exception applies.",
+      "icp-criteria.md": "Legaltech only (software sold to law firms or in-house legal teams for practice-of-law, litigation, e-discovery, or court workflows). Adjacent sectors such as entity management, corp sec, registered-agent automation, KYC/AML, AI due diligence, or OSINT research platforms (example: Xapien) sold to finance/ops/compliance are out of scope. Preferred employees 50-350. A known headcount outside that band is a note, not a No-go: say the count and that the company is still included. Revenue $15M-$50M preferred; VC/PE backed; TA headcount 0-2. Insufficient info → Table 3 Ambiguous, not No-go. Known disqualifiers other than headcount → Table 2. Whitelist exception applies.",
       "signal-taxonomy.md": "Qualifying: executive hire, funding, partnership, merger, acquisition, IPO. Disqualifying: bankruptcy, layoffs-as-primary, closure.",
       "confidence-rubric.md": "Tiers: High, Medium, Low, Ambiguous, Out of ICP. Ambiguous / insufficient info -> Table 3. Live missing/sparse Hunter email with Would-go -> Table 3 Ambiguous. Known hard disqualify -> Table 2. Never No-go only because data is missing.",
       "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. No-go only for known disqualifiers. Live: sparse Hunter / missing verified POC email with Would-go → Table 3 Ambiguous (not REFUSED). Insufficient ICP info → Table 3. Whitelist: skip ICP re-score. Partner Why names Exa.ai / Hunter.io.",
@@ -3446,7 +3455,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       "Use only the embedded constants provided with each case: CANDIDATE_EVENTS, COMPANY_PROFILES, ICP_CONTACTS, PREQUALIFIED_WHITELIST, COMPANY_STATUS, PRIOR_SENDS, DENIAL_LOG, EMPLOYMENT_CHECK, USER_PREFERENCES, EVAL_CASES, POLICIES (icp-criteria.md, signal-taxonomy.md, confidence-rubric.md, agent-rules.md, prequalified-whitelist.md, campaign-routing.md, black_gavel_outreach_sequence.md, approved email examples, summary_table_example.md), and CALENDAR (browser local today for the whole 13-step sequence).",
       "Case context also includes exa_ai (event research) and hunter_io (email and LinkedIn). Treat those as Exa.ai and Hunter.io results for this case.",
       "ICP SOURCE OF TRUTH: Score size, revenue, backing, TA, and sector from candidate_event and company_profile (see also icp_evaluation). Exa.ai is for confirming the hiring or funding EVENT, not for re-deriving headcount from the article snippet. Never REFUSED-ESCALATE solely because the Exa article omits employee count or revenue when those fields are present on the company record.",
-      "If revenue_estimate_mm is null but employee_count is within 50–350, sector is legaltech, and vc_pe_backed is yes: do not refuse for missing revenue alone. Proceed on size + backing + event. If after all sources you still cannot tell in-vs-out of ICP, use Table 3 Ambiguous (not Table 2 No-go).",
+      "If revenue_estimate_mm is null, sector is legaltech, and vc_pe_backed is yes: do not refuse for missing revenue alone. If employee_count is below 50 or above 350, do not No-go for headcount. Note it: Headcount is outside the 50 to 350 employee band (about N people). The company is still included. If after all sources you still cannot tell in-vs-out of ICP, use Table 3 Ambiguous (not Table 2 No-go).",
       IS_LIVE
         ? "CLASSIFIER (Live): No-go / Table 2 only for known disqualifiers (existing client, confirmed out of ICP, bankruptcy, duplicate/opt-out, company-wide DNC as designed). Ambiguous / Table 3 when you lack enough information to judge, OR when Hunter is sparse / missing a verified qualified POC email but company+event would otherwise allow outreach (fit_if_email_secured: Would-go). Never REFUSED-ESCALATE for email miss alone. Never No-go merely because data is thin or missing."
         : "CLASSIFIER (demo): No-go / Table 2 for known disqualifiers (existing client, confirmed out of ICP, bankruptcy, duplicate/opt-out) and for CE-08-style company-wide missing preferred+alternate email with fit_if_email_secured set. Ambiguous / Table 3 when you lack enough information to judge. Never No-go merely because ICP data is thin or missing.",
@@ -3538,7 +3547,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       "citations: comma-separated tags naming exact record IDs and policy files/sections used (example: CE-01, CO-01, CT-01, company_status:ENARRESS, prequalified-whitelist.md, icp-criteria.md#company-size, agent-rules.md#8)",
       "why: Always include this field. For Table 2 and Table 3, use 2-4 plain sentences. Lead with the primary block reason in this priority order: (1) existing client / bankruptcy / other hard stop, (2) out of ICP when not whitelisted, (3) entity collision / ambiguous entity, (4) missing or unqualified POC email. Do not lead with Hunter.io email miss when the company is already out of ICP. When the only issue is missing/sparse Hunter email and the company would be a Go if email were secured, use Table 3 Ambiguous on Live (mirror fit_if_email_secured Would-go) and ask the partner to secure email or Move to Go. End with a clear partner action. Do not put file names, rule numbers, or table numbers in why. For Table 1, a short plain fit summary is fine; keep technical grounding in citations.",
       "PLAIN WHY EXAMPLES (Table 2 / Table 3 style):",
-      "Good: This company has only 9 employees, below the 50–350 size range, and it is not on the partner whitelist. Even with a POC email, it stays out of scope. Do not chase email for this case.",
+      "Good: Headcount is outside the 50 to 350 employee band (about 9 people). The company is still included.",
       "Good: Exa.ai found a news story that mentions this company but we could not confirm it is the right company. The article does not name their website, so we cannot be certain the event belongs to them and not another company with a similar name. Please verify on LinkedIn or the company website before approving any outreach.",
       "Good: Hunter.io did not return a verified email for the preferred contact. The company and the event otherwise look qualified. This stays Ambiguous until a partner secures a POC email (Move to Go / add email) or verifies further.",
       "Bad: Leading with Hunter.io email miss when the company is already below ICP size or an existing client.",
@@ -3550,7 +3559,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       "If decision is not Go, leave all draft_N_subject and draft_N_body fields blank and do not invent a draft.",
       "Do not wrap the answer in markdown code fences. Plain labeled lines only.",
       "Never invent a contact email, employee count, revenue, or domain. If required data is missing and you cannot judge ICP/entity/event, Table 3 Ambiguous (not Table 2 No-go) and say what is missing in plain language.",
-      "Do not return decision Go when employee_count, revenue_estimate, vc_pe_backed, ta_headcount, or persona_used is blank. If any of those facts is unknown, use Table 3 Ambiguous and write unknown in that field.",
+      "Do not return decision Go when revenue_estimate, vc_pe_backed, ta_headcount, or persona_used is blank. If one of those facts is unknown, use Table 3 Ambiguous and write unknown in that field. A known employee count outside 50-350 is not a No-go. Add: Headcount is outside the 50 to 350 employee band (about N people). The company is still included.",
       "",
       "ESCALATION:",      "Stop, set status to REFUSED-ESCALATE when needed, state the reason, and route correctly when:",
       "1. Low confidence: Table 1 Low, no batch approval, mandatory individual review; do not treat as High.",
@@ -8652,7 +8661,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         return "This case was previously skipped for extra legal load. Chad has now accepted that path. Click Analyze again so Hunter can run.";
       }
       if (hunterLive.status === "skipped_out_of_icp_size") {
-        return "Hunter skipped: company size is outside the 50 to 350 employee range.";
+        return "Hunter skipped: blocked for a reason other than headcount.";
       }
       var err = hunterLive.domain_search_error || hunterLive.detail || "";
       if (hunterLive.status === "key_missing" || hunterKeyMissingDetail(err)) {
@@ -9828,16 +9837,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
 
     function companyClearlyOutOfIcpSize(ev) {
       if (whitelistFor(ev.company_id, ev.company_name, ev.domain)) return false;
-      if (detectMegaFundingSignal(ev)) return true;
-      var emp = ev.employee_count;
-      if (emp == null || emp === "") {
-        var profile = byCompanyId(COMPANY_PROFILES, ev.company_id);
-        emp = profile ? profile.employee_count : null;
-      }
-      if (emp == null || emp === "") return false;
-      var n = Number(emp);
-      if (!isFinite(n)) return false;
-      return n < 50 || n > 350;
+      // A mega round still stops the run. Headcount outside 50-350 does not.
+      return !!detectMegaFundingSignal(ev);
     }
 
     function applyOutOfIcpSizeRefusal(ev, resultEl, buttonEl) {
@@ -11127,6 +11128,46 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       }
       }
       return (resultEl && resultEl._ctaSession && resultEl._ctaSession.calendar) || buildCalendarBlock(new Date());
+    }
+
+    function sequenceDateIsos(ev) {
+      var cal = calendarForSequence(ev, null);
+      var dates = sequenceSendDateParts(cal, !!(cal && cal.add_one_day));
+      return dates.map(function (p) { return p ? isoFromYmd(p) : ""; });
+    }
+
+    function calendarStepForCase(caseId) {
+      var ui = CASE_UI[caseId];
+      var ev = ui && ui.ev;
+      if (!ev) return 1;
+      var today = isoFromYmd(localParts(new Date()));
+      var dates = sequenceDateIsos(ev);
+      var current = 0;
+      for (var i = 0; i < dates.length; i++) {
+        if (dates[i] && dates[i] <= today) current = i + 1;
+      }
+      if (current < 1) current = 1;
+      if (current > SEQUENCE_STEP_COUNT) current = SEQUENCE_STEP_COUNT;
+      return current;
+    }
+
+    function skippedManualReport(channel) {
+      var ch = String(channel || "");
+      if (/linkedin/i.test(ch)) return "Skipped. This LinkedIn message was not sent, and the sequence moved on.";
+      if (/phone|call/i.test(ch)) return "Skipped. This call was not made, and the sequence moved on.";
+      if (/sms/i.test(ch)) return "Skipped. This text was not sent, and the sequence moved on.";
+      return "Skipped. This step was not done, and the sequence moved on.";
+    }
+
+    function manualStepPastDue(ev, stepNum, channel, completed) {
+      if (completed) return false;
+      var ch = String(channel || "");
+      if (!ch || /^email$/i.test(ch)) return false;
+      if (!/phone|linkedin|sms/i.test(ch)) return false;
+      var dates = sequenceDateIsos(ev);
+      var due = dates[stepNum - 1] || "";
+      if (!due) return false;
+      return due < isoFromYmd(localParts(new Date()));
     }
 
     function buildCalendarBlock(now) {
@@ -13399,11 +13440,17 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         actions.appendChild(statusEl);
 
         if (pkg.status === "pending") {
+          var talksLocked = !!(ev && caseIsInTalks(ev.case_id));
           var approveBtn = document.createElement("button");
           approveBtn.type = "button";
           approveBtn.className = "btn primary btn-poc-approve";
           approveBtn.textContent = "Approve POC";
+          if (talksLocked) {
+            approveBtn.disabled = true;
+            approveBtn.title = "Already In Talks";
+          }
           approveBtn.addEventListener("click", function () {
+            if (talksLocked || (ev && caseIsInTalks(ev.case_id))) return;
             if (!ev || resultEl._approvePocBusy) return;
             resultEl._approvePocBusy = true;
             try {
@@ -13441,7 +13488,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
                 placeRowInGroup(ev.case_id, (uiNow && uiNow.lastFields) || resultEl._lastFields || null);
                 var stopPanel = gate.querySelector(".seq-stop-panel");
                 if (stopPanel) stopPanel.hidden = false;
-                setActiveSequenceStep(ev.case_id, (getSequenceStop(ev.case_id) && getSequenceStop(ev.case_id).last_sent) || 1);
               } else {
                 authorizeInSequencePackageSteps(resultEl, ev, {
                   preserveState: true,
@@ -13477,7 +13523,12 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           denyBtn.type = "button";
           denyBtn.className = "btn danger btn-poc-deny";
           denyBtn.textContent = "Deny POC";
+          if (talksLocked) {
+            denyBtn.disabled = true;
+            denyBtn.title = "Already In Talks";
+          }
           denyBtn.addEventListener("click", function () {
+            if (talksLocked || (ev && caseIsInTalks(ev.case_id))) return;
             pkg.status = "denied";
             var uiNow = ev && CASE_UI[ev.case_id];
             if (uiNow) uiNow.pocPackages = resultEl._pocPackages;
@@ -13501,7 +13552,12 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           editBtn.type = "button";
           editBtn.className = "btn btn-poc-edit";
           editBtn.textContent = "Edit sequence";
+          if (talksLocked) {
+            editBtn.disabled = true;
+            editBtn.title = "Already In Talks";
+          }
           editBtn.addEventListener("click", function () {
+            if (talksLocked || (ev && caseIsInTalks(ev.case_id))) return;
             resultEl._activePocId = pkg.id;
             syncActivePocIntoResult(resultEl);
             var editPanel = gate.querySelector(".edit-panel");
@@ -13755,6 +13811,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       var st = String(step.status);
       var report = String(step.report || "").trim();
       if (st === "sent") return "Sent";
+      if (st === "skipped_channel" && step.reason === "manual_not_done") return "Skipped";
       if (st === "manual_done" || step.manual_completed || step.reason === "user_completed") return "Step completed";
       if (isManualChannelStep(step)) return "Your step";
       if (st === "held_for_mail_server") return "Held for mail server";
@@ -13805,10 +13862,10 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       badge.className = "seq-email-badge";
       if (st === "sent" || st === "manual_done") badge.classList.add("is-dispatch-sent");
       else if (st === "held_for_mail_server") badge.classList.add("is-dispatch-held");
-      else if (isManualChannelStep(step)) badge.classList.add("is-dispatch-ok");
-      else if (st === "out_of_sequence" || st === "mismatch" || st === "skipped_channel") {
+      else if (st === "skipped_channel" || st === "out_of_sequence" || st === "mismatch") {
         badge.classList.add("is-dispatch-oos");
-      } else badge.classList.add("is-dispatch-ok");
+      } else if (isManualChannelStep(step)) badge.classList.add("is-dispatch-ok");
+      else badge.classList.add("is-dispatch-ok");
       badge.textContent = label.length > 48 ? (st === "out_of_sequence" || st === "mismatch" ? "Out of sequence" : label.slice(0, 45) + "…") : label;
       badge.title = step.report
         ? String(step.report)
@@ -14229,6 +14286,25 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       return !!(stop && (stop.kind === "in_conversation" || stop.kind === "stopped"));
     }
 
+    function caseIsInTalks(caseId) {
+      var stop = getSequenceStop(caseId);
+      if (stop && stop.kind === "in_conversation") return true;
+      var ui = CASE_UI[caseId];
+      var rec = STORE_RESULTS && STORE_RESULTS[caseId];
+      var outcome = normalizeOutcomeAction((ui && ui.humanOutcome) || (rec && rec.humanOutcome) || "");
+      if (outcome === "In Talks") return true;
+      var state = String((ui && ui.humanStateText) || (rec && rec.humanStateText) || "");
+      return /human action:\s*in talks/i.test(state);
+    }
+
+    function deactivateInTalksPocActions(root) {
+      if (!root) return;
+      root.querySelectorAll(".btn-poc-approve, .btn-poc-deny, .btn-poc-edit").forEach(function (btn) {
+        btn.disabled = true;
+        btn.title = "Already In Talks";
+      });
+    }
+
     function setActiveSequenceStep(caseId, stepNum) {
       var n = Number(stepNum) || 1;
       if (n < 1) n = 1;
@@ -14292,6 +14368,29 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       });
     }
 
+    function noteSkippedManualStep(ev, stepNum, channel) {
+      if (!ev || !STORE_RESULTS) return false;
+      var store = STORE_RESULTS[ev.case_id];
+      if (!store) return false;
+      if (!store.dispatch || typeof store.dispatch !== "object") store.dispatch = { steps: {} };
+      if (!store.dispatch.steps) store.dispatch.steps = {};
+      var key = String(stepNum);
+      var prior = store.dispatch.steps[key] || {};
+      if (prior.status === "manual_done" || prior.status === "sent") return false;
+      if (prior.status === "skipped_channel" && prior.reason === "manual_not_done") return false;
+      store.dispatch.steps[key] = {
+        status: "skipped_channel",
+        reason: "manual_not_done",
+        report: skippedManualReport(channel),
+        channel: channel,
+        stopped: false,
+        manual_completed: false,
+        skipped: true,
+        checked_at: new Date().toISOString()
+      };
+      return true;
+    }
+
     function manualStepDoneFlag(map, stepNum) {
       if (!map) return false;
       var row = map[stepNum] || map[String(stepNum)];
@@ -14303,6 +14402,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     function attachManualStepCheckboxes(resultEl) {
       if (!resultEl) return;
       var ev = resultEl._caseEvent || null;
+      var skipDirty = false;
       if (!resultEl._manualCompleted || typeof resultEl._manualCompleted !== "object") {
         var stored = ev && STORE_RESULTS[ev.case_id] && STORE_RESULTS[ev.case_id].manualCompleted;
         resultEl._manualCompleted = Object.assign({}, stored || {});
@@ -14321,6 +14421,17 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           var oldHint = block.querySelector(".seq-step-done-hint");
           if (oldHint) oldHint.remove();
           var doneNow = manualStepDoneFlag(resultEl._manualCompleted, stepNum);
+          var skippedNow = manualStepPastDue(ev, stepNum, channel, doneNow);
+          if (skippedNow && noteSkippedManualStep(ev, stepNum, channel)) skipDirty = true;
+          if (skippedNow) {
+            var skipActions = block.querySelector(".seq-email-actions");
+            if (skipActions && ev) {
+              skipActions.querySelectorAll(".is-dispatch-sent, .is-dispatch-ok, .is-dispatch-oos, .is-dispatch-held, .is-dispatch-mismatch").forEach(function (el) {
+                el.remove();
+              });
+              appendDispatchBadge(skipActions, ev.case_id, stepNum, channel);
+            }
+          }
           var row = document.createElement("div");
           row.className = "seq-step-done";
           var btn = document.createElement("button");
@@ -14329,7 +14440,9 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           btn.textContent = doneNow ? "Completed" : "Step Completed";
           var hint = document.createElement("div");
           hint.className = "seq-step-done-hint";
-          hint.textContent = "You send this. Email steps continue until you stop the sequence.";
+          hint.textContent = skippedNow
+            ? skippedManualReport(channel)
+            : "You send this. Email steps continue until you stop the sequence.";
           function stopBubble(e) { if (e) e.stopPropagation(); }
           btn.addEventListener("click", function (e) {
             if (e) e.stopPropagation();
@@ -14351,20 +14464,35 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
               CASE_UI[ev.case_id]._manualCompleted = resultEl._manualCompleted;
             }
             var store = ev && STORE_RESULTS[ev.case_id];
+            var missed = !done && manualStepPastDue(ev, stepNum, channel, false);
+            hint.textContent = missed
+              ? skippedManualReport(channel)
+              : "You send this. Email steps continue until you stop the sequence.";
             if (store) {
               if (!store.dispatch || typeof store.dispatch !== "object") store.dispatch = { steps: {} };
               if (!store.dispatch.steps) store.dispatch.steps = {};
-              store.dispatch.steps[String(stepNum)] = {
-                status: done ? "manual_done" : "manual_pending",
-                reason: done ? "user_completed" : "awaiting_user",
-                report: done
-                  ? channel + " step " + stepNum + " marked completed. Email steps keep going."
-                  : channel + " step " + stepNum + " is yours to send. Use Step Completed when you have done it. Email steps keep going on schedule.",
-                channel: channel,
-                stopped: false,
-                manual_completed: done,
-                checked_at: new Date().toISOString()
-              };
+              store.dispatch.steps[String(stepNum)] = missed
+                ? {
+                  status: "skipped_channel",
+                  reason: "manual_not_done",
+                  report: skippedManualReport(channel),
+                  channel: channel,
+                  stopped: false,
+                  manual_completed: false,
+                  skipped: true,
+                  checked_at: new Date().toISOString()
+                }
+                : {
+                  status: done ? "manual_done" : "manual_pending",
+                  reason: done ? "user_completed" : "awaiting_user",
+                  report: done
+                    ? channel + " step " + stepNum + " marked completed. Email steps keep going."
+                    : channel + " step " + stepNum + " is yours to send. Use Step Completed when you have done it. Email steps keep going on schedule.",
+                  channel: channel,
+                  stopped: false,
+                  manual_completed: done,
+                  checked_at: new Date().toISOString()
+                };
             }
             var actions = block.querySelector(".seq-email-actions");
             if (actions && ev) {
@@ -14380,6 +14508,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           block.appendChild(hint);
         })(blocks[i]);
       }
+      if (skipDirty && ev) persistCaseResult(ev, resultEl);
     }
 
     function renderSequenceDrafts(resultEl, fields, opts) {
@@ -16264,12 +16393,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         gateActionHtml +
         (isGo && hasSequence && IS_LIVE && !IS_PUBLIC_GITHUB_LIVE
           ? '<div class="seq-stop-panel"' + (haltUnlocked ? "" : " hidden") + ">" +
-            "<p>If they reply after an early step, pick the last sequence step sent, then mark <strong>In Talks</strong> (stops remaining steps) or Stop remaining steps. Leftover sequence steps are cancelled. This does not add them to do-not-contact. Nothing is sent from this step.</p>" +
-            '<div class="seq-last-sent-row"><label>Last step sent <select class="seq-last-sent">' +
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(function (n) {
-              return '<option value="' + n + '">Step ' + n + "</option>";
-            }).join("") +
-            "</select></label></div>" +
+            "<p>The sequence moves on the calendar. <strong>In Talks</strong> or Stop remaining steps cancels whatever is still ahead. A call, LinkedIn message, or text you did not send is marked skipped, and the sequence continues. This does not add them to do-not-contact. Nothing is sent from this step.</p>" +
             '<p><button type="button" class="btn btn-in-conversation">In Talks</button> ' +
             '<button type="button" class="btn danger btn-stop-remaining">Stop remaining steps</button></p>' +
             "</div>"
@@ -16473,10 +16597,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       }
 
       function disableSequenceStop() {
-        var lastSel = gate.querySelector(".seq-last-sent");
         var inConvBtn = gate.querySelector(".btn-in-conversation");
         var stopBtn = gate.querySelector(".btn-stop-remaining");
-        if (lastSel) lastSel.disabled = true;
         if (inConvBtn) inConvBtn.disabled = true;
         if (stopBtn) stopBtn.disabled = true;
       }
@@ -16500,14 +16622,12 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       function disableGate() {
         var approveBtn = gate.querySelector(".btn-approve");
         var editBtn = gate.querySelector(".btn-edit");
-        var escBtn = gate.querySelector(".btn-escalate");
         var saveBtn = gate.querySelector(".btn-save-edit");
         var overrideBtn = gate.querySelector(".btn-save-override");
         var moveGoBtn = gate.querySelector(".btn-move-go");
         var moveNogoBtn = gate.querySelector(".btn-move-nogo");
         if (approveBtn) approveBtn.disabled = true;
         if (editBtn) editBtn.disabled = true;
-        if (escBtn) escBtn.disabled = true;
         if (saveBtn) saveBtn.disabled = true;
         if (overrideBtn) overrideBtn.disabled = true;
         if (moveGoBtn) moveGoBtn.disabled = true;
@@ -16515,10 +16635,9 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       }
 
       function applySequenceStop(kind) {
-        var lastSel = gate.querySelector(".seq-last-sent");
-        var lastSent = lastSel ? Number(lastSel.value) || 1 : 1;
+        var lastSent = calendarStepForCase(ev.case_id);
         if (lastSent < 1) lastSent = 1;
-        if (lastSent > 12) lastSent = 12;
+        if (lastSent > SEQUENCE_STEP_COUNT) lastSent = SEQUENCE_STEP_COUNT;
         var cancelled = [];
         for (var cn = 2; cn <= SEQUENCE_STEP_COUNT; cn++) {
           if (cn > lastSent) cancelled.push(cn);
@@ -16536,6 +16655,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           source: kind === "in_conversation" ? "gate_in_talks" : "gate_stop_remaining"
         };
         persistSequenceStop(ev.case_id, rec);
+        if (kind === "in_conversation") deactivateInTalksPocActions(resultEl);
         markSequenceBlocksCancelled(resultEl, rec);
         stateEl.textContent = humanStateForSequenceStop(rec);
         if (ui) ui.humanStateText = stateEl.textContent;
@@ -16570,7 +16690,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         if (action === "Approve") {
           var stopPanel = gate.querySelector(".seq-stop-panel");
           if (stopPanel) stopPanel.hidden = false;
-          setActiveSequenceStep(ev.case_id, (getSequenceStop(ev.case_id) && getSequenceStop(ev.case_id).last_sent) || 1);
           applyHumanOutcomeToRow(ev.case_id, "Approve");
         }
         appendRunLog({
@@ -16586,9 +16705,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
 
       var inConvBtn = gate.querySelector(".btn-in-conversation");
       var stopRemainBtn = gate.querySelector(".btn-stop-remaining");
-      var lastSentSel = gate.querySelector(".seq-last-sent");
       var existingStop = getSequenceStop(ev.case_id);
-      if (existingStop && lastSentSel) lastSentSel.value = String(existingStop.last_sent || 1);
       if (isTerminalSequenceStop(existingStop)) {
         markSequenceBlocksCancelled(resultEl, existingStop);
         disableSequenceStop();
@@ -16600,16 +16717,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         repairFalseSequenceStoppedOutcome(ev.case_id);
         applyHumanOutcomeToRow(ev.case_id, (ui && ui.humanOutcome) || "Approve");
       }
-      if (lastSentSel) {
-        lastSentSel.addEventListener("change", function () {
-          if (isTerminalSequenceStop(getSequenceStop(ev.case_id))) return;
-          setActiveSequenceStep(ev.case_id, lastSentSel.value);
-          if (ui && (ui.humanOutcome === "Approve" || resultEl._humanComplete)) {
-            applyHumanOutcomeToRow(ev.case_id, "Approve");
-            persistCaseResult(ev, resultEl);
-          }
-        });
-      }
       if (inConvBtn) {
         inConvBtn.addEventListener("click", function () {
           if (isTerminalSequenceStop(getSequenceStop(ev.case_id))) return;
@@ -16620,6 +16727,52 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         stopRemainBtn.addEventListener("click", function () {
           if (isTerminalSequenceStop(getSequenceStop(ev.case_id))) return;
           applySequenceStop("stopped");
+        });
+      }
+
+      var escBtnEl = gate.querySelector(".btn-escalate");
+      if (escBtnEl) {
+        escBtnEl.disabled = false;
+        escBtnEl.addEventListener("click", function (e) {
+          if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          if (IS_LIVE && !IS_PUBLIC_GITHUB_LIVE) {
+            openEscalationModal(ev, fields, resultEl, function (note, sendOut) {
+              var helpTo = (sendOut && sendOut.to) || HELPDESK_EMAIL;
+              var via = sendOut && sendOut.via === "email"
+                ? ("Escalation emailed to " + helpTo + ".")
+                : (sendOut && sendOut.via === "mailto"
+                  ? ("Opened a mail draft to " + helpTo + ".")
+                  : ("Escalation was not emailed to " + helpTo + "."));
+              var detail = via + " Note: " + note;
+              appendRunLog({
+                time: new Date().toLocaleTimeString(),
+                case_id: ev.case_id,
+                company_name: ev.company_name,
+                agent_decision: (fields.status || "") + "/" + (fields.decision || ""),
+                human_action: "Escalate",
+                detail: detail
+              });
+              if (resultEl._humanComplete) {
+                if (stateEl) stateEl.textContent = detail;
+                if (ui) ui.humanStateText = detail;
+                persistCaseResult(ev, resultEl);
+                return;
+              }
+              markComplete("Escalate", detail);
+            });
+            return;
+          }
+          var reason = window.prompt("One-line escalation reason:", "");
+          if (reason === null) return;
+          reason = String(reason).trim();
+          if (!reason) {
+            window.alert("Escalation needs a one-line reason.");
+            return;
+          }
+          markComplete("Escalate", reason);
         });
       }
 
@@ -16878,32 +17031,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
             archiveStatusEl.textContent = "Archived. Removed from the review queue.";
             archiveStatusEl.classList.remove("is-error");
           }
-        });
-      }
-
-      var escBtnEl = gate.querySelector(".btn-escalate");
-      if (escBtnEl) {
-        escBtnEl.addEventListener("click", function () {
-          if (IS_LIVE && !IS_PUBLIC_GITHUB_LIVE) {
-            openEscalationModal(ev, fields, resultEl, function (note, sendOut) {
-              var helpTo = (sendOut && sendOut.to) || HELPDESK_EMAIL;
-              var via = sendOut && sendOut.via === "email"
-                ? ("Help desk email sent to " + helpTo + ".")
-                : (sendOut && sendOut.via === "audit"
-                  ? ("Help desk email was not sent to " + helpTo + ". " + (sendOut.detail || "Ticket logged only."))
-                  : "Help desk email draft opened in your mail app.");
-              markComplete("Escalate", via + " " + note);
-            });
-            return;
-          }
-          var reason = window.prompt("One-line escalation reason:", "");
-          if (reason === null) return;
-          reason = String(reason).trim();
-          if (!reason) {
-            window.alert("Escalation needs a one-line reason.");
-            return;
-          }
-          markComplete("Escalate", reason);
         });
       }
 
@@ -17921,7 +18048,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         hunterLive = {
           live: false,
           status: "skipped_out_of_icp_size",
-          detail: "Hunter skipped: company employee_count outside 50–350 and not on whitelist",
+          detail: "Hunter skipped: this company is blocked for a reason other than headcount.",
           domain_search: { ran: false, skipped_reason: "out_of_icp_size" }
         };
       } else if (shouldEnrichHunter) {
@@ -18026,9 +18153,10 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         " Exa.ai event text is NOT the ICP census. " +
         "Do not refuse because a funding article omits headcount when employee_count is already on the record. " +
         "If icp_legaltech is no: Table 2 No-go for sector. This is NOT an existing client. fit_if_email_secured Still-blocked. Do not lead with missing email. " +
-        "If employee_count is in 50–350, icp_legaltech is yes, vc_pe_backed=yes, and only revenue is missing: proceed (do not REFUSED-ESCALATE for revenue alone). " +
+        "If icp_legaltech is yes, vc_pe_backed=yes, and only revenue is missing: proceed (do not REFUSED-ESCALATE for revenue alone). " +
+        "If employee_count is below 50 or above 350: do not No-go for headcount. In why add: Headcount is outside the 50 to 350 employee band (about N people). The company is still included. " +
         "If after all sources you still cannot tell in-vs-out of ICP: Table 3 Ambiguous, decision Ambiguous (not No-go / Out of ICP). " +
-        "No-go only for known disqualifiers (confirmed size out of range, wrong sector, client, bankruptcy, etc.). " +
+        "No-go only for known disqualifiers other than headcount (wrong sector, client, bankruptcy, mega-round, etc.). " +
         "Existing client means company_status or partner client book status client only (example ENARRESS). Wrong sector is out of ICP, not existing client.";
       var emailGuidance;
       var hunterLookupBlocked = hunterLive && (
@@ -18367,10 +18495,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     }
 
     function currentSequenceStepLabel(caseId) {
-      var stop = getSequenceStop(caseId);
-      var stage = stop && stop.last_sent != null ? Number(stop.last_sent) : 1;
-      if (!(stage >= 1 && stage <= SEQUENCE_STEP_COUNT)) stage = 1;
-      return "Step " + stage;
+      return "Step " + calendarStepForCase(caseId);
     }
 
     function normalizeOutcomeAction(action) {
@@ -19187,8 +19312,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           if (QUEUE_EVENTS[i].case_id === caseId) { ev = QUEUE_EVENTS[i]; break; }
         }
         if (!ev) return;
-        var stage = stop && stop.last_sent ? Number(stop.last_sent) : 1;
-        if (!(stage >= 1 && stage <= 13)) stage = 1;
+        var stage = calendarStepForCase(caseId);
+        if (!(stage >= 1 && stage <= SEQUENCE_STEP_COUNT)) stage = 1;
         var contact = contactsForCompany(ev.company_id)[0] || null;
         var pocName = String(ui.lastFields.poc_name || "").trim() ||
           (contact ? ((contact.first_name || "") + " " + (contact.last_name || "")).trim() : "") ||
@@ -19267,6 +19392,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
             source: "in_sequence_in_talks"
           };
           persistSequenceStop(row.caseId, stopRec);
+          if (row.ui.resultEl) deactivateInTalksPocActions(row.ui.resultEl);
           row.ui.humanOutcome = "In Talks";
           row.ui.humanComplete = true;
           row.ui.humanStateText = humanStateForSequenceStop(stopRec);

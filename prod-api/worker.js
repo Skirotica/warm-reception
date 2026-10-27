@@ -5818,6 +5818,14 @@ function manualStepRecord(rec, stepNum) {
   return null;
 }
 
+function skippedManualReport(channel) {
+  var ch = String(channel || "");
+  if (/linkedin/i.test(ch)) return "Skipped. This LinkedIn message was not sent, and the sequence moved on.";
+  if (/phone|call/i.test(ch)) return "Skipped. This call was not made, and the sequence moved on.";
+  if (/sms/i.test(ch)) return "Skipped. This text was not sent, and the sequence moved on.";
+  return "Skipped. This step was not done, and the sequence moved on.";
+}
+
 function stampManualUserStep(dispatch, stepNum, fields, started, doneRow) {
   var channel = stepChannel(fields, stepNum) || "Manual";
   var done = !!doneRow;
@@ -5833,6 +5841,24 @@ function stampManualUserStep(dispatch, stepNum, fields, started, doneRow) {
     stopped: false,
     manual_completed: done,
     completed_at: done && doneRow.completed_at ? doneRow.completed_at : undefined,
+    checked_at: started
+  };
+  return report;
+}
+
+function stampSkippedManualStep(dispatch, stepNum, fields, started, dueYmd) {
+  var channel = stepChannel(fields, stepNum) || "Manual";
+  var report = skippedManualReport(channel);
+  dispatch.steps[String(stepNum)] = {
+    status: "skipped_channel",
+    reason: "manual_not_done",
+    report: report,
+    channel: channel,
+    due_on: dueYmd,
+    schedule_ok: true,
+    stopped: false,
+    manual_completed: false,
+    skipped: true,
     checked_at: started
   };
   return report;
@@ -6150,7 +6176,14 @@ async function runSequenceDispatch(env, source) {
       }
       if (!isEmailChannel(channel)) {
         // LinkedIn, phone, and SMS are done by the partner. They do not stop email steps.
-        stampManualUserStep(dispatch, stepNum, fields, started, manualStepRecord(rec, stepNum));
+        // A manual step whose day has passed, and was not marked done, is skipped.
+        var doneRow = manualStepRecord(rec, stepNum);
+        var manualDue = dueYmdForStep(authorizedAt, fields, stepNum, caseId, rec);
+        if (!doneRow && manualDue && manualDue < localYmd) {
+          stampSkippedManualStep(dispatch, stepNum, fields, started, manualDue);
+        } else {
+          stampManualUserStep(dispatch, stepNum, fields, started, doneRow);
+        }
         dirty = true;
         summary.skipped += 1;
         continue;
