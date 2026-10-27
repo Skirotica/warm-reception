@@ -1552,6 +1552,7 @@ async function rescoreMagnarAfterNewsMerge(env, extras, results) {
   }
   var decision = String(outcome.fields.decision || "");
   holdGoUntilIcpFacts(outcome.fields, ev, null);
+  includeDespiteEmployeeCount(outcome.fields, ev, null);
   decision = String(outcome.fields.decision || "");
   var isGo = /^go$/i.test(decision.trim());
   results[ev.case_id] = {
@@ -2987,7 +2988,8 @@ function AUTO_ANALYZE_SYSTEM_PROMPT() {
     "override_available: Yes or No",
     "citations:",
     "why:",
-    "ICP: legaltech software sold to law firms or in-house legal; employees 50-350; revenue $15M-$50M preferred; VC/PE backed; TA 0-2.",
+    "ICP: legaltech software sold to law firms or in-house legal; preferred employees 50-350; revenue $15M-$50M preferred; VC/PE backed; TA 0-2.",
+    "HEADCOUNT DOES NOT EXCLUDE: If employee count is known and below 50 or above 350, do not No-go and do not use Out of ICP for headcount. Keep the company. In why, add this sentence: Headcount is outside the 50 to 350 employee band (about N people). The company is still included. Then apply sector, event, backing, and email rules as usual.",
     "No-go / Table 2 only for known disqualifiers (client, confirmed out of ICP, bankruptcy, duplicate/opt-out).",
     "Ambiguous / Table 3 when you lack enough information to judge, OR when Hunter roster is sparse / missing a verified qualified POC email but company+event would otherwise allow outreach (fit_if_email_secured: Would-go).",
     "Never invent emails. Use hunter_roster emails only. Qualified POCs match Email Template personas only: New Hire, CRO/CEO/COO/Founder, Head of Talent and HR, Talent Acquisition/Recruiter, Hiring Manager (finance/legal leadership). Never pick IC/tech titles (QA, Product Manager/Management, Software Engineer/Developer, Engineering, IT, IS, Information Systems, DevOps, Data Scientist). If no verified qualified POC email and Would-go: Table 3 Ambiguous, decision Ambiguous, status OK (not REFUSED-ESCALATE). Why: Hunter email/roster thin, company+event otherwise qualify, partner should secure POC email / Move to Go.",
@@ -2996,7 +2998,7 @@ function AUTO_ANALYZE_SYSTEM_PROMPT() {
     "PUBLISHER / VC FALSE POSITIVE: If company_name or domain is a news/magazine site OR a venture firm (Lux Capital / luxcapital.com, Sequoia, a16z, Index Ventures, Foundernews / foundernews.eu, Exame / exame.com, Startups.com.br, Latam Republic, Silicon Republic, etc.) and the article is about a portfolio company they covered or funded, do NOT score or Hunter the publisher/VC. Extract the company named in the story body (possessive funding lines count: \"Xapien's total equity funding\" → Xapien). Set company_name and domain to THAT company, then apply ICP. If your rationale says the row is a news publisher covering company X, retarget company_name and domain to X and never leave the publisher as the entity. If that company is clearly not legaltech, Table 2 No-go for sector (do not leave Ambiguous unknown-entity). Mega-round / unicorn size ($100M+ raise or ~$1B+ valuation) is Table 2 No-go / Out of ICP even if legaltech. If the startup website is unknown AND size is not clearly out of ICP AND sector is still plausibly legaltech: Table 3 Ambiguous asking for the real domain. Never REFUSED-ESCALATE solely to stop on the publisher/VC when the article subject is clear.",
     "Partner-facing why: plain language, end with a next action. Name Exa.ai / Hunter.io when relevant. No .md file names in why.",
     "Drafts are filled later by the console. Leave draft fields out. Set persona_used when decision is Go.",
-    "Do not return decision Go when employee_count, revenue_estimate, vc_pe_backed, ta_headcount, or persona_used is blank. If any of those facts is unknown, use Table 3 Ambiguous and write unknown in that field."
+    "Do not return decision Go when revenue_estimate, vc_pe_backed, ta_headcount, or persona_used is blank. If one of those facts is unknown, use Table 3 Ambiguous and write unknown in that field. A known employee count outside 50-350 is not one of those blanks: keep Go or Ambiguous for the other rules, and add the headcount sentence."
   ].join("\n");
 }
 
@@ -3083,45 +3085,91 @@ function deterministicClassify(ev, profile, clients) {
   var mega = megaFundingOutOfIcpFields(ev, profile);
   if (mega) return mega;
 
-  var emp = ev.employee_count;
-  if (profile && profile.employee_count != null && profile.employee_count !== "") emp = profile.employee_count;
-  if (emp != null && emp !== "" && !isNaN(Number(emp))) {
-    var n = Number(emp);
-    if (n < 50 || n > 350) {
-      return {
-        status: "OK",
-        table: "Table 2",
-        decision: "Out of ICP",
-        confidence_rating: "High",
-        company_name: ev.company_name,
-        domain: ev.domain,
-        poc_name: "",
-        poc_title: "",
-        poc_email: "",
-        fit_if_email_secured: "Still-blocked",
-        fit_if_email_note: "Out of ICP size even with email.",
-        sector: (profile && profile.sector) || ev.sector || "legaltech",
-        employee_count: String(n),
-        revenue_estimate: String(ev.revenue_estimate_mm != null ? ev.revenue_estimate_mm : ""),
-        vc_pe_backed: String(ev.vc_pe_backed || ""),
-        ta_headcount: String(ev.ta_headcount != null ? ev.ta_headcount : ""),
-        persona_assigned: "",
-        persona_used: "",
-        trigger_event: String(ev.event_type || ""),
-        event_date: String(ev.event_date || ""),
-        event_source_url: String(ev.source_url || ""),
-        reason_or_ambiguity: "Employee count outside 50-350",
-        override_available: "No",
-        citations: String(ev.case_id || "") + ", icp-criteria.md",
-        why:
-          String(ev.company_name || "This company") +
-          " has about " +
-          n +
-          " employees, outside the 50–350 ICP size range, and is not on the partner whitelist. Even with a POC email, it stays out of scope. Do not chase email for this case."
-      };
-    }
+  // Headcount outside 50-350 is a note, not a stop. Scoring continues.
+  return null;
+}
+
+function readHeadcountNumber(ev, profile, fields) {
+  var candidates = [
+    fields && fields.employee_count,
+    ev && ev.employee_count,
+    profile && profile.employee_count
+  ];
+  for (var i = 0; i < candidates.length; i++) {
+    var raw = candidates[i];
+    if (raw == null || raw === "") continue;
+    var s = String(raw).replace(/,/g, "").trim();
+    if (!/^\d+(\.\d+)?$/.test(s)) continue;
+    var n = Number(s);
+    if (isFinite(n)) return n;
   }
   return null;
+}
+
+function employeeBandNote(n) {
+  if (n == null || (n >= 50 && n <= 350)) return "";
+  return (
+    "Headcount is outside the 50 to 350 employee band (about " +
+    n +
+    " people). The company is still included."
+  );
+}
+
+/** Keep a company whose only miss is headcount, and say so in why. */
+function includeDespiteEmployeeCount(fields, ev, profile) {
+  if (!fields) return fields;
+  var n = readHeadcountNumber(ev, profile, fields);
+  var note = employeeBandNote(n);
+  if (!note) return fields;
+  var decision = String(fields.decision || "").toLowerCase();
+  var blob =
+    String(fields.reason_or_ambiguity || "") +
+    "\n" +
+    String(fields.why || "") +
+    "\n" +
+    String(fields.fit_if_email_note || "");
+  var otherHard = /existing client|bankrupt|not legaltech|out of icp sector|wrong sector|opt-out|duplicate|mega funding|valuation/i.test(
+    blob
+  );
+  var sizeStop = /no-go|out of icp|refused/.test(decision) && !otherHard;
+  if (sizeStop) {
+    fields.status = "OK";
+    fields.table = "Table 1";
+    fields.decision = "Go";
+    fields.confidence_rating = "Medium";
+    fields.fit_if_email_secured = "Would-go";
+    fields.fit_if_email_note = note;
+    fields.override_available = "Yes";
+    fields.reason_or_ambiguity = note;
+    if (!String(fields.persona_used || "").trim()) {
+      fields.persona_used = "CRO / CEO / Founder (company event)";
+    }
+    fields.why = String(fields.company_name || (ev && ev.company_name) || "This company") + ". " + note;
+  } else if (String(fields.why || "").indexOf("still included") === -1) {
+    fields.why = (String(fields.why || "").trim() + " " + note).trim();
+  }
+  fields.size_note = note;
+  return fields;
+}
+
+function reopenEmployeeCountInclusions(extras, results) {
+  var n = 0;
+  ((extras && extras.events) || []).forEach(function (ev) {
+    if (!ev || !results || !results[ev.case_id]) return;
+    var rec = results[ev.case_id];
+    if (!rec || !rec.lastFields) return;
+    if (rec.humanComplete || rec.confirmed_nogo) return;
+    if (isPartnerConfirmedNogoArchive(rec, extras, ev.case_id)) return;
+    var decision = String(rec.lastFields.decision || "").toLowerCase();
+    if (!/no-go|out of icp/.test(decision)) return;
+    var blob = String(rec.lastFields.reason_or_ambiguity || "") + " " + String(rec.lastFields.why || "");
+    if (/sector|not legaltech|existing client|bankrupt|mega|valuation/.test(blob)) return;
+    var head = readHeadcountNumber(ev, null, rec.lastFields);
+    if (head == null || (head >= 50 && head <= 350)) return;
+    delete results[ev.case_id];
+    n += 1;
+  });
+  return n;
 }
 
 /** Parse $550M / $15.6bn-style signals from Exa copy. Mega companies are out of ICP size. */
@@ -3636,7 +3684,7 @@ async function analyzeOnePendingEvent(env, ev, extras, clients) {
     hunter_roster: hunter.emails || [],
     hunter_status: hunter.detail,
     icp_rules:
-      "legaltech only; employees 50-350; revenue 15-50mm preferred; vc/pe yes; TA 0-2; missing info => Ambiguous not No-go"
+      "legaltech only; preferred employees 50-350 but headcount outside that band is a note, not a No-go; revenue 15-50mm preferred; vc/pe yes; TA 0-2; missing info => Ambiguous not No-go"
   };
   var userMessage = [
     "Classify this outreach candidate. Return only labeled OUTPUT fields.",
@@ -3678,10 +3726,18 @@ async function runAutoAnalyze(env, opts) {
   var clients = (await kvGet(env, "clients")) || [];
   var clearedBadDomain = clearMismatchedResearch(extras, results);
   var reopenedResearch = reopenDomainResearch(results);
+  var reopenedSize = reopenEmployeeCountInclusions(extras, results);
   var events = Array.isArray(extras.events) ? extras.events : [];
   var pending = events.filter(function (ev) {
     return eventReadyForAutoAnalyze(ev) && !caseHasDecision(results[ev.case_id]);
   });
+  if (reopenedSize) {
+    pending.sort(function (a, b) {
+      var aOpen = results[a.case_id] ? 1 : 0;
+      var bOpen = results[b.case_id] ? 1 : 0;
+      return aOpen - bOpen;
+    });
+  }
   // Cap one HTTP/cron pass so Worker CPU stays bounded. Only unscored pending.
   var limit = Math.min(Math.max(parseInt(opts.limit || "8", 10) || 8, 1), 12);
   var batch = pending.slice(0, limit);
@@ -3709,6 +3765,7 @@ async function runAutoAnalyze(env, opts) {
         continue;
       }
       holdGoUntilIcpFacts(outcome.fields, ev, null);
+      includeDespiteEmployeeCount(outcome.fields, ev, null);
       var prev = results[ev.case_id] || {};
       results[ev.case_id] = {
         lastFields: outcome.fields,
