@@ -556,10 +556,6 @@ body {
   border-left: 3px solid var(--danger);
 }
 .queue-row.outcome-escalated .q-company { color: var(--danger); }
-.queue-summary .q-case {
-  display: inline; font-family: var(--font-mono); font-size: 11px;
-  color: var(--ink-3); font-weight: 400; margin-left: 8px;
-}
 .queue-expand {
   display: none;
   padding: var(--sp-4);
@@ -4724,12 +4720,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         nameSpan.textContent = storyName || "Company";
       }
       nameLine.appendChild(nameSpan);
-      if (ev.live_exa) {
-        var badge = document.createElement("span");
-        badge.className = "badge warn";
-        badge.textContent = "Live";
-        nameLine.appendChild(badge);
-      }
       var storyN = eventSourceUrls(ev).length;
       if (storyN > 1) {
         var stories = document.createElement("span");
@@ -4737,10 +4727,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         stories.textContent = storyN + " stories";
         nameLine.appendChild(stories);
       }
-      var caseSpan = document.createElement("span");
-      caseSpan.className = "q-case";
-      caseSpan.textContent = ev.case_id;
-      nameLine.appendChild(caseSpan);
       companyEl.appendChild(nameLine);
       var siteHref = safeHttpHref(ev.domain);
       var domainLabel = companyDomainLabel(ev.domain);
@@ -14010,7 +13996,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           : escapeHtml(entry.human_action);
         row.innerHTML =
           '<span class="t">' + escapeHtml(entry.time) + '</span>' +
-          '<span>' + escapeHtml(entry.case_id) + ' ' + escapeHtml(entry.company_name) +
+          '<span>' + escapeHtml(entry.company_name) +
           ' | agent: ' + escapeHtml(entry.agent_decision) +
           ' | human: ' + actionSpan +
           (entry.detail ? ' | ' + escapeHtml(entry.detail) : '') +
@@ -15030,7 +15016,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       resultEl.appendChild(placeholder);
 
       var metaEl = document.getElementById("topbar-meta");
-      if (metaEl) metaEl.textContent = "Reviewer " + ev.case_id;
+      if (metaEl) metaEl.textContent = "Reviewer " + (displayCompanyName(ev.company_name) || ev.company_name || "");
 
       var payload = buildCasePayload(ev);
       // Review the same drafts the human sees (template-filled), not raw model prose.
@@ -17989,7 +17975,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       buttonEl.disabled = true;
       resultEl.innerHTML = '<span class="thinking">' + (batch ? "Analyzing…" : "Running…") + '</span>';
       var metaEl = document.getElementById("topbar-meta");
-      if (metaEl && !batch) metaEl.textContent = "Running " + ev.case_id;
+      if (metaEl && !batch) metaEl.textContent = "Running " + (displayCompanyName(ev.company_name) || ev.company_name || "");
 
       var hunterLive = null;
       var exaIcpLive = null;
@@ -18004,7 +17990,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         ((IS_LIVE || !!ev.live_exa) || (seedContact && !String(seedContact.email || "").trim()));
 
       if (!IS_PUBLIC_GITHUB_LIVE && !icpFieldPresent(resolveIcpNumbers(ev).employee_count) && (IS_LIVE || !!ev.live_exa)) {
-        if (metaEl && !batch) metaEl.textContent = "Exa ICP lookup " + ev.case_id;
+        if (metaEl && !batch) metaEl.textContent = "Exa ICP lookup " + (displayCompanyName(ev.company_name) || ev.company_name || "");
         resultEl.innerHTML = '<span class="thinking">Exa.ai company size enrichment…</span>';
         exaIcpLive = await enrichIcpFieldsViaExa(ev);
         skipHunterForIcp = companyClearlyOutOfIcpSize(ev) || companyClearlyOutOfIcpSector(ev);
@@ -18026,7 +18012,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           });
         }
         resultEl.innerHTML = '<span class="thinking">' + (batch ? "Analyzing…" : "Running…") + '</span>';
-        if (metaEl && !batch) metaEl.textContent = "Running " + ev.case_id;
+        if (metaEl && !batch) metaEl.textContent = "Running " + (displayCompanyName(ev.company_name) || ev.company_name || "");
       }
 
       if (IS_PUBLIC_GITHUB_LIVE) {
@@ -18052,7 +18038,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           domain_search: { ran: false, skipped_reason: "out_of_icp_size" }
         };
       } else if (shouldEnrichHunter) {
-        if (metaEl && !batch) metaEl.textContent = "Hunter lookup " + ev.case_id;
+        if (metaEl && !batch) metaEl.textContent = "Hunter lookup " + (displayCompanyName(ev.company_name) || ev.company_name || "");
         resultEl.innerHTML = (IS_LIVE || ev.live_exa)
           ? '<span class="thinking">Hunter Domain Search (company roster)…</span>'
           : '<span class="thinking">Hunter Email Finder…</span>';
@@ -18105,7 +18091,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           }
         }
         resultEl.innerHTML = '<span class="thinking">' + (batch ? "Analyzing…" : "Running…") + '</span>';
-        if (metaEl && !batch) metaEl.textContent = "Running " + ev.case_id;
+        if (metaEl && !batch) metaEl.textContent = "Running " + (displayCompanyName(ev.company_name) || ev.company_name || "");
         if (CASE_UI[ev.case_id] && CASE_UI[ev.case_id].summaryPocEl) {
           CASE_UI[ev.case_id].summaryPocEl.textContent = initialPocName(ev);
         }
@@ -20385,7 +20371,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       for (var i = 0; i < QUEUE_EVENTS.length; i++) {
         var ev = QUEUE_EVENTS[i];
         var ui = CASE_UI[ev.case_id];
-        progressEl.textContent = "Running " + (i + 1) + " / " + total + " — " + ev.case_id + " " + ev.company_name;
+        progressEl.textContent = "Running " + (i + 1) + " / " + total + " · " + (displayCompanyName(ev.company_name) || ev.company_name || "");
         if (!ui.rowEl.classList.contains("open")) toggleRow(ev.case_id);
         else {
           selectedCaseId = ev.case_id;
