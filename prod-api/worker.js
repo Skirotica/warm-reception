@@ -185,8 +185,8 @@ async function proxyAnthropic(request, env, cors) {
 
 var EXA_DEFAULT_QUERY =
   "Legaltech startup Series A Series B funding round or CRO VP Sales executive hire, including news roundups and company posts, 2026";
-var EXA_SEARCH_COUNT = 12;
-var EXA_MAX_NEW_PER_INGEST = 8;
+var EXA_SEARCH_COUNT = 100;
+var EXA_MAX_NEW_PER_INGEST = 80;
 var EXA_MAX_COMPANIES_PER_STORY = 6;
 var EXA_PUBLISHER_HOST_RE =
   /(law\.com|tech\.eu|prnewswire|linkedin|artificiallawyer|techfundingnews|pulse2|reuters|bloomberg|techcrunch|venturebeat|forbes|businesswire|globenewswire|yahoo\.com|medium\.com|substack\.com|latamlist\.com|latamrepublic\.com|thesaasnews\.com|finsmes\.com|crunchbase\.com|pitchbook\.com|axios\.com|sifted\.eu|tech\.eu|geekwire\.com|theregister\.com|zdnet\.com|wired\.com|theverge\.com|thenextweb\.com|tnw\.to|news\.yahoo|google\.com\/news|msn\.com|foundernews\.eu|foundernews|siliconrepublic\.com|siliconrepublic|globallegalpost\.com|globallegalpost|legaltech\.news|law360\.com|abovethelaw\.com|artificiallawyer\.com|techfundingnews\.com|startupmag\.co\.uk|startupmag\.com|startupmag|thelogic\.co|exame\.com|startups\.com\.br|braziljournal\.com|neofeed\.com\.br|contxto\.com|infomoney\.com\.br|valor\.globo\.com|valor\.com\.br|bloomberglinea\.com|startupi\.com\.br|startse\.com|baguete\.com\.br|estadao\.com\.br|folha\.uol\.com\.br|uol\.com\.br|globo\.com|istoedinheiro\.com\.br|moneyreport\.com\.br)/i;
@@ -210,11 +210,13 @@ function utcCalendarYmd(d) {
   return y + "-" + m + "-" + day;
 }
 
-function exaStartPublishedDateIso(now) {
+function exaStartPublishedDateIso(now, days) {
   var dt = now instanceof Date ? new Date(now.getTime()) : new Date(now || Date.now());
   if (isNaN(dt.getTime())) dt = new Date();
+  var windowDays = parseInt(days, 10);
+  if (!windowDays || windowDays < 1) windowDays = EXA_MAX_AGE_DAYS;
   var start = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
-  start.setUTCDate(start.getUTCDate() - EXA_MAX_AGE_DAYS);
+  start.setUTCDate(start.getUTCDate() - windowDays);
   return start.toISOString();
 }
 
@@ -1790,13 +1792,13 @@ async function enrichAndPromoteLexroom(env, extras, results) {
   return { changed: changed, actions: actions };
 }
 
-async function searchExaResults(env, q, num) {
+async function searchExaResults(env, q, num, windowDays) {
   if (!env.EXA_API_KEY) {
     return { ok: false, error: "EXA_API_KEY secret not set on worker", results: [] };
   }
   var query = q || EXA_DEFAULT_QUERY;
-  var n = Math.min(Math.max(parseInt(num || "8", 10) || 8, 1), 12);
-  var startPublishedDate = exaStartPublishedDateIso();
+  var n = Math.min(Math.max(parseInt(num || "8", 10) || 8, 1), 100);
+  var startPublishedDate = exaStartPublishedDateIso(new Date(), windowDays);
   var upstream = await fetch("https://api.exa.ai/search", {
     method: "POST",
     headers: {
@@ -4722,7 +4724,7 @@ function extractCompaniesFromStory(title, text, url) {
     /\b(?:joined|joins|joining)\s+([A-Za-z][A-Za-z0-9&.-]{2,40})\s+as\b/gi,
     /\bchez\s+([A-Za-z][A-Za-z0-9&.-]{2,40})\b/gi,
     /\b(?:CRO|CEO|CFO|COO|VP Sales|Head of Sales|Chief Revenue Officer)\s+(?:of|at)\s+([A-Za-z][A-Za-z0-9&.-]{2,40})\b/gi,
-    /@\s*([A-Z][A-Za-z0-9][A-Za-z0-9&.-]{1,40})\b/g
+    /@\s*([A-Z][A-Za-z0-9][A-Za-z0-9&.-]{1,40})\b(?!\s+link\b)/g
   ];
   patterns.forEach(function (re, idx) {
     var allowLower = idx >= 1;
@@ -5005,7 +5007,26 @@ async function runExaIngest(env, source) {
     await kvPut(env, "results", resultsForScrub);
   }
 
+  var recent = await searchExaResults(env, EXA_DEFAULT_QUERY, EXA_SEARCH_COUNT, 14);
   var packed = await searchExaResults(env, EXA_DEFAULT_QUERY, EXA_SEARCH_COUNT);
+  if (recent && recent.ok && recent.results && recent.results.length) {
+    var seenUrls = {};
+    var merged = [];
+    recent.results.concat((packed && packed.results) || []).forEach(function (r) {
+      var url = String((r && r.url) || "").trim();
+      if (!url || seenUrls[url]) return;
+      seenUrls[url] = true;
+      merged.push(r);
+    });
+    merged.sort(function (a, b) {
+      return String(b.publishedDate || "").localeCompare(String(a.publishedDate || ""));
+    });
+    if (!packed || !packed.ok) {
+      packed = recent;
+    }
+    packed.results = merged;
+    packed.ok = true;
+  }
   if (!packed.ok) {
     if (purged.dropped) {
       await kvPut(env, "extras", extras);
@@ -5242,6 +5263,7 @@ async function runExaIngest(env, source) {
     at: now.toISOString(),
     source: source || "cron",
     stories: (packed.results || []).length,
+    recent_stories: (recent && recent.results && recent.results.length) || 0,
     added: added,
     attached: attached,
     skipped: skipped,
@@ -6603,7 +6625,7 @@ export default {
           store: env.DB ? "d1" : "missing",
           auto_analyze: "offline-on-ingest+cron+/v1/auto-analyze-only",
           exa_ingest: "cron 9am+8pm GMT-4",
-          story_extract: "research-always-v1",
+          story_extract: "new-company-cap-80",
           sequence_dispatch: "hourly :15 + after ingest; dry-run until Graph+unlock",
           graph_mail: graphSecretsReady(env) ? "configured" : "missing",
           live_send_unlock: liveSendUnlocked(env) ? "true" : "false",
