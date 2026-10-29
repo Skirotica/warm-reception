@@ -1712,13 +1712,17 @@ body {
 .poc-tab-pane .sequence-wrap { margin-top: 8px; }
 .cite-row { margin: var(--sp-3) 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
 .status-banner { margin-bottom: var(--sp-2); }
-.decision-block { margin-bottom: var(--sp-3); }
+.decision-block { margin-bottom: var(--sp-3); text-align: left; }
+.decision-block .status-banner,
+.decision-block .decision-meta,
+.decision-block .source-article-block { text-align: left; }
 .decision-block .decision-why {
   margin: var(--sp-2) 0 0;
   color: var(--ink-2);
   font-size: var(--fs-1);
   line-height: 1.45;
   white-space: pre-wrap;
+  text-align: left;
 }
 .decision-block .decision-meta {
   margin-top: var(--sp-2);
@@ -3502,6 +3506,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       "EVENT TYPE LANGUAGE (fundraising vs staffing): Funding_round and IPO triggers are capital events, not open reqs or active searches. Never write your Series A search, your funding search, your Series B search, or your {{CV1}} search when CV1 is a round label (Series A raise, seed round). A press release that mentions future hires after a round is post-funding staffing support, not an open req you are recruiting for. Use congratulations on the round, post-round hiring wave, and quiet help filling seats. Executive_hire and active job postings use search/open-req language; funding events do not.",
       "SECTOR CLASSIFICATION: ICP sector is legaltech only. Legaltech = software sold primarily to law firms, in-house legal departments practicing law, or core litigation, e-discovery, e-filing, or court workflows. NOT legaltech (Table 2 No-go for sector): legal entity management, registered agent / corp sec automation sold to finance and operations, HR tech, generic B2B SaaS adjacent to legal ops, AND KYC / AML / AI due diligence / OSINT / third-party risk research platforms (example: Xapien / xapien.com). Banks or law firms buying compliance tools does not make the product legaltech. Law.com or Legaltech News coverage does not automatically mean legaltech. Read company_profile.sector and icp_evaluation.sector_classification. Example: Discern (discern.com) is entity_management, not legaltech. Set sector: entity_management or kyc_due_diligence and No-go for ICP sector even when size and backing fit.",
       "PUBLISHER / VC FALSE POSITIVE (problem-solve, do not stop cold): If company_name or domain is a news/magazine publisher OR a venture firm (Lux Capital / luxcapital.com, Sequoia, a16z, Index Ventures, Foundernews / foundernews.eu, Startupmag / startupmag.co.uk, Exame / exame.com, Startups.com.br, Latam Republic, etc.) and the Exa.ai article is about a portfolio company they covered or funded, that publisher/VC is NOT the outreach target. Read the story body and extract the funded/hired company (possessive funding lines count: \"Xapien's total equity funding\" → Xapien / xapien.com). Example: Startupmag title \"Legaltech startup Crimson raises £1.9m\" → Crimson / crimson.law, never Startupmag. Exame or Startups.com.br covering Magnar → Magnar / magnar.ai, never the news site. If your rationale says the domain is a news publisher covering company X, retarget company_name and domain to X and never leave the publisher as the entity. Retarget company_name and domain to THAT company, then apply ICP. If that company is clearly not legaltech, Table 2 No-go for sector — do not leave Ambiguous unknown-entity. Mega-round / unicorn size ($100M+ raise or ~$1B+ valuation) is Table 2 No-go / Out of ICP even if legaltech. If the startup website is unknown AND size is not clearly out of ICP AND sector is still plausibly legaltech: Table 3 Ambiguous asking for its real domain. Never Hunter.io the publisher or VC. Never REFUSED-ESCALATE just to abandon a clear article subject.",
+      "NEWSROOM IS NOT THE COMPANY: The company under review is the legaltech firm in the story. Do not investigate, score, or email the publication that reported it. Do not describe that publication's editors, inboxes, revenue, or sector. If a contact email is on the news domain, ignore that person.",
       "",
       "OUTPUT:",
       "Return exactly these labeled fields (one per line as Field: value):",
@@ -3847,11 +3852,74 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       return name;
     }
 
+    function isNewsReportingHostLive(host) {
+      var h = companyDomainLabel(host);
+      if (!h) return false;
+      if (/(^|\.)linkedin\.com$/.test(h)) return false;
+      if (/(^|\.)crunchbase\.com$/.test(h)) return false;
+      if (/(^|\.)pitchbook\.com$/.test(h)) return false;
+      return isPublisherHost(h);
+    }
+
+    function contactEmailIsNewsOrgLive(email) {
+      var host = companyDomainLabel(String(email || "").split("@")[1] || "");
+      return !!(host && isPublisherHost(host));
+    }
+
+    function publisherIsTheScoredCompanyLive(text) {
+      var t = String(text || "");
+      if (!t.trim()) return false;
+      var named = t.match(
+        /\b([A-Za-z][A-Za-z0-9&.-]{2,40}(?:\s+[A-Za-z][A-Za-z0-9&.-]{2,40}){0,3})\s+is an?\s+(?:media\s+|news\s+)?(?:publication|publisher|magazine|news\s+(?:site|outlet|room)|editorial\s+team)\b/i
+      );
+      if (named && isPublisherBrand(named[1])) return true;
+      var hostMention = t.match(
+        /\b((?:[a-z0-9-]+\.)+[a-z]{2,})(?:\s+publishes|\s+is a\s+(?:media|news))\b/i
+      );
+      if (hostMention && isPublisherHost(hostMention[1])) return true;
+      if (/\b(editorial staff|editorial team|news publisher|media publication)\b/i.test(t)) {
+        var hosts = t.match(/\b((?:[a-z0-9-]+\.)+(?:co\.uk|com|eu|news|io|br))\b/gi) || [];
+        var hi;
+        for (hi = 0; hi < hosts.length; hi++) {
+          if (isPublisherHost(hosts[hi])) return true;
+        }
+      }
+      return false;
+    }
+
+    function decisionInvestigatedNewsOrgLive(fields) {
+      if (!fields) return false;
+      if (contactEmailIsNewsOrgLive(fields.poc_email)) return true;
+      var why = String(fields.why || "") + "\n" + String(fields.reason_or_ambiguity || "");
+      if (publisherIsTheScoredCompanyLive(why)) return true;
+      var name = String(fields.company_name || "").trim();
+      var domain = companyDomainLabel(fields.domain);
+      if (isPublisherBrand(name) || (domain && isPublisherHost(domain))) return true;
+      return false;
+    }
+
+    function stripNewsOrgContacts(companyId) {
+      if (!companyId) return;
+      var i;
+      for (i = ICP_CONTACTS.length - 1; i >= 0; i--) {
+        if (ICP_CONTACTS[i].company_id !== companyId) continue;
+        if (contactEmailIsNewsOrgLive(ICP_CONTACTS[i].email)) ICP_CONTACTS.splice(i, 1);
+      }
+      var extras = loadLiveExtras();
+      var before = (extras.contacts || []).length;
+      extras.contacts = (extras.contacts || []).filter(function (c) {
+        if (!c || c.company_id !== companyId) return true;
+        return !contactEmailIsNewsOrgLive(c.email);
+      });
+      if ((extras.contacts || []).length !== before) saveLiveExtras(extras);
+    }
+
     function resultIsPublisherHuskLocal(rec) {
       if (!rec || !rec.lastFields) return false;
       var f = rec.lastFields;
       var name = String(f.company_name || "").trim();
       var host = companyDomainLabel(f.domain);
+      if (decisionInvestigatedNewsOrgLive(f)) return true;
       if (name && (isPublisherBrand(name) || isPlaceholderCompanyName(name))) return true;
       if (host && isPublisherHost(host)) return true;
       var subject = publisherRationaleSubjectLive(String(f.why || "") + "\n" + String(f.reason_or_ambiguity || ""));
@@ -6670,7 +6738,12 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           if (fix && fix.redirected) {
             clearHunterFor(ev.company_id);
             var kept = STORE_RESULTS && STORE_RESULTS[ev.case_id];
-            if (kept && kept.lastFields) {
+            if (kept && decisionInvestigatedNewsOrgLive(kept.lastFields)) {
+              ev.employee_count = null;
+              ev.revenue_estimate_mm = null;
+              stripNewsOrgContacts(ev.company_id);
+              clearStoredScore(ev.case_id, "news_org_decision_rescore_subject");
+            } else if (kept && kept.lastFields) {
               kept.lastFields.company_name = ev.company_name;
               kept.lastFields.domain = ev.domain || "";
             }
@@ -6689,7 +6762,18 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
             isPublisherHost(fieldDom) ||
             isPublisherBrand(fieldCo) ||
             isPlaceholderCompanyName(fieldCo) ||
-            isCustomerPlatformHost(fieldDom);
+            isCustomerPlatformHost(fieldDom) ||
+            decisionInvestigatedNewsOrgLive(fields);
+          if (decisionInvestigatedNewsOrgLive(fields)) {
+            ev.employee_count = null;
+            ev.revenue_estimate_mm = null;
+            (extras.profiles || []).forEach(function (p) {
+              if (!p || p.company_id !== ev.company_id) return;
+              p.employee_count = null;
+              p.revenue_estimate_mm = null;
+            });
+            stripNewsOrgContacts(ev.company_id);
+          }
           var unknownEntityAmbiguous =
             /^ambiguous$/i.test(String(fields.decision || "")) &&
             (/name not provided|unknown entity|company name\/website missing|needs domain/i.test(
@@ -8367,6 +8451,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
               // Bulk restore: paint HTML + gate without regenerating sequences (avoids re-entry).
               var resultEl = ui.resultEl;
               if (ui.lastHtml && resultEl) {
+                resultEl.classList.remove("empty");
                 resultEl.innerHTML = patchKnownWrongLinkedInHtml(ui.lastHtml);
                 resultEl._lastFields = ui.lastFields;
                 resultEl._caseEvent = ui.ev;
@@ -9415,6 +9500,15 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     async function discoverCompanyContactsViaHunterDomainSearch(ev, preferred) {
       var domain = String(ev.domain || "").trim();
       if (!domain) return { ok: false, detail: "missing_domain", added: [], updatedPreferred: false, all_with_email: [] };
+      if (isPublisherHost(domain) || isNewsReportingHostLive(domain)) {
+        return {
+          ok: false,
+          detail: "hunter_skipped_news_org",
+          added: [],
+          updatedPreferred: false,
+          all_with_email: []
+        };
+      }
       var res = await hunterFetchJson("/domain-search?domain=" + encodeURIComponent(domain) + "&limit=25");
       if (!res.ok) return { ok: false, detail: res.detail, added: [], updatedPreferred: false, all_with_email: [] };
       var payload = (res.data && res.data.data) || (res.data && res.data.emails ? res.data : {}) || {};
@@ -9459,7 +9553,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           };
         })
         .filter(function (row) {
-          return hunterEmailIsUsable(row);
+          return hunterEmailIsUsable(row) && !contactEmailIsNewsOrgLive(row.email);
         })
         .sort(function (a, b) {
           var aIcp = isIcpAlternateTitle(a.title) ? 0 : 1;
@@ -11916,7 +12010,15 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
             nums: nums
           };
         }
-        var results = (data && data.results) || [];
+        var results = ((data && data.results) || []).filter(function (r) {
+          var host = "";
+          try {
+            host = new URL(String((r && r.url) || "")).hostname.replace(/^www\./i, "").toLowerCase();
+          } catch (eHost) {
+            host = "";
+          }
+          return !isNewsReportingHostLive(host);
+        });
         var blob = results
           .map(function (r) {
             return String(r.title || "") + "\n" + String(r.text || "");
@@ -17977,6 +18079,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       var metaEl = document.getElementById("topbar-meta");
       if (metaEl && !batch) metaEl.textContent = "Running " + (displayCompanyName(ev.company_name) || ev.company_name || "");
 
+      stripNewsOrgContacts(ev.company_id);
       var hunterLive = null;
       var exaIcpLive = null;
       var seedContact = contactsForCompany(ev.company_id)[0] || null;
@@ -18227,8 +18330,26 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           "Put prequalified-whitelist.md and the whitelist company_id only in citations."
         )
         : "This company is NOT on the pre-qualified whitelist; apply full ICP scoring from icp-criteria.md.";
+      var sourceHostLive = "";
+      try {
+        sourceHostLive = new URL(String(ev.source_url || "")).hostname.replace(/^www\./i, "").toLowerCase();
+      } catch (eSrc) {
+        sourceHostLive = "";
+      }
+      var newsLock = "";
+      if ((sourceHostLive && isNewsReportingHostLive(sourceHostLive)) || (opts && opts.newsRetry)) {
+        newsLock =
+          "INVESTIGATE ONLY " +
+          (ev.company_name || "the company named in the article") +
+          " (" +
+          (ev.domain || "its own website") +
+          "). The source article is journalism. Do not investigate, score, or email the publication. Ignore contacts whose email is on the news domain. The decision, the people, and the company facts must be about " +
+          (ev.company_name || "that company") +
+          ".";
+      }
       var userMessage = [
         "Evaluate this single outreach candidate case.",
+        newsLock,
         "Return ONLY the labeled OUTPUT fields from your instructions, one field per line.",
         "Always include why and citations fields.",
         "For Table 2 and Table 3: why and reason_or_ambiguity must be plain language for a recruiting partner, end with a clear next action, and must NOT name .md files, rule numbers, or table numbers. Name Exa.ai for event research and Hunter.io for email/LinkedIn. Never say on file or in our database. Put grounding IDs and policy file names only in citations.",
@@ -18279,6 +18400,79 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         }
         content = content || rawText || "";
         renderParsedResult(resultEl, content, ev);
+        if (
+          !(opts && opts.newsRetry) &&
+          resultEl._lastFields &&
+          decisionInvestigatedNewsOrgLive(resultEl._lastFields)
+        ) {
+          var subjectLive = knownArticleSubjectLive(
+            ev.event_headline || "",
+            String(ev.event_summary || "") + " " + String(ev.source_url || ""),
+            ev.source_url || ""
+          );
+          if (
+            (!subjectLive || !subjectLive.company_name || isPublisherBrand(subjectLive.company_name)) &&
+            ev.company_name &&
+            !isPublisherBrand(ev.company_name)
+          ) {
+            subjectLive = { company_name: ev.company_name, domain: ev.domain || "" };
+          }
+          if (subjectLive && subjectLive.company_name && !isPublisherBrand(subjectLive.company_name)) {
+            ev.company_name = subjectLive.company_name;
+            var knownSub = knownSubjectDomainLive(ev.company_name);
+            if (!looksLikeRealDomain(ev.domain) || isNewsReportingHostLive(ev.domain)) {
+              if (knownSub) ev.domain = knownSub;
+              else if (subjectLive.domain && looksLikeRealDomain(subjectLive.domain)) ev.domain = subjectLive.domain;
+            }
+            ev.employee_count = null;
+            ev.revenue_estimate_mm = null;
+            var profRetry = byCompanyId(COMPANY_PROFILES, ev.company_id);
+            if (profRetry) {
+              profRetry.company_name = ev.company_name;
+              profRetry.domain = ev.domain;
+              profRetry.employee_count = null;
+              profRetry.revenue_estimate_mm = null;
+            }
+            stripNewsOrgContacts(ev.company_id);
+            if (CASE_UI[ev.case_id]) CASE_UI[ev.case_id].ev = ev;
+            return runAgentForCase(ev, resultEl, buttonEl, {
+              batch: batch,
+              fromMoveToGo: fromMoveToGo,
+              newsRetry: true
+            });
+          }
+        }
+        if (opts && opts.newsRetry && resultEl._lastFields && decisionInvestigatedNewsOrgLive(resultEl._lastFields)) {
+          var whoLive = ev.company_name || "The company in the article";
+          var siteLive = ev.domain || "its own website";
+          renderParsedResult(
+            resultEl,
+            [
+              "status: OK",
+              "table: Table 3",
+              "decision: Ambiguous",
+              "confidence_rating: Ambiguous",
+              "company_name: " + whoLive,
+              "domain: " + (ev.domain || ""),
+              "poc_name: ",
+              "poc_title: ",
+              "poc_email: ",
+              "fit_if_email_secured: Ambiguous",
+              "fit_if_email_note: Score " + whoLive + " on its own site before outreach.",
+              "reason_or_ambiguity: Looked up the company in the article, not the news site",
+              "override_available: Yes",
+              "citations: " + (ev.case_id || "") + ", exa-subject-not-publisher",
+              "why: " +
+                whoLive +
+                " is the company named in the article. The news site that reported the story was set aside and was not investigated. People, revenue, and sector have to come from " +
+                whoLive +
+                " (" +
+                siteLive +
+                "). Confirm those facts on the company site before outreach."
+            ].join("\n"),
+            ev
+          );
+        }
         if (resultEl._lastFields) refreshLinkedInFieldInResult(resultEl, resultEl._lastFields, ev);
         var dncHitPost = matchDncForCase(ev, resultEl._lastFields, contact);
         if (dncHitPost) {
@@ -18683,6 +18877,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     function restoreResultIntoRow(ui) {
       var resultEl = ui.resultEl;
       if (ui.lastHtml) {
+        resultEl.classList.remove("empty");
         resultEl.innerHTML = patchKnownWrongLinkedInHtml(ui.lastHtml);
         resultEl._lastFields = ui.lastFields || null;
         resultEl._caseEvent = ui.ev;

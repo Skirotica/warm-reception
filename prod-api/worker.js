@@ -733,6 +733,32 @@ function repairMisattributedEntities(extras, results) {
         host
       )
     );
+    var newsFields = results[ev.case_id] && results[ev.case_id].lastFields;
+    if (
+      newsFields &&
+      decisionInvestigatedNewsOrg(newsFields) &&
+      !isPartnerConfirmedNogoArchive(results[ev.case_id], extras, ev.case_id)
+    ) {
+      var subjectNow = articleSubjectIdentity(ev);
+      if (subjectNow && subjectNow.company_name && !isMediaOrVcCompanyName(subjectNow.company_name)) {
+        pointEventAtSubject(ev, extras, subjectNow);
+      } else {
+        dropNewsOrgContacts(extras, ev.company_id);
+        ev.employee_count = null;
+        ev.revenue_estimate_mm = null;
+      }
+      clearAmbiguousResult(ev.case_id, "news_org_investigated_rescore_subject");
+      changed = true;
+      actions.push({
+        action: "rescore_subject_not_news",
+        case_id: ev.case_id,
+        company_name: ev.company_name || "",
+        domain: ev.domain || ""
+      });
+      nameIsPub = isPublisherBrandNameWorker(ev.company_name);
+      domainIsPub = !!(normalizeHost(ev.domain) && isPublisherHostWorker(ev.domain));
+      if (!nameIsPub && !domainIsPub) return;
+    }
     // Empty domain + news source URL, or a rationale that names a different company, is a publisher husk.
     if (!nameIsPub && !domainIsPub && !(sourceIsPub && !looksLikeRealDomainWorker(host)) && !rationaleHusk) {
       return;
@@ -2998,6 +3024,7 @@ function AUTO_ANALYZE_SYSTEM_PROMPT() {
     "Entity management / registered-agent / corp-sec sold to finance-ops is NOT legaltech (Table 2 No-go for sector).",
     "KYC / AML / AI due diligence / OSINT / third-party risk / compliance research platforms (example: Xapien / xapien.com) are NOT legaltech even when banks or law firms buy them. Table 2 No-go for sector. Selling to legal buyers does not make the product practice-of-law software.",
     "PUBLISHER / VC FALSE POSITIVE: If company_name or domain is a news/magazine site OR a venture firm (Lux Capital / luxcapital.com, Sequoia, a16z, Index Ventures, Foundernews / foundernews.eu, Exame / exame.com, Startups.com.br, Latam Republic, Silicon Republic, etc.) and the article is about a portfolio company they covered or funded, do NOT score or Hunter the publisher/VC. Extract the company named in the story body (possessive funding lines count: \"Xapien's total equity funding\" → Xapien). Set company_name and domain to THAT company, then apply ICP. If your rationale says the row is a news publisher covering company X, retarget company_name and domain to X and never leave the publisher as the entity. If that company is clearly not legaltech, Table 2 No-go for sector (do not leave Ambiguous unknown-entity). Mega-round / unicorn size ($100M+ raise or ~$1B+ valuation) is Table 2 No-go / Out of ICP even if legaltech. If the startup website is unknown AND size is not clearly out of ICP AND sector is still plausibly legaltech: Table 3 Ambiguous asking for the real domain. Never REFUSED-ESCALATE solely to stop on the publisher/VC when the article subject is clear.",
+    "NEWSROOM IS NOT THE COMPANY: Investigate only the legaltech company named in the story (example: a Startupmag article about Crimson is a decision about Crimson / crimson.law). Do not describe the publication's editors, generic inboxes, headcount, revenue, or sector. If an email is on the news domain, ignore that person. The source URL is journalism about the company, not the company under review.",
     "COMPANY FACTS, required on every new company: company_fact_research is a web search run when the company is added. Use only those snippets, the company website, and the event source.",
     "employee_count: write the cited headcount. If two sources disagree, write both and name each source. If no source states a number, the field is exactly not disclosed.",
     "revenue_estimate: write a cited dollar figure. If the company did not publish it and a directory or model did, start with the figure and add the word estimate plus the directory name. If no dollar appears in the research, the field is exactly not disclosed. A funding round is not revenue.",
@@ -3599,6 +3626,8 @@ async function researchCompanyFacts(env, companyName, domain) {
   (raw.results || []).forEach(function (hit) {
     var url = String((hit && hit.url) || "").trim();
     if (!url) return;
+    var factHost = hostFromAnyUrl(url);
+    if (isNewsReportingHost(factHost)) return;
     var bits = [];
     if (hit.text) bits.push(String(hit.text));
     if (hit.highlights && hit.highlights.length) bits.push(hit.highlights.join(" "));
@@ -3642,7 +3671,8 @@ function attachResearchedFacts(det, fields) {
   return det;
 }
 
-async function analyzeOnePendingEvent(env, ev, extras, clients) {
+async function analyzeOnePendingEvent(env, ev, extras, clients, opts) {
+  opts = opts || {};
   var profiles = (extras && extras.profiles) || [];
   if (ev && !looksLikeRealDomainWorker(ev.domain)) {
     var research = await lookupCompanySite(env, ev.company_name);
@@ -3761,6 +3791,11 @@ async function analyzeOnePendingEvent(env, ev, extras, clients) {
     };
   }
 
+  dropNewsOrgContacts(extras, ev.company_id);
+  contacts = ((extras && extras.contacts) || []).filter(function (c) {
+    return c && c.company_id === ev.company_id && !contactEmailIsNewsOrg(c.email);
+  });
+
   var hunterDomain = looksLikeRealDomainWorker(ev.domain) ? normalizeHost(ev.domain) : "";
   var hunterBlocked =
     !hunterDomain ||
@@ -3770,6 +3805,11 @@ async function analyzeOnePendingEvent(env, ev, extras, clients) {
   var hunter = hunterBlocked
     ? { ok: false, emails: [], detail: hunterDomain ? "hunter_skipped_publisher" : "hunter_skipped_no_domain" }
     : await hunterRosterForDomain(env, hunterDomain);
+  if (hunter && hunter.emails) {
+    hunter.emails = hunter.emails.filter(function (row) {
+      return row && !contactEmailIsNewsOrg(row.email);
+    });
+  }
   var facts = await researchCompanyFacts(env, ev.company_name, ev.domain);
   var det = deterministicClassify(ev, profile, clients);
   var hardGate = decisionIsHardGate(det);
@@ -3785,10 +3825,23 @@ async function analyzeOnePendingEvent(env, ev, extras, clients) {
     icp_rules:
       "legaltech only; preferred employees 50-350 but headcount outside that band is a note, not a No-go; revenue 15-50mm preferred; vc/pe yes; TA 0-2; missing info => Ambiguous not No-go. Fill employee_count, revenue_estimate, and the legaltech call from company_fact_research and cite each URL."
   };
+  var sourceHostForLock = hostFromAnyUrl(ev.source_url || "");
+  var subjectLock = "";
+  if ((sourceHostForLock && isNewsReportingHost(sourceHostForLock)) || opts.newsRetry) {
+    subjectLock =
+      "INVESTIGATE ONLY " +
+      (ev.company_name || "the company named in the article") +
+      " (" +
+      (ev.domain || "its own website") +
+      "). The source URL is a news organization reporting the signal. Do not investigate, score, describe, or email that publication. Ignore any person whose email is on the news domain. company_name, domain, why, sector, employee_count, revenue_estimate, and poc fields are about " +
+      (ev.company_name || "that company") +
+      " only. If a fact about that company is missing, write not disclosed. Do not substitute the publication's staff, revenue, or sector.";
+  }
   var userMessage = [
     "Classify this outreach candidate. Return only labeled OUTPUT fields.",
+    subjectLock,
     "company_fact_research was gathered when this company was added. Fill employee_count, revenue_estimate, and sector from it. Cite each URL in citations and in why. If a fact is absent, write not disclosed. Do not invent a number, a dollar, or a URL. Hunter roster length is not headcount.",
-    "If the record still looks like a news publisher covering another startup, retarget company_name/domain to that startup or Table 3 asking for its website. Never Hunter the publisher.",
+    "If the record still looks like a news publisher covering another startup, retarget company_name/domain to that startup or Table 3 asking for its website. Never Hunter the publisher. Never write the decision about the news organization.",
     "If hunter_roster is empty / sparse and company+event would otherwise qualify: Table 3 Ambiguous, decision Ambiguous, status OK, fit_if_email_secured Would-go. Do not REFUSED-ESCALATE or Table 2 No-go for email miss alone.",
     "Always finish the research. If the website is missing, say so and still recommend Go, No-go, or Ambiguous from the article and the fact search. Never invent a website, a domain, or an email. This result is a recommendation. The reviewer Approves, Edits, or Confirms No-go. Nothing is sent from this step.",
     "CASE CONTEXT (JSON):",
@@ -3807,6 +3860,20 @@ async function analyzeOnePendingEvent(env, ev, extras, clients) {
   if (!llm.fields.event_date) llm.fields.event_date = ev.event_date || "";
   if (!llm.fields.event_source_url) llm.fields.event_source_url = ev.source_url || "";
   llm.fields = coerceSparseHunterEmailFields(llm.fields, hunter);
+  if (!opts.newsRetry && decisionInvestigatedNewsOrg(llm.fields)) {
+    var subjectRetry = articleSubjectIdentity(ev);
+    if (
+      subjectRetry &&
+      subjectRetry.company_name &&
+      !isMediaOrVcCompanyName(subjectRetry.company_name)
+    ) {
+      pointEventAtSubject(ev, extras, subjectRetry);
+      return analyzeOnePendingEvent(env, ev, extras, clients, { newsRetry: true });
+    }
+  }
+  if (opts.newsRetry && decisionInvestigatedNewsOrg(llm.fields)) {
+    scrubNewsOrgDecision(llm.fields, ev);
+  }
   applyPublisherRationaleRetarget(ev, llm.fields);
   if (hardGate) {
     attachResearchedFacts(det, llm.fields);
@@ -3838,6 +3905,7 @@ async function runAutoAnalyze(env, opts) {
   var clients = (await kvGet(env, "clients")) || [];
   var clearedBadDomain = clearMismatchedResearch(extras, results);
   var reopenedResearch = reopenDomainResearch(results);
+  var reopenedNews = reopenNewsOrgDecisions(extras, results);
   var reopenedSize = reopenEmployeeCountInclusions(extras, results);
   var events = Array.isArray(extras.events) ? extras.events : [];
   var pending = events.filter(function (ev) {
@@ -3856,7 +3924,7 @@ async function runAutoAnalyze(env, opts) {
   var ok = 0;
   var errors = 0;
   var outcomes = [];
-  var extrasDirty = clearedBadDomain > 0;
+  var extrasDirty = clearedBadDomain > 0 || reopenedNews > 0;
 
   for (var i = 0; i < batch.length; i++) {
     var ev = batch[i];
@@ -3925,7 +3993,7 @@ async function runAutoAnalyze(env, opts) {
     }
   }
 
-  if (ok || clearedBadDomain || reopenedResearch) {
+  if (ok || clearedBadDomain || reopenedResearch || reopenedNews) {
     var latestResults = (await kvGet(env, "results")) || {};
     results = mergeResultsBlobs(latestResults, results);
     await kvPut(env, "results", results);
@@ -4138,11 +4206,170 @@ function publisherRationaleSubject(text) {
   return "";
 }
 
+function isNewsReportingHost(host) {
+  var h = normalizeHost(host);
+  if (!h) return false;
+  if (/(^|\.)linkedin\.com$/.test(h)) return false;
+  if (/(^|\.)crunchbase\.com$/.test(h)) return false;
+  if (/(^|\.)pitchbook\.com$/.test(h)) return false;
+  return isPublisherHostWorker(h);
+}
+
+function contactEmailIsNewsOrg(email) {
+  var host = normalizeHost(String(email || "").split("@")[1] || "");
+  return !!(host && isPublisherHostWorker(host));
+}
+
+/** True when the written decision scored a newsroom instead of the company in the story. */
+function publisherIsTheScoredCompany(text) {
+  var t = String(text || "");
+  if (!t.trim()) return false;
+  var named = t.match(
+    /\b([A-Za-z][A-Za-z0-9&.-]{2,40}(?:\s+[A-Za-z][A-Za-z0-9&.-]{2,40}){0,3})\s+is an?\s+(?:media\s+|news\s+)?(?:publication|publisher|magazine|news\s+(?:site|outlet|room)|editorial\s+team)\b/i
+  );
+  if (named && isPublisherBrandNameWorker(named[1])) return true;
+  var hostMention = t.match(
+    /\b((?:[a-z0-9-]+\.)+[a-z]{2,})(?:\s+publishes|\s+is a\s+(?:media|news))\b/i
+  );
+  if (hostMention && isPublisherHostWorker(hostMention[1])) return true;
+  if (/\b(editorial staff|editorial team|news publisher|media publication)\b/i.test(t)) {
+    var hosts = t.match(/\b((?:[a-z0-9-]+\.)+(?:co\.uk|com|eu|news|io|br))\b/gi) || [];
+    var hi;
+    for (hi = 0; hi < hosts.length; hi++) {
+      if (isPublisherHostWorker(hosts[hi])) return true;
+    }
+  }
+  return false;
+}
+
+function decisionInvestigatedNewsOrg(fields) {
+  if (!fields) return false;
+  if (contactEmailIsNewsOrg(fields.poc_email)) return true;
+  var why = String(fields.why || "") + "\n" + String(fields.reason_or_ambiguity || "");
+  if (publisherIsTheScoredCompany(why)) return true;
+  var name = String(fields.company_name || "").trim();
+  var domain = normalizeHost(fields.domain);
+  if (isPublisherBrandNameWorker(name) || (domain && isPublisherHostWorker(domain))) return true;
+  return false;
+}
+
+function articleSubjectIdentity(ev) {
+  if (!ev) return null;
+  var pinned = knownArticleSubjectWorker(
+    ev.event_headline || "",
+    String(ev.event_summary || "") + " " + String(ev.source_url || "") + " " + String(ev.case_id || ""),
+    ev.source_url || ""
+  );
+  if (pinned && pinned.company_name && !isMediaOrVcCompanyName(pinned.company_name)) return pinned;
+  var extracted = extractCompanyFromExa(ev.event_headline || "", ev.event_summary || "", ev.source_url || "");
+  if (
+    extracted &&
+    extracted.company_name &&
+    !isMediaOrVcCompanyName(extracted.company_name) &&
+    !isPublisherBrandNameWorker(extracted.company_name)
+  ) {
+    if (!extracted.domain) extracted.domain = knownSubjectDomainWorker(extracted.company_name) || "";
+    return extracted;
+  }
+  var fromPath = companyFromNewsUrlPath(ev.source_url || "");
+  if (fromPath && !isMediaOrVcCompanyName(fromPath) && !isPublisherBrandNameWorker(fromPath)) {
+    return { company_name: fromPath, domain: knownSubjectDomainWorker(fromPath) || "" };
+  }
+  return null;
+}
+
+function dropNewsOrgContacts(extras, companyId) {
+  if (!extras || !companyId || !extras.contacts) return;
+  extras.contacts = extras.contacts.filter(function (c) {
+    if (!c || c.company_id !== companyId) return true;
+    return !contactEmailIsNewsOrg(c.email);
+  });
+}
+
+function pointEventAtSubject(ev, extras, subject) {
+  if (!ev || !subject || !subject.company_name) return false;
+  ev.company_name = subject.company_name;
+  var domain = subject.domain && looksLikeRealDomainWorker(subject.domain) ? normalizeHost(subject.domain) : "";
+  if (!domain || isPublisherHostWorker(domain)) domain = knownSubjectDomainWorker(subject.company_name) || "";
+  if (domain) ev.domain = domain;
+  ev.employee_count = null;
+  ev.revenue_estimate_mm = null;
+  var note = String(ev.entity_note || "");
+  if (note.indexOf("investigate_subject_not_publisher") === -1) {
+    ev.entity_note = (note ? note + "; " : "") + "investigate_subject_not_publisher";
+  }
+  ((extras && extras.profiles) || []).forEach(function (p) {
+    if (!p || p.company_id !== ev.company_id) return;
+    p.company_name = ev.company_name;
+    p.domain = ev.domain;
+    p.employee_count = null;
+    p.revenue_estimate_mm = null;
+  });
+  dropNewsOrgContacts(extras, ev.company_id);
+  return true;
+}
+
+function scrubNewsOrgDecision(fields, ev) {
+  if (!fields || !ev) return fields;
+  var who = ev.company_name || "The company in the article";
+  var site = ev.domain || "its own website";
+  fields.company_name = who;
+  fields.domain = ev.domain || "";
+  if (contactEmailIsNewsOrg(fields.poc_email)) {
+    fields.poc_name = "";
+    fields.poc_title = "";
+    fields.poc_email = "";
+  }
+  fields.status = "OK";
+  fields.table = "Table 3";
+  fields.decision = "Ambiguous";
+  fields.confidence_rating = "Ambiguous";
+  fields.fit_if_email_secured = "Ambiguous";
+  fields.fit_if_email_note = "Score " + who + " on its own site before outreach.";
+  fields.reason_or_ambiguity = "Looked up the company in the article, not the news site";
+  fields.override_available = "Yes";
+  fields.why =
+    who +
+    " is the company named in the article. The news site that reported the story was set aside and was not investigated. People, revenue, and sector have to come from " +
+    who +
+    " (" +
+    site +
+    "). Confirm those facts on the company site before outreach.";
+  return fields;
+}
+
+function reopenNewsOrgDecisions(extras, results) {
+  var n = 0;
+  if (!results || !extras) return 0;
+  (extras.events || []).forEach(function (ev) {
+    if (!ev || !ev.case_id) return;
+    var rec = results[ev.case_id];
+    if (!rec || !rec.lastFields || rec.clear === true) return;
+    if (isPartnerConfirmedNogoArchive(rec, extras, ev.case_id)) return;
+    if (rec.authorized_at) return;
+    var outcome = String(rec.humanOutcome || "");
+    if (/^approved$/i.test(outcome) || outcome === "In Sequence" || outcome === "Archived") return;
+    if (!decisionInvestigatedNewsOrg(rec.lastFields)) return;
+    var subject = articleSubjectIdentity(ev);
+    if (subject && subject.company_name && !isMediaOrVcCompanyName(subject.company_name)) {
+      pointEventAtSubject(ev, extras, subject);
+    } else {
+      dropNewsOrgContacts(extras, ev.company_id);
+      ev.employee_count = null;
+      ev.revenue_estimate_mm = null;
+    }
+    results[ev.case_id] = { clear: true, reason: "news_org_investigated" };
+    n += 1;
+  });
+  return n;
+}
+
 function resultIsPublisherHusk(rec) {
   if (!rec || !rec.lastFields) return false;
   var f = rec.lastFields;
   var name = String(f.company_name || "").trim();
   var host = normalizeHost(f.domain);
+  if (decisionInvestigatedNewsOrg(f)) return true;
   if (name && isPublisherBrandNameWorker(name)) return true;
   if (host && isPublisherHostWorker(host)) return true;
   var why = String(f.why || "") + "\n" + String(f.reason_or_ambiguity || "");
