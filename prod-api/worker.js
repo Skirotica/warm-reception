@@ -2522,7 +2522,7 @@ function thinIcpFact(value) {
   var text = String(value == null ? "" : value).trim();
   return (
     icpDetailBlank(text) ||
-    /^(yes|no|y|n|true|false|unknown|n\/a|na|not available)$/i.test(text)
+    /^(yes|no|y|n|true|false|unknown|n\/a|na|not available|not disclosed)$/i.test(text)
   );
 }
 
@@ -2998,7 +2998,14 @@ function AUTO_ANALYZE_SYSTEM_PROMPT() {
     "Entity management / registered-agent / corp-sec sold to finance-ops is NOT legaltech (Table 2 No-go for sector).",
     "KYC / AML / AI due diligence / OSINT / third-party risk / compliance research platforms (example: Xapien / xapien.com) are NOT legaltech even when banks or law firms buy them. Table 2 No-go for sector. Selling to legal buyers does not make the product practice-of-law software.",
     "PUBLISHER / VC FALSE POSITIVE: If company_name or domain is a news/magazine site OR a venture firm (Lux Capital / luxcapital.com, Sequoia, a16z, Index Ventures, Foundernews / foundernews.eu, Exame / exame.com, Startups.com.br, Latam Republic, Silicon Republic, etc.) and the article is about a portfolio company they covered or funded, do NOT score or Hunter the publisher/VC. Extract the company named in the story body (possessive funding lines count: \"Xapien's total equity funding\" → Xapien). Set company_name and domain to THAT company, then apply ICP. If your rationale says the row is a news publisher covering company X, retarget company_name and domain to X and never leave the publisher as the entity. If that company is clearly not legaltech, Table 2 No-go for sector (do not leave Ambiguous unknown-entity). Mega-round / unicorn size ($100M+ raise or ~$1B+ valuation) is Table 2 No-go / Out of ICP even if legaltech. If the startup website is unknown AND size is not clearly out of ICP AND sector is still plausibly legaltech: Table 3 Ambiguous asking for the real domain. Never REFUSED-ESCALATE solely to stop on the publisher/VC when the article subject is clear.",
-    "Partner-facing why: plain language, end with a next action. Name Exa.ai / Hunter.io when relevant. No .md file names in why.",
+    "COMPANY FACTS, required on every new company: company_fact_research is a web search run when the company is added. Use only those snippets, the company website, and the event source.",
+    "employee_count: write the cited headcount. If two sources disagree, write both and name each source. If no source states a number, the field is exactly not disclosed.",
+    "revenue_estimate: write a cited dollar figure. If the company did not publish it and a directory or model did, start with the figure and add the word estimate plus the directory name. If no dollar appears in the research, the field is exactly not disclosed. A funding round is not revenue.",
+    "sector: start with Yes legaltech or No legaltech, then what the company sells and who buys it. Legaltech means software for law firms or in-house legal teams. Brand protection, consumer claims services, managed IT, KYC, and entity management are No legaltech.",
+    "citations: one URL per fact, for headcount, revenue, and the legaltech call. Use only URLs present in company_fact_research, the company domain, or event_source_url. Do not invent a URL or a number.",
+    "Hunter email records are not an employee count. Never use the length of hunter_roster as headcount.",
+    "If employee_count or revenue_estimate is not disclosed, decision stays Ambiguous, not Go.",
+    "Partner-facing why: plain language, end with a next action. Name the source page for headcount, revenue, and the legaltech call. Name Exa.ai / Hunter.io when relevant. No .md file names in why.",
     "Drafts are filled later by the console. Leave draft fields out. Set persona_used when decision is Go.",
     "Do not return decision Go when revenue_estimate, vc_pe_backed, ta_headcount, or persona_used is blank. If one of those facts is unknown, use Table 3 Ambiguous and write unknown in that field. A known employee count outside 50-350 is not one of those blanks: keep Go or Ambiguous for the other rules, and add the headcount sentence."
   ].join("\n");
@@ -3378,7 +3385,7 @@ async function callAnthropicClassify(env, userMessage) {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-5",
-      max_tokens: 1800,
+      max_tokens: 2400,
       system: AUTO_ANALYZE_SYSTEM_PROMPT(),
       messages: [{ role: "user", content: userMessage }]
     })
@@ -3528,7 +3535,7 @@ function noteHunterForReviewer(fields, hunter, domain) {
       domain +
       " and found " +
       hunter.emails.length +
-      " people. This is a recommendation. You Approve, Edit, or Confirm No-go. Nothing is sent until you do.";
+      " email records. That count is not a headcount. This is a recommendation. You Approve, Edit, or Confirm No-go. Nothing is sent until you do.";
   } else if (domain) {
     extra =
       "Hunter.io checked " +
@@ -3543,6 +3550,96 @@ function noteHunterForReviewer(fields, hunter, domain) {
     fields.override_available = "Yes";
   }
   return fields;
+}
+
+function redactResearchText(text) {
+  return String(text || "")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 700);
+}
+
+/** Public pages on headcount, revenue, and what the company sells. No date window: about pages are often undated. */
+async function researchCompanyFacts(env, companyName, domain) {
+  var name = String(companyName || "").trim();
+  var out = { query: "", snippets: [] };
+  if (!name || !env || !env.EXA_API_KEY) return out;
+  var host = looksLikeRealDomainWorker(domain) ? normalizeHost(domain) : "";
+  var query = '"' + name.replace(/"/g, "") + '"';
+  if (host) query += " " + host;
+  query += " employees headcount revenue ARR legal technology";
+  out.query = query;
+  var upstream;
+  try {
+    upstream = await fetch("https://api.exa.ai/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + env.EXA_API_KEY,
+        "x-api-key": env.EXA_API_KEY
+      },
+      body: JSON.stringify({
+        query: query,
+        numResults: 5,
+        type: "auto",
+        contents: {
+          text: { maxCharacters: 900 },
+          highlights: { maxCharacters: 400 }
+        }
+      })
+    });
+  } catch (eFacts) {
+    return out;
+  }
+  var raw = await upstream.json().catch(function () {
+    return null;
+  });
+  if (!upstream.ok || !raw) return out;
+  (raw.results || []).forEach(function (hit) {
+    var url = String((hit && hit.url) || "").trim();
+    if (!url) return;
+    var bits = [];
+    if (hit.text) bits.push(String(hit.text));
+    if (hit.highlights && hit.highlights.length) bits.push(hit.highlights.join(" "));
+    var text = redactResearchText(bits.join(" "));
+    if (!text) return;
+    out.snippets.push({
+      url: url,
+      title: String((hit && hit.title) || "").replace(/\s+/g, " ").trim().slice(0, 160),
+      text: text
+    });
+  });
+  return out;
+}
+
+function decisionIsHardGate(fields) {
+  var reason = String((fields && fields.reason_or_ambiguity) || "");
+  return reason === "Existing client" || reason.indexOf("Mega funding") === 0;
+}
+
+/** Keep a client or mega-round decision, and still record the researched facts. */
+function attachResearchedFacts(det, fields) {
+  if (!det || !fields) return det;
+  var emp = String(fields.employee_count || "").trim();
+  var rev = String(fields.revenue_estimate || "").trim();
+  var sector = String(fields.sector || "").trim();
+  var cites = String(fields.citations || "").trim();
+  if (emp) det.employee_count = emp;
+  if (rev) det.revenue_estimate = rev;
+  if (sector) det.sector = sector;
+  if (cites) det.citations = cites;
+  var bits = [];
+  if (emp) bits.push("Employees: " + emp + ".");
+  if (rev) bits.push("Revenue: " + rev + ".");
+  if (sector) bits.push("Legaltech check: " + sector + ".");
+  if (cites) bits.push("Sources: " + cites + ".");
+  if (!bits.length) return det;
+  var extra = bits.join(" ");
+  if (String(det.why || "").indexOf("Legaltech check:") === -1) {
+    det.why = (String(det.why || "").trim() + " " + extra).trim();
+  }
+  return det;
 }
 
 async function analyzeOnePendingEvent(env, ev, extras, clients) {
@@ -3673,11 +3770,9 @@ async function analyzeOnePendingEvent(env, ev, extras, clients) {
   var hunter = hunterBlocked
     ? { ok: false, emails: [], detail: hunterDomain ? "hunter_skipped_publisher" : "hunter_skipped_no_domain" }
     : await hunterRosterForDomain(env, hunterDomain);
+  var facts = await researchCompanyFacts(env, ev.company_name, ev.domain);
   var det = deterministicClassify(ev, profile, clients);
-  if (det) {
-    noteHunterForReviewer(det, hunter, hunterDomain);
-    return { ok: true, fields: det, hunterStatus: hunter.detail || "", mode: "deterministic" };
-  }
+  var hardGate = decisionIsHardGate(det);
 
   var payload = {
     candidate_event: ev,
@@ -3685,25 +3780,40 @@ async function analyzeOnePendingEvent(env, ev, extras, clients) {
     company_contacts: contacts,
     hunter_roster: hunter.emails || [],
     hunter_status: hunter.detail,
+    company_fact_research: facts.snippets,
+    fact_search: facts.query,
     icp_rules:
-      "legaltech only; preferred employees 50-350 but headcount outside that band is a note, not a No-go; revenue 15-50mm preferred; vc/pe yes; TA 0-2; missing info => Ambiguous not No-go"
+      "legaltech only; preferred employees 50-350 but headcount outside that band is a note, not a No-go; revenue 15-50mm preferred; vc/pe yes; TA 0-2; missing info => Ambiguous not No-go. Fill employee_count, revenue_estimate, and the legaltech call from company_fact_research and cite each URL."
   };
   var userMessage = [
     "Classify this outreach candidate. Return only labeled OUTPUT fields.",
+    "company_fact_research was gathered when this company was added. Fill employee_count, revenue_estimate, and sector from it. Cite each URL in citations and in why. If a fact is absent, write not disclosed. Do not invent a number, a dollar, or a URL. Hunter roster length is not headcount.",
     "If the record still looks like a news publisher covering another startup, retarget company_name/domain to that startup or Table 3 asking for its website. Never Hunter the publisher.",
     "If hunter_roster is empty / sparse and company+event would otherwise qualify: Table 3 Ambiguous, decision Ambiguous, status OK, fit_if_email_secured Would-go. Do not REFUSED-ESCALATE or Table 2 No-go for email miss alone.",
-    "Always finish the research. If the website is missing, say so and still recommend Go, No-go, or Ambiguous from the article. Never invent a website, a domain, or an email. This result is a recommendation. The reviewer Approves, Edits, or Confirms No-go. Nothing is sent from this step.",
+    "Always finish the research. If the website is missing, say so and still recommend Go, No-go, or Ambiguous from the article and the fact search. Never invent a website, a domain, or an email. This result is a recommendation. The reviewer Approves, Edits, or Confirms No-go. Nothing is sent from this step.",
     "CASE CONTEXT (JSON):",
     JSON.stringify(payload, null, 2)
   ].join("\n");
   var llm = await callAnthropicClassify(env, userMessage);
-  if (!llm.ok) return { ok: false, detail: llm.detail, mode: "llm" };
+  if (!llm.ok) {
+    if (det) {
+      noteHunterForReviewer(det, hunter, hunterDomain);
+      return { ok: true, fields: det, hunterStatus: hunter.detail || "", mode: "deterministic" };
+    }
+    return { ok: false, detail: llm.detail, mode: "llm" };
+  }
   if (!llm.fields.company_name) llm.fields.company_name = ev.company_name;
   if (!llm.fields.domain) llm.fields.domain = ev.domain;
   if (!llm.fields.event_date) llm.fields.event_date = ev.event_date || "";
   if (!llm.fields.event_source_url) llm.fields.event_source_url = ev.source_url || "";
   llm.fields = coerceSparseHunterEmailFields(llm.fields, hunter);
   applyPublisherRationaleRetarget(ev, llm.fields);
+  if (hardGate) {
+    attachResearchedFacts(det, llm.fields);
+    noteHunterForReviewer(det, hunter, hunterDomain);
+    return { ok: true, fields: det, hunterStatus: hunter.detail || "", mode: "deterministic" };
+  }
+  noteHunterForReviewer(llm.fields, hunter, hunterDomain);
   return {
     ok: true,
     fields: llm.fields,
@@ -6625,7 +6735,7 @@ export default {
           store: env.DB ? "d1" : "missing",
           auto_analyze: "offline-on-ingest+cron+/v1/auto-analyze-only",
           exa_ingest: "cron 9am+8pm GMT-4",
-          story_extract: "new-company-cap-80",
+          story_extract: "company-facts-on-add",
           sequence_dispatch: "hourly :15 + after ingest; dry-run until Graph+unlock",
           graph_mail: graphSecretsReady(env) ? "configured" : "missing",
           live_send_unlock: liveSendUnlocked(env) ? "true" : "false",
