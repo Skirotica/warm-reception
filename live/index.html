@@ -11920,7 +11920,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         };
       }
       var sector = base.sector;
-      var legaltech = String(sector || "").toLowerCase() === "legaltech";
+      var sectorText = String(sector || "").toLowerCase();
+      var legaltech = sectorText === "legaltech" || sectorText.indexOf("yes legaltech") === 0;
       return {
         employee_count: base.employee_count,
         revenue_estimate_mm: base.revenue_estimate_mm,
@@ -12605,12 +12606,12 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     }
 
     function goIcpFactsMissing(fields) {
-      var keys = ["employee_count", "revenue_estimate", "vc_pe_backed", "ta_headcount", "persona_used"];
+      // TA headcount is a note. A blank value must not stop a partner from moving a case to Go.
+      var keys = ["employee_count", "revenue_estimate", "vc_pe_backed", "persona_used"];
       var labels = {
         employee_count: "employees",
         revenue_estimate: "revenue estimate",
         vc_pe_backed: "VC/PE backed",
-        ta_headcount: "TA headcount",
         persona_used: "persona"
       };
       var missing = [];
@@ -15348,20 +15349,9 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         }
       }
 
-      // Partner Move to Go on a known out-of-ICP No-go must not re-run the agent
-      // (that only re-applies the same No-go). Require an override POC email instead.
-      if (companyClearlyOutOfIcpSector(ev) || companyClearlyOutOfIcpSize(ev)) {
-        report(
-          "This case was No-go for ICP (size or sector). Move to Go will not re-run that refusal. Open Show advanced override, set Decision to Go, enter a POC email (your safe test inbox is fine), then click Save override.",
-          true
-        );
-        var toggleOvr = gateEl && gateEl.querySelector(".btn-toggle-override");
-        var panelOvr = gateEl && gateEl.querySelector(".override-panel");
-        if (toggleOvr && panelOvr && panelOvr.hidden) {
-          try { toggleOvr.click(); } catch (eToggle) { /* ignore */ }
-        }
-        return { ok: false, detail: "needs_override_poc_for_icp_nogo" };
-      }
+      // Move to Go is the partner's decision. Do not stop for a blank talent count,
+      // revenue, or a prior out-of-ICP score. Look the company up and ask Hunter
+      // for a person. The partner does not type those facts.
 
       // If Hunter already scored a POC on this case, promote immediately.
       // Partners should not re-do research the agent already finished.
@@ -15495,7 +15485,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       report(
         "Hunter.io ran on " +
           ev.domain +
-          " and still found no verified qualified POC email. Add one email under Advanced override, then click Move to Go again. Nothing was sent.",
+          " and did not return a qualified person. Click Move to Go again to search once more. Nothing was sent.",
         true
       );
       appendRunLog({
@@ -15884,13 +15874,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       probe.poc_title = title;
       probe.poc_name = (first + " " + last).trim();
       fillIcpDetailFields(probe, ev, byCompanyId(COMPANY_PROFILES, ev.company_id));
-      var missingFacts = goIcpFactsMissing(probe);
-      if (missingFacts.length) {
-        return {
-          ok: false,
-          detail: "This stays out of Go until these qualifying facts are filled: " + missingFacts.join(", ") + "."
-        };
-      }
       var contactId = "CT-OVERRIDE-" + String(ev.company_id || "CO").replace(/[^A-Za-z0-9]/g, "");
       var contact = {
         contact_id: contactId,
@@ -16607,7 +16590,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         if (vcEl) vcEl.value = String(vcVal).toLowerCase() === "yes" ? "yes" : (String(vcVal).toLowerCase() === "no" ? "no" : "");
         var taEl = gate.querySelector(".ovr-ta");
         var taVal = savedOverride.ta_headcount != null ? savedOverride.ta_headcount : nums.ta_headcount;
-        if (taEl) taEl.value = taVal != null && taVal !== "" ? taVal : "";
+        var taNum = parseOptionalNumber(taVal);
+        if (taEl) taEl.value = taNum != null ? String(taNum) : "";
         var decEl = gate.querySelector(".ovr-decision");
         if (decEl) decEl.value = savedOverride.decision || normalizeOverrideDecision(fields);
         var pocNameEl = gate.querySelector(".ovr-poc-name");
@@ -18083,7 +18067,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       var hunterLive = null;
       var exaIcpLive = null;
       var seedContact = contactsForCompany(ev.company_id)[0] || null;
-      var skipHunterForIcp = companyClearlyOutOfIcpSize(ev) || companyClearlyOutOfIcpSector(ev);
+      var skipHunterForIcp = !fromMoveToGo && (companyClearlyOutOfIcpSize(ev) || companyClearlyOutOfIcpSector(ev));
       // Privacy review: Hunter stays off on public GitHub Pages.
       // A private host (Cloudflare Pages + Access) may call Hunter once HUNTER_ENABLED is true on the Worker.
       // Chad accepted extra legal load for non-US companies: no Hunter hard-skip; show a notice instead.
@@ -18096,7 +18080,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         if (metaEl && !batch) metaEl.textContent = "Exa ICP lookup " + (displayCompanyName(ev.company_name) || ev.company_name || "");
         resultEl.innerHTML = '<span class="thinking">Exa.ai company size enrichment…</span>';
         exaIcpLive = await enrichIcpFieldsViaExa(ev);
-        skipHunterForIcp = companyClearlyOutOfIcpSize(ev) || companyClearlyOutOfIcpSector(ev);
+        skipHunterForIcp = !fromMoveToGo && (companyClearlyOutOfIcpSize(ev) || companyClearlyOutOfIcpSector(ev));
         shouldEnrichHunter =
           !IS_PUBLIC_GITHUB_LIVE &&
           !skipHunterForIcp &&
@@ -18253,7 +18237,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         hunterLive.status === "lookup_failed" ||
         hunterLive.status === "skipped_public_pages"
       );
-      if (skipHunterForIcp || companyClearlyOutOfIcpSize(ev)) {
+      if (!fromMoveToGo && (skipHunterForIcp || companyClearlyOutOfIcpSize(ev))) {
         emailGuidance =
           "This company fails classic ICP size (employees must be 50–350) and is not on the pre-qualified whitelist. " +
           "Table 2 No-go / Out of ICP. decision No-go or Out of ICP. fit_if_email_secured: Still-blocked. " +
