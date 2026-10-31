@@ -189,12 +189,12 @@ var EXA_SEARCH_COUNT = 100;
 var EXA_MAX_NEW_PER_INGEST = 80;
 var EXA_MAX_COMPANIES_PER_STORY = 6;
 var EXA_PUBLISHER_HOST_RE =
-  /(law\.com|tech\.eu|prnewswire|linkedin|artificiallawyer|techfundingnews|pulse2|reuters|bloomberg|techcrunch|venturebeat|forbes|businesswire|globenewswire|yahoo\.com|medium\.com|substack\.com|latamlist\.com|latamrepublic\.com|thesaasnews\.com|finsmes\.com|crunchbase\.com|pitchbook\.com|axios\.com|sifted\.eu|tech\.eu|geekwire\.com|theregister\.com|zdnet\.com|wired\.com|theverge\.com|thenextweb\.com|tnw\.to|news\.yahoo|google\.com\/news|msn\.com|foundernews\.eu|foundernews|siliconrepublic\.com|siliconrepublic|globallegalpost\.com|globallegalpost|legaltech\.news|law360\.com|abovethelaw\.com|artificiallawyer\.com|techfundingnews\.com|startupmag\.co\.uk|startupmag\.com|startupmag|thelogic\.co|exame\.com|startups\.com\.br|braziljournal\.com|neofeed\.com\.br|contxto\.com|infomoney\.com\.br|valor\.globo\.com|valor\.com\.br|bloomberglinea\.com|startupi\.com\.br|startse\.com|baguete\.com\.br|estadao\.com\.br|folha\.uol\.com\.br|uol\.com\.br|globo\.com|istoedinheiro\.com\.br|moneyreport\.com\.br)/i;
+  /(law\.com|tech\.eu|prnewswire|linkedin|artificiallawyer|techfundingnews|pulse2|reuters|bloomberg|techcrunch|venturebeat|forbes|businesswire|globenewswire|yahoo\.com|medium\.com|substack\.com|latamlist\.com|latamrepublic\.com|thesaasnews\.com|finsmes\.com|crunchbase\.com|pitchbook\.com|axios\.com|sifted\.eu|tech\.eu|geekwire\.com|theregister\.com|zdnet\.com|wired\.com|theverge\.com|thenextweb\.com|tnw\.to|news\.yahoo|google\.com\/news|msn\.com|foundernews\.eu|foundernews|siliconrepublic\.com|siliconrepublic|globallegalpost\.com|globallegalpost|legaltech\.news|legaltechcircle\.com|stiri-juridice\.ro|law360\.com|abovethelaw\.com|artificiallawyer\.com|techfundingnews\.com|startupmag\.co\.uk|startupmag\.com|startupmag|thelogic\.co|exame\.com|startups\.com\.br|braziljournal\.com|neofeed\.com\.br|contxto\.com|infomoney\.com\.br|valor\.globo\.com|valor\.com\.br|bloomberglinea\.com|startupi\.com\.br|startse\.com|baguete\.com\.br|estadao\.com\.br|folha\.uol\.com\.br|uol\.com\.br|globo\.com|istoedinheiro\.com\.br|moneyreport\.com\.br)/i;
 /** VC / PE firm sites — never the outreach target when the article is about a portfolio company. */
 var EXA_VC_HOST_RE =
   /(luxcapital\.com|a16z\.com|andreessen\.com|sequoiacap\.com|indexventures\.com|greylock\.com|accel\.com|benchmark\.com|lightspeedventure|bessemer\.com|khoslaventures\.com|firstround\.com|initialized\.com|ycombinator\.com|softbank\.com|generalcatalyst\.com|insightpartners\.com|baincapital|sequoia|andreessenhorowitz)/i;
 var EXA_MEDIA_OR_VC_NAME_RE =
-  /^(latamlist|latam\s*republic|latam\s*list|the\s*saas\s*news|saas\s*news|the\s*next\s*web|thenextweb|tnw|the\s*round|techcrunch|venturebeat|forbes|reuters|bloomberg|pr\s*newswire|business\s*wire|finsmes|crunchbase|pitchbook|axios|sifted|medium|substack|geekwire|wired|verge|yahoo|msn|foundernews|founder\s*news|silicon\s*republic|siliconrepublic|global\s*legal\s*post|globallegalpost|startupmag|startup\s*mag|thelogic|the\s*logic|exame|startups|brazil\s*journal|braziljournal|neofeed|contxto|infomoney|info\s*money|bloomberg\s*linea|bloomberglinea|startupi|startse|baguete|istoe\s*dinheiro|epoca\s*negocios|list|news|republic|ventures|capital|partners|fund|media|magazine|blog|company|startup|platform|publisher|press)$/i;
+  /^(latamlist|latam\s*republic|latam\s*list|the\s*saas\s*news|saas\s*news|the\s*next\s*web|thenextweb|tnw|the\s*round|techcrunch|venturebeat|forbes|reuters|bloomberg|pr\s*newswire|business\s*wire|finsmes|crunchbase|pitchbook|axios|sifted|medium|substack|geekwire|wired|verge|yahoo|msn|foundernews|founder\s*news|silicon\s*republic|siliconrepublic|global\s*legal\s*post|globallegalpost|startupmag|startup\s*mag|thelogic|the\s*logic|exame|startups|brazil\s*journal|braziljournal|neofeed|contxto|infomoney|info\s*money|bloomberg\s*linea|bloomberglinea|startupi|startse|baguete|istoe\s*dinheiro|epoca\s*negocios|legal\s*tech\s*circle|legaltechcircle|stiri[\s-]*juridice|list|news|republic|ventures|capital|partners|fund|media|magazine|blog|company|startup|platform|publisher|press)$/i;
 /** Customer / tool domains often named in PR copy. Never treat as the startup website. */
 var EXA_CUSTOMER_PLATFORM_HOST_RE =
   /(^|\.)(monday\.com|salesforce\.com|hubspot\.com|slack\.com|notion\.so|asana\.com|atlassian\.com|jira\.com|zoom\.us|microsoft\.com|office\.com|google\.com|gmail\.com|outlook\.com|linkedin\.com|facebook\.com|twitter\.com|x\.com|apple\.com|amazon\.com|aws\.amazon\.com|dropbox\.com|box\.com|zendesk\.com|intercom\.com|stripe\.com|shopify\.com|docusign\.com|adobe\.com|oracle\.com|sap\.com|workday\.com|servicenow\.com)$/i;
@@ -4433,6 +4433,7 @@ function companyFromNewsUrlPath(url) {
       return "";
     }
     if (isMediaOrVcCompanyName(slug)) return "";
+    if (/raisers?|amounts?|rounds?|categor/i.test(slug)) return "";
     return titleCaseTokenWorker(slug);
   } catch (e) {
     return "";
@@ -4840,21 +4841,51 @@ var STORY_NAME_STOP = {
   stage: 1, ownership: 1, clear: 1, articles: 1, article: 1, running: 1, timeline: 1,
   lab: 1, launch: 1, launches: 1, unveiled: 1, skills: 1, developers: 1, provide: 1,
   access: 1, markets: 1, initial: 1, complex: 1, open: 1, source: 1, build: 1,
-  building: 1, europe: 1, european: 1, exclusive: 1, he: 1, she: 1, firm: 1, they: 1
+  building: 1, europe: 1, european: 1, exclusive: 1, he: 1, she: 1, firm: 1, they: 1,
+  though: 1, however: 1, meanwhile: 1, ultimately: 1, kinds: 1, companies: 1,
+  amounts: 1, rounds: 1, fundraising: 1, category: 1, generative: 1, litigation: 1,
+  ediscovery: 1, discovery: 1, australia: 1, clearest: 1, drop: 1, usd: 1, us: 1,
+  it: 1, right: 1, way: 1, stirs: 1, juridice: 1, canada: 1, germany: 1, france: 1,
+  brazil: 1, asia: 1, india: 1, china: 1, japan: 1, mexico: 1, spain: 1, italy: 1,
+  sweden: 1, norway: 1, denmark: 1, finland: 1, ireland: 1, poland: 1, israel: 1,
+  singapore: 1, korea: 1, africa: 1
 };
+
+var NAME_EDGE_NOISE = {
+  the: 1, a: 1, an: 1, and: 1, or: 1, but: 1, its: 1, their: 1, though: 1, however: 1,
+  meanwhile: 1, notably: 1, additionally: 1, furthermore: 1, moreover: 1, instead: 1,
+  indeed: 1, yet: 1, so: 1, what: 1, who: 1, why: 1, how: 1, which: 1, when: 1, where: 1,
+  after: 1, before: 1, without: 1, outside: 1, beyond: 1, including: 1, excluding: 1,
+  against: 1, there: 1, here: 1, just: 1, only: 1, those: 1, these: 1, also: 1, then: 1,
+  still: 1, now: 1, well: 1, clearly: 1, actually: 1, finally: 1, simply: 1, ultimately: 1,
+  recently: 1, officially: 1, reportedly: 1, currently: 1, previously: 1, already: 1,
+  later: 1, earlier: 1, again: 1
+};
+
+function stripNameEdges(raw) {
+  var words = String(raw || "").split(/\s+/).filter(Boolean);
+  function key(w) {
+    return String(w || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+  while (words.length > 1 && NAME_EDGE_NOISE[key(words[0])]) words.shift();
+  while (words.length > 1 && NAME_EDGE_NOISE[key(words[words.length - 1])]) words.pop();
+  return words.join(" ");
+}
 
 function storyCompanyNameOk(name, allowLower) {
   var raw = String(name || "")
     .replace(/[|]+/g, " ")
+    .replace(/^.*[.!?]["'”]?\s+(?=[A-Z])/, "")
     .replace(/[,.;:]+$/g, "")
     .replace(/^[,.;:]+/g, "")
     .trim();
   raw = raw.replace(/[.]/g, " ").replace(/\s+/g, " ").trim();
-  raw = raw.replace(/^(?:the|a|an|and|or|its)\s+/i, "").trim();
+  raw = stripNameEdges(raw);
   var leadNoise = /^(?:provider|technology|services|service|research|native|mass|action|litigation|firm|group|holdings|legaltech|legal|software)\s+/i;
   while (leadNoise.test(raw)) raw = raw.replace(leadNoise, "").trim();
   raw = raw.replace(/\s+(?:as|have|has|had|at|of|for|with|from|to|in|on|by)$/i, "").trim();
   raw = String(raw.split(/\s+(?:as|have|has|had|at|of|for|with|from|to|in|on|by)\s+/i)[0] || "").trim();
+  raw = stripNameEdges(raw);
   raw = raw.replace(/\s+(Inc\.?|LLC|Ltd\.?|Corp\.?|GmbH|SAS)$/i, "").trim();
   raw = raw.replace(/^(?:Legaltech|Legal AI|Startup|Company|Platform)\s+/i, "").trim();
   if (!raw) return "";
@@ -4907,6 +4938,21 @@ function domainBesideCompanyName(name, blob) {
   return domain;
 }
 
+function storyIsRoundup(title, text) {
+  var blob = String(title || "") + "\n" + String(text || "");
+  var hits = blob.match(/\b(?:raised|raises|raising|announced|announces|secured|secures)\b/gi) || [];
+  if (hits.length >= 4) return true;
+  return /\broundup\b|\bfunding tracker\b|\bby category\b|\bby the numbers\b|\brepeat raisers\b/i.test(blob);
+}
+
+function nameAppearsInTitle(name, title) {
+  var n = String(name || "")
+    .toLowerCase()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (n.length < 2) return false;
+  return new RegExp("\\b" + n + "\\b", "i").test(String(title || ""));
+}
+
 function storyCompanyInScope(name, title, text) {
   var blob = String(title || "") + ". " + String(text || "");
   var needle = String(name || "").toLowerCase();
@@ -4928,6 +4974,7 @@ function storyCompanyInScope(name, title, text) {
     windowText + "\n" + String(title || "")
   );
   if (!trigger) return false;
+  if (!storyIsRoundup(title, text) && !nameAppearsInTitle(name, title)) return false;
   return !!(storyLegal || localLegal);
 }
 
@@ -5058,6 +5105,7 @@ function extractCompaniesFromStory(title, text, url) {
   }
   var patterns = [
     /\b([A-Za-z][A-Za-z0-9&.-]{1,32}(?:\s+[A-Za-z0-9][A-Za-z0-9&.-]{0,32}){0,2})\s+(?:has\s+|have\s+)?(?:raises|raised|announces|announced|secures|secured|closes|closed|hires|hired|names|named|appoints|appointed|lands|landed|acquires|acquired|unveiled|released)\b/gi,
+    /\b([A-Z][A-Za-z0-9&.-]{1,32}(?:\s+[A-Z][A-Za-z0-9&.-]{1,32}){0,2})\s+\$\s?\d/g,
     /\b(?:joined|joins|joining)\s+([A-Za-z][A-Za-z0-9&.-]{2,40})\s+as\b/gi,
     /\bchez\s+([A-Za-z][A-Za-z0-9&.-]{2,40})\b/gi,
     /\b(?:CRO|CEO|CFO|COO|VP Sales|Head of Sales|Chief Revenue Officer)\s+(?:of|at)\s+([A-Za-z][A-Za-z0-9&.-]{2,40})\b/gi,
