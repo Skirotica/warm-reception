@@ -2003,20 +2003,24 @@ async function storeSnapshot(env, cors) {
       "SELECT created_at, case_id, company_name, agent_decision, human_action, detail FROM audit ORDER BY id DESC LIMIT 200"
     ).all();
     const rows = (audit && audit.results) || [];
+    var extras = (await kvGet(env, "extras")) || {
+      events: [],
+      profiles: [],
+      contacts: [],
+      statuses: [],
+      employment: []
+    };
+    var results = (await kvGet(env, "results")) || {};
+    if (dropOutreachTestExtras(extras)) await kvPut(env, "extras", extras);
+    if (dropOutreachTestResults(results)) await kvPut(env, "results", results);
     return jsonResponse(
       {
         ok: true,
         audit: rows.slice().reverse(),
-        extras: (await kvGet(env, "extras")) || {
-          events: [],
-          profiles: [],
-          contacts: [],
-          statuses: [],
-          employment: []
-        },
+        extras: extras,
         ingest_status: (await kvGet(env, "ingest_status")) || null,
         voice: (await kvGet(env, "voice")) || null,
-        results: (await kvGet(env, "results")) || {},
+        results: results,
         clients: (await kvGet(env, "clients")) || [],
         dnc: (await kvGet(env, "dnc")) || [],
         dispatch_status: (await kvGet(env, "dispatch_status")) || null,
@@ -2193,8 +2197,10 @@ async function storePutBlob(request, env, cors, key) {
       body = mergeResultsBlobs(existingResults, body);
     }
     if (key === "extras") {
-      var existingExtras = (await kvGet(env, "extras")) || {};
-      body = keepSafeOutreachTestExtras(existingExtras, body);
+      dropOutreachTestExtras(body);
+    }
+    if (key === "results") {
+      dropOutreachTestResults(body);
     }
     await kvPut(env, key, body);
     return jsonResponse({ ok: true, key: key }, 200, cors);
@@ -6108,47 +6114,69 @@ function isSafeOutreachTestSend(caseId, fields) {
   return email === "cryandean@gmail.com";
 }
 
-function extrasHasCase(extras, caseId) {
-  var events = extras && Array.isArray(extras.events) ? extras.events : [];
-  for (var i = 0; i < events.length; i++) {
-    if (events[i] && events[i].case_id === caseId) return true;
-  }
-  return false;
+function isOutreachTestToken(value) {
+  var s = String(value || "");
+  return (
+    s.indexOf("CE-LX-OUTREACHTEST") === 0 ||
+    s.indexOf("CO-LX-OUTREACHTEST") === 0 ||
+    s.indexOf("CT-LX-OUTREACHTEST") === 0
+  );
 }
 
-function copyMissingById(incomingList, existingList, idKey) {
-  var out = Array.isArray(incomingList) ? incomingList.slice() : [];
-  var seen = {};
-  out.forEach(function (row) {
-    if (row && row[idKey]) seen[row[idKey]] = true;
+function isOutreachTestName(value) {
+  return String(value || "").trim().toLowerCase() === "outreachtest";
+}
+
+function dropOutreachTestExtras(extras) {
+  if (!extras || typeof extras !== "object") return false;
+  var changed = false;
+  function dropList(key, pred) {
+    if (!Array.isArray(extras[key])) return;
+    var next = extras[key].filter(function (row) { return !pred(row); });
+    if (next.length !== extras[key].length) {
+      extras[key] = next;
+      changed = true;
+    }
+  }
+  dropList("events", function (ev) {
+    return isOutreachTestToken(ev && ev.case_id) || isOutreachTestToken(ev && ev.company_id) || isOutreachTestName(ev && ev.company_name);
   });
-  (Array.isArray(existingList) ? existingList : []).forEach(function (row) {
-    if (!row || !row[idKey] || seen[row[idKey]]) return;
-    var caseId = String(row.case_id || "");
-    var companyId = String(row.company_id || "");
-    var contactId = String(row.contact_id || "");
-    if (
-      caseId.indexOf("CE-LX-OUTREACHTEST") === 0 ||
-      companyId.indexOf("CO-LX-OUTREACHTEST") === 0 ||
-      contactId.indexOf("CT-LX-OUTREACHTEST") === 0
-    ) {
-      out.push(row);
+  dropList("profiles", function (row) {
+    return isOutreachTestToken(row && row.company_id) || isOutreachTestName(row && row.company_name);
+  });
+  dropList("contacts", function (row) {
+    return isOutreachTestToken(row && row.company_id) || isOutreachTestToken(row && row.contact_id);
+  });
+  dropList("statuses", function (row) {
+    return isOutreachTestToken(row && row.company_id) || isOutreachTestName(row && row.company_name);
+  });
+  dropList("employment", function (row) {
+    return isOutreachTestToken(row && row.company_id) || isOutreachTestToken(row && row.contact_id);
+  });
+  ["attached_sources", "overrides", "sequence_stops", "archived_cases"].forEach(function (mapKey) {
+    var map = extras[mapKey];
+    if (!map || typeof map !== "object") return;
+    Object.keys(map).forEach(function (k) {
+      if (!isOutreachTestToken(k)) return;
+      delete map[k];
+      changed = true;
+    });
+  });
+  return changed;
+}
+
+function dropOutreachTestResults(results) {
+  if (!results || typeof results !== "object") return false;
+  var changed = false;
+  Object.keys(results).forEach(function (caseId) {
+    var rec = results[caseId];
+    var name = rec && rec.lastFields && rec.lastFields.company_name;
+    if (isOutreachTestToken(caseId) || isOutreachTestName(name)) {
+      delete results[caseId];
+      changed = true;
     }
   });
-  return out;
-}
-
-/** A stale browser save must not erase the safe-inbox test company. */
-function keepSafeOutreachTestExtras(existing, incoming) {
-  var cur = existing && typeof existing === "object" ? existing : {};
-  var next = incoming && typeof incoming === "object" ? incoming : {};
-  if (!extrasHasCase(cur, "CE-LX-OUTREACHTEST-safemail")) return next;
-  if (extrasHasCase(next, "CE-LX-OUTREACHTEST-safemail")) return next;
-  next.events = copyMissingById(next.events, cur.events, "case_id");
-  next.profiles = copyMissingById(next.profiles, cur.profiles, "company_id");
-  next.contacts = copyMissingById(next.contacts, cur.contacts, "contact_id");
-  next.employment = copyMissingById(next.employment, cur.employment, "contact_id");
-  return next;
+  return changed;
 }
 
 function isAuthorizedSandboxCase(rec) {

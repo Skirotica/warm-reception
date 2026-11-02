@@ -3647,7 +3647,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         var raw = localStorage.getItem(LIVE_EXTRAS_STORAGE);
         if (!raw) return emptyLiveExtras();
         var parsed = JSON.parse(raw);
-        return {
+        return dropOutreachTestExtras({
           events: parsed.events || [],
           profiles: parsed.profiles || [],
           contacts: parsed.contacts || [],
@@ -3657,15 +3657,68 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           overrides: parsed.overrides && typeof parsed.overrides === "object" ? parsed.overrides : {},
           sequence_stops: parsed.sequence_stops && typeof parsed.sequence_stops === "object" ? parsed.sequence_stops : {},
           archived_cases: parsed.archived_cases && typeof parsed.archived_cases === "object" ? parsed.archived_cases : {}
-        };
+        });
       } catch (e) {
         return emptyLiveExtras();
       }
     }
 
+    function isOutreachTestToken(value) {
+      var s = String(value || "");
+      return (
+        s.indexOf("CE-LX-OUTREACHTEST") === 0 ||
+        s.indexOf("CO-LX-OUTREACHTEST") === 0 ||
+        s.indexOf("CT-LX-OUTREACHTEST") === 0
+      );
+    }
+
+    function isOutreachTestName(value) {
+      return String(value || "").trim().toLowerCase() === "outreachtest";
+    }
+
+    function dropOutreachTestExtras(extras) {
+      if (!extras || typeof extras !== "object") return extras;
+      function keep(row, pred) { return !pred(row); }
+      extras.events = (extras.events || []).filter(function (ev) {
+        return keep(ev, function (row) {
+          return isOutreachTestToken(row && row.case_id) || isOutreachTestToken(row && row.company_id) || isOutreachTestName(row && row.company_name);
+        });
+      });
+      extras.profiles = (extras.profiles || []).filter(function (row) {
+        return !isOutreachTestToken(row && row.company_id) && !isOutreachTestName(row && row.company_name);
+      });
+      extras.contacts = (extras.contacts || []).filter(function (row) {
+        return !isOutreachTestToken(row && row.company_id) && !isOutreachTestToken(row && row.contact_id);
+      });
+      extras.statuses = (extras.statuses || []).filter(function (row) {
+        return !isOutreachTestToken(row && row.company_id) && !isOutreachTestName(row && row.company_name);
+      });
+      extras.employment = (extras.employment || []).filter(function (row) {
+        return !isOutreachTestToken(row && row.company_id) && !isOutreachTestToken(row && row.contact_id);
+      });
+      ["attached_sources", "overrides", "sequence_stops", "archived_cases"].forEach(function (mapKey) {
+        var map = extras[mapKey];
+        if (!map || typeof map !== "object") return;
+        Object.keys(map).forEach(function (k) {
+          if (isOutreachTestToken(k)) delete map[k];
+        });
+      });
+      return extras;
+    }
+
+    function dropOutreachTestResults(results) {
+      if (!results || typeof results !== "object") return results;
+      Object.keys(results).forEach(function (caseId) {
+        var rec = results[caseId];
+        var name = rec && rec.lastFields && rec.lastFields.company_name;
+        if (isOutreachTestToken(caseId) || isOutreachTestName(name)) delete results[caseId];
+      });
+      return results;
+    }
+
     function saveLiveExtras(bundle) {
       if (IS_PUBLIC_GITHUB_LIVE) return Promise.resolve(null);
-      var payload = bundle || emptyLiveExtras();
+      var payload = dropOutreachTestExtras(bundle || emptyLiveExtras());
       if (!payload.overrides) payload.overrides = {};
       if (!payload.sequence_stops) payload.sequence_stops = {};
       if (!payload.archived_cases) payload.archived_cases = {};
@@ -17333,7 +17386,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         if (next && Object.prototype.hasOwnProperty.call(next, caseId)) return;
         if (resultIsPublisherHuskLocal(merged[caseId])) delete merged[caseId];
       });
-      return merged;
+      return dropOutreachTestResults(merged);
     }
 
     /** Stamp Exa rows so domain confirm never blocks automatic scoring. */
@@ -18949,6 +19002,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         return;
       }
       var data = packed.data;
+      if (data.extras) dropOutreachTestExtras(data.extras);
+      if (data.results) dropOutreachTestResults(data.results);
       // Always merge results first so login never clears classified memory.
       if (data.results && typeof data.results === "object") {
         STORE_RESULTS = mergeStoreResults(data.results);
