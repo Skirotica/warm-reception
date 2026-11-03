@@ -4185,6 +4185,39 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     var COMPANY_NAME_STOP =
       /^(as|at|to|from|for|with|and|or|of|our|new|the|a|an|its|their|his|her|this|that|us|uk|eu|we|join|joins|joined|joining|names|hires|appoints|announces|raises|raised|after|before|following|during|while|via|over|into|about|welcome|welcomes|ceo|cro|cfo|coo|vp|head|president|chief|officer|team|leadership|message|letter)$/i;
 
+    var NON_LEGALTECH_BRAND_RE =
+      /^(twilio|stripe|salesforce|slack|zoom|microsoft|google|amazon|meta|facebook|apple|oracle|sap|adobe|hubspot|shopify|atlassian|notion|intercom|zendesk|dropbox|box|openai|nvidia|cisco|ibm|servicenow|workday|snowflake|datadog|cloudflare|okta|sendgrid|mailchimp|plaid|brex|ramp|rippling|gusto|deel|linkedin|crunchbase|pitchbook|twitter|docusign|intuit|quickbooks|xero|netsuite|github|gitlab|figma|canva|airtable|monday|asana|jira|zoominfo)$/i;
+
+    var PAGE_HEADER_NAME_RE =
+      /^(related(?:\s+(?:stories|articles|news))?|read more|share(?:\s+this)?|subscribe|newsletter|sign in|log in|sign up|about(?:\s+us)?|contact(?:\s+us)?|privacy(?:\s+policy)?|terms(?:\s+of(?:\s+use|service))?|cookies?|menu|home|search|follow(?:\s+us)?|latest(?:\s+news)?|trending|popular|more stories|continue reading|table of contents|key takeaways|in brief|our take|press release|click here|learn more|see also|top stories|breaking news|you may also like|most read)$/i;
+
+    function clientCompanyNameOk(name) {
+      var raw = String(name || "").replace(/\s+/g, " ").trim();
+      if (!raw || raw.length < 3 || raw.length > 42) return "";
+      if (PAGE_HEADER_NAME_RE.test(raw)) return "";
+      if (/[:|]/.test(raw)) return "";
+      var key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (NON_LEGALTECH_BRAND_RE.test(key)) return "";
+      var words = raw.split(/\s+/);
+      if (!words.length || words.length > 3) return "";
+      var bad = false;
+      words.forEach(function (w) {
+        if (COMPANY_NAME_STOP.test(w)) bad = true;
+      });
+      if (bad) return "";
+      if (isPublisherBrand(raw) || isPlaceholderCompanyName(raw) || isNumericOcrGarbageName(raw)) return "";
+      return raw;
+    }
+
+    function verifyRefusalText(reason) {
+      if (reason === "not_a_company") return "That name is a sentence fragment or a page header, so it was not added.";
+      if (reason === "not_legaltech") return "That company is not a legaltech company, so it was not added.";
+      if (reason === "no_website") return "No company website was found, so it was not added.";
+      if (reason === "no_linkedin") return "No LinkedIn company page was found, so it was not added.";
+      if (reason === "no_hunter_poc") return "Hunter did not return a person at this company, so it was not added.";
+      return "This company was not added. It still needs a real name, a website, a LinkedIn page, and a Hunter contact.";
+    }
+
     function looksLikeHeadlineNotCompany(s) {
       var t = String(s || "").trim();
       if (!t) return true;
@@ -5378,7 +5411,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       var domain = (overrides && overrides.domain) || (identity && identity.domain) || "";
       companyGuess = sanitizeStoredCompanyName(companyGuess) || companyGuess;
       domain = String(domain || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").trim();
-      if (!companyGuess || !looksLikeRealDomain(domain)) {
+      if (!clientCompanyNameOk(companyGuess) || !looksLikeRealDomain(domain)) {
         return null;
       }
       var eventType = inferEventTypeFromText(title + " " + text) || "funding_round";
@@ -5437,8 +5470,9 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           vc_pe_backed: "yes",
           ta_headcount: null,
           entity_note: confirmed
-            ? "live_exa_refresh; human_confirmed_domain"
+            ? "live_exa_refresh; verified_company_site_linkedin_hunter"
             : "live_exa_refresh; company name extracted from Exa article — verify domain before Approve",
+          linkedin_url: (overrides && overrides.linkedin_url) || "",
           live_exa: true
         },
         profile: {
@@ -5453,16 +5487,20 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           status: "no_prior_contact",
           notes: "Added via Exa refresh after partner confirmed company and domain"
         },
-        contact: {
-          contact_id: contactId,
-          company_id: companyId,
-          first_name: "",
-          last_name: "",
-          title: "",
-          email: "",
-          employment_confirmed: "no",
-          linkedin_url: ""
-        },
+        contact: (function () {
+          var person = (overrides && overrides.people && overrides.people[0]) || {};
+          return {
+            contact_id: contactId,
+            company_id: companyId,
+            first_name: person.first_name || "",
+            last_name: person.last_name || "",
+            title: person.title || "",
+            email: person.email || "",
+            employment_confirmed: person.email ? "hunter" : "no",
+            linkedin_url: person.linkedin || ""
+          };
+        })(),
+        contacts: (overrides && overrides.people) || [],
         status: {
           company_name: companyGuess,
           domain: domain,
@@ -7808,6 +7846,19 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       extras.events.push(bundle.event);
       extras.profiles.push(bundle.profile);
       extras.contacts.push(bundle.contact);
+      (bundle.contacts || []).slice(1).forEach(function (person, idx) {
+        if (!person || !person.email) return;
+        extras.contacts.push({
+          contact_id: bundle.contact.contact_id + "-x" + idx,
+          company_id: bundle.event.company_id,
+          first_name: person.first_name || "",
+          last_name: person.last_name || "",
+          title: person.title || "",
+          email: person.email || "",
+          employment_confirmed: "hunter",
+          linkedin_url: person.linkedin || ""
+        });
+      });
       extras.statuses.push(bundle.status);
       extras.employment.push(bundle.employment);
       extras.attached_sources = extras.attached_sources || {};
@@ -7998,11 +8049,43 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
             renderExaIntake();
             return;
           }
+          if (!clientCompanyNameOk(nameIn.value)) {
+            if (statusEl) {
+              statusEl.textContent = verifyRefusalText("not_a_company");
+            }
+            return;
+          }
+          confirmBtn.disabled = true;
+          var verifyData = null;
+          try {
+            var verifyRes = await fetch(prodApiBase() + "/v1/verify-company", {
+              method: "POST",
+              headers: prodApiHeaders({ "content-type": "application/json" }),
+              body: JSON.stringify({
+                company_name: nameIn.value,
+                domain: domainIn.value,
+                title: blobTitle,
+                text: String((item.raw && item.raw.text) || "")
+              })
+            });
+            verifyData = await verifyRes.json();
+          } catch (eVerify) {
+            verifyData = null;
+          }
+          confirmBtn.disabled = false;
+          if (!verifyData || !verifyData.ok) {
+            if (statusEl) {
+              statusEl.textContent = verifyRefusalText(verifyData && verifyData.reason);
+            }
+            return;
+          }
           var bundle = parseExaResultToBundle(item.raw, Date.now() % 100000, {
-            company_name: nameIn.value,
-            domain: domainIn.value,
+            company_name: verifyData.company_name || nameIn.value,
+            domain: verifyData.domain || domainIn.value,
             confirmed: true,
-            articles: articles
+            articles: articles,
+            people: verifyData.people || [],
+            linkedin_url: verifyData.linkedin_url || ""
           });
           if (!bundle) {
             if (statusEl) {
@@ -8075,7 +8158,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         var cleanTitle = cleanArticleTitle(r.title);
         var cleanText = scrubArticleSnippet(r.text);
         var identity = guessCompanyAndDomainFromExa(cleanTitle, cleanText, url, idx);
-        var companyGuess = (identity && identity.company_name) || "";
+        var companyGuess = clientCompanyNameOk((identity && identity.company_name) || "");
+        if (!companyGuess) return;
         var domainGuess = (identity && looksLikeRealDomain(identity.domain) ? identity.domain : "") || "";
         var story = { title: cleanTitle || "", url: url, raw: r };
         var existing = queuedEventForStory(cleanTitle, cleanText, url, companyGuess, domainGuess, [story]);
