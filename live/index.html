@@ -3891,7 +3891,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       if (!t.trim()) return "";
       var newsish = /\b(news\s+(?:article|site|publisher|outlet|magazine)|news article|magazine|publisher|reporters|editors)\b/i.test(t);
       if (!newsish && !/\bcovering\b/i.test(t)) return "";
-      var known = ["magnar", "harvey", "crosby", "lexroom", "chamelio", "newcode", "crimson", "xapien"];
+      var known = ["magnar", "harvey", "crosby", "lexroom", "chamelio", "newcode", "crimson"];
       var i;
       for (i = 0; i < known.length; i++) {
         if (new RegExp("\\b" + known[i] + "\\b", "i").test(t)) {
@@ -4032,6 +4032,10 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       var d = String(domain || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").trim();
       if (!d || isFillerLiveDomain(d) || isSyntheticExampleDomain(d) || isPublisherHost(d) || isCustomerPlatformHost(d)) return false;
       if (isNumericOcrGarbageDomain(d)) return false;
+      if (/(^|\.)edu$/i.test(d) || /\.edu\./i.test(d) || /(^|\.)ac\.[a-z]{2}$/i.test(d)) return false;
+      var leaf = (d.split(".")[0] || "").replace(/[^a-z0-9]/g, "");
+      if (/^(jobs|job|careers|career)$/i.test(leaf)) return false;
+      if (/(^|\.)(kalshi\.com|xapien\.com|polymarket\.com|greenhouse\.io|lever\.co|ashbyhq\.com|myworkdayjobs\.com|workable\.com)$/i.test(d)) return false;
       return /^[a-z0-9][a-z0-9.-]{1,60}\.[a-z]{2,}$/.test(d);
     }
 
@@ -4186,14 +4190,34 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       /^(as|at|to|from|for|with|and|or|of|our|new|the|a|an|its|their|his|her|this|that|us|uk|eu|we|join|joins|joined|joining|names|hires|appoints|announces|raises|raised|after|before|following|during|while|via|over|into|about|welcome|welcomes|ceo|cro|cfo|coo|vp|head|president|chief|officer|team|leadership|message|letter)$/i;
 
     var NON_LEGALTECH_BRAND_RE =
-      /^(twilio|stripe|salesforce|slack|zoom|microsoft|google|amazon|meta|facebook|apple|oracle|sap|adobe|hubspot|shopify|atlassian|notion|intercom|zendesk|dropbox|box|openai|nvidia|cisco|ibm|servicenow|workday|snowflake|datadog|cloudflare|okta|sendgrid|mailchimp|plaid|brex|ramp|rippling|gusto|deel|linkedin|crunchbase|pitchbook|twitter|docusign|intuit|quickbooks|xero|netsuite|github|gitlab|figma|canva|airtable|monday|asana|jira|zoominfo)$/i;
+      /^(twilio|stripe|salesforce|slack|zoom|microsoft|google|amazon|meta|facebook|apple|oracle|sap|adobe|hubspot|shopify|atlassian|notion|intercom|zendesk|dropbox|box|openai|nvidia|cisco|ibm|servicenow|workday|snowflake|datadog|cloudflare|okta|sendgrid|mailchimp|plaid|brex|ramp|rippling|gusto|deel|linkedin|crunchbase|pitchbook|twitter|docusign|intuit|quickbooks|xero|netsuite|github|gitlab|figma|canva|airtable|monday|asana|jira|zoominfo|kalshi|polymarket|xapien|draftkings|fanduel)$/i;
 
     var PAGE_HEADER_NAME_RE =
       /^(related(?:\s+(?:stories|articles|news))?|read more|share(?:\s+this)?|subscribe|newsletter|sign in|log in|sign up|about(?:\s+us)?|contact(?:\s+us)?|privacy(?:\s+policy)?|terms(?:\s+of(?:\s+use|service))?|cookies?|menu|home|search|follow(?:\s+us)?|latest(?:\s+news)?|trending|popular|more stories|continue reading|table of contents|key takeaways|in brief|our take|press release|click here|learn more|see also|top stories|breaking news|you may also like|most read)$/i;
 
+    function isFalseQueueEntityLive(name, domain) {
+      var raw = String(name || "").replace(/\s+/g, " ").trim();
+      var key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (/^(jobs|job|careers|career|jobs portal|job portal)$/i.test(raw)) return true;
+      if (/^(arr|nrr|mrr|cagr)(\s+passes?)?$/i.test(raw)) return true;
+      if (/\b(arr|nrr|mrr|cagr)\b/i.test(raw) && /\bpasses?\b/i.test(raw)) return true;
+      if (key === "arrpasses" || key === "jobs") return true;
+      if (key.indexOf("xapien") !== -1 || key.indexOf("kalshi") !== -1) return true;
+      if (NON_LEGALTECH_BRAND_RE.test(key)) return true;
+      var host = companyDomainLabel(domain);
+      if (!host) return false;
+      if (host === "xapien.com" || host === "kalshi.com" || host === "research.unc.edu") return true;
+      if (/(^|\.)edu$/i.test(host) || /\.edu\./i.test(host) || /(^|\.)ac\.[a-z]{2}$/i.test(host)) return true;
+      var leaf = (host.split(".")[0] || "").replace(/[^a-z0-9]/g, "");
+      if (/^(jobs|job|careers|career)$/i.test(leaf)) return true;
+      if (/(^|\.)(kalshi\.com|polymarket\.com|draftkings\.com|fanduel\.com|greenhouse\.io|lever\.co)$/i.test(host)) return true;
+      return false;
+    }
+
     function clientCompanyNameOk(name) {
       var raw = String(name || "").replace(/\s+/g, " ").trim();
       if (!raw || raw.length < 3 || raw.length > 42) return "";
+      if (isFalseQueueEntityLive(raw, "")) return "";
       if (PAGE_HEADER_NAME_RE.test(raw)) return "";
       if (/[:|]/.test(raw)) return "";
       var key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -4735,7 +4759,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           crosby: "Crosby",
           newcode: "Newcode",
           chamelio: "Chamelio",
-          xapien: "Xapien"
         };
         Object.keys(knownMapProbe).forEach(function (slug) {
           if (knownHit) return;
@@ -5325,7 +5348,15 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         var scrub = upgradePlaceholderLiveExtrasFromDomain();
         var extras = loadLiveExtras();
         extras = dedupeExtrasByCompany(extras);
+        var falseDrop = dropFalseLiveEntities(extras);
         var staleDrop = purgeStaleLiveExaExtrasClient(extras);
+        if (falseDrop.dropped) {
+          saveLiveExtras(extras);
+          if (storeEnabled()) {
+            storePutBlob("extras", extras).catch(function () { /* ignore */ });
+            storePutBlob("results", STORE_RESULTS).catch(function () { /* ignore */ });
+          }
+        }
         // Publisher scrub runs only on hydrate (once), not every rebuild — that cleared
         // scores mid-write and re-queued the same case forever.
         if (staleDrop.dropped) {
@@ -6483,9 +6514,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       if (/^crosby$/i.test(String(ev.company_name || "")) && !looksLikeRealDomain(ev.domain)) {
         ev.domain = "crosby.ai";
       }
-      if (/^xapien$/i.test(String(ev.company_name || "")) && !looksLikeRealDomain(ev.domain)) {
-        ev.domain = "xapien.com";
-      }
       if (/^crimson$/i.test(String(ev.company_name || "")) && !looksLikeRealDomain(ev.domain)) {
         ev.domain = "crimson.law";
       }
@@ -6619,6 +6647,11 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         if (byCase[caseId]) return;
         if (resultIsPublisherHuskLocal(rec)) return;
         var fields = rec.lastFields;
+        if (isFalseQueueEntityLive(fields.company_name, fields.domain)) {
+          delete STORE_RESULTS[caseId];
+          changed = true;
+          return;
+        }
         var companyName = String(fields.company_name || "").trim() || "Unknown company";
         var domain = companyDomainLabel(fields.domain) || "";
         var companyId = "CO-RESTORE-" + String(caseId).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
@@ -6695,6 +6728,10 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
 
       (extras.events || []).forEach(function (ev) {
         if (!ev) return;
+        if (isFalseQueueEntityLive(ev.company_name, ev.domain)) {
+          doomed.push(ev);
+          return;
+        }
         var slug = String(ev.company_name || "")
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "");
@@ -6945,10 +6982,13 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       });
 
       doomed.forEach(function (ev) {
+        var falseEntity = isFalseQueueEntityLive(ev.company_name, ev.domain);
         if (
+          !falseEntity &&
           mustRetainUnconfirmedNogoLocal(STORE_RESULTS[ev.case_id], extras, ev.case_id) &&
           !eventIsPublisherHuskLive(ev, STORE_RESULTS[ev.case_id])
         ) return;
+        if (falseEntity && STORE_RESULTS[ev.case_id]) delete STORE_RESULTS[ev.case_id];
         extras.events = (extras.events || []).filter(function (row) {
           return !row || row.case_id !== ev.case_id;
         });
@@ -7568,6 +7608,34 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     }
 
     /** Drop CE-LX extras older than EXA_MAX_AGE_DAYS (or undated). Seed CE-L0x stay. */
+    function dropFalseLiveEntities(extras) {
+      var dropped = 0;
+      if (!extras) return { dropped: 0 };
+      var doomedFalse = [];
+      (extras.events || []).forEach(function (ev) {
+        if (!ev || !isFalseQueueEntityLive(ev.company_name, ev.domain)) return;
+        doomedFalse.push(ev);
+      });
+      doomedFalse.forEach(function (ev) {
+        removeLiveExtrasEventClient(extras, ev.case_id, ev.company_id);
+        if (STORE_RESULTS[ev.case_id]) delete STORE_RESULTS[ev.case_id];
+        dropped += 1;
+      });
+      Object.keys(STORE_RESULTS || {}).forEach(function (caseId) {
+        var rec = STORE_RESULTS[caseId];
+        var scored = rec && rec.lastFields;
+        if (!scored || !isFalseQueueEntityLive(scored.company_name, scored.domain)) return;
+        delete STORE_RESULTS[caseId];
+        dropped += 1;
+      });
+      if (extras.statuses) {
+        extras.statuses = extras.statuses.filter(function (s) {
+          return !s || !isFalseQueueEntityLive(s.company_name, s.domain);
+        });
+      }
+      return { dropped: dropped };
+    }
+
     function purgeStaleLiveExaExtrasClient(extras) {
       var dropped = 0;
       if (!extras || !Array.isArray(extras.events)) return { dropped: 0 };
@@ -15863,7 +15931,6 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         harvey: "harvey.ai",
         magnar: "magnar.ai",
         crosby: "crosby.ai",
-        xapien: "xapien.com",
         chamelio: "chamelio.ai",
         chameilo: "chamelio.ai",
         newcode: "newcode.ai",

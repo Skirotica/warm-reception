@@ -2268,6 +2268,7 @@ function looksLikeRealDomainWorker(domain) {
   if (isNumericOcrGarbageDomain(d)) return false;
   if (EXA_PUBLISHER_HOST_RE.test(d)) return false;
   if (typeof isVcFirmHost === "function" && isVcFirmHost(d)) return false;
+  if (isUniversityOrLabHost(d) || isJobsPortalHost(d) || isGamblingHost(d)) return false;
   return /^[a-z0-9][a-z0-9.-]{1,60}\.[a-z]{2,}$/.test(d);
 }
 
@@ -2313,8 +2314,7 @@ function runEntityCheckerGate(ident, title, text, url) {
       magnar: "Magnar",
       crosby: "Crosby",
       newcode: "Newcode",
-      chamelio: "Chamelio",
-      xapien: "Xapien"
+      chamelio: "Chamelio"
     };
     Object.keys(knownMapProbe).forEach(function (slug) {
       if (knownHit) return;
@@ -2508,6 +2508,12 @@ function mergeResultsBlobs(existing, incoming) {
     }
     if (inc) merged[caseId] = inc;
   });
+  Object.keys(merged).forEach(function (caseId) {
+    var rec = merged[caseId];
+    var fields = rec && rec.lastFields;
+    if (!fields || !isFalseQueueEntity(fields.company_name, fields.domain)) return;
+    delete merged[caseId];
+  });
   return merged;
 }
 
@@ -2520,6 +2526,7 @@ function eventReadyForAutoAnalyze(ev) {
   if (!ev || !ev.live_exa) return false;
   var name = String(ev.company_name || "").trim();
   if (!name || /^live\s*company\s*\d+$/i.test(name)) return false;
+  if (isFalseQueueEntity(name, ev.domain)) return false;
   // Never score numeric OCR husks (178900472) until Entity Checker repairs them.
   if (isNumericOcrGarbageName(name) || isNumericOcrGarbageDomain(ev.domain)) return false;
   // Publisher mis-attribution must enter the queue so we can retarget the article subject
@@ -3598,7 +3605,12 @@ function dropFakeQueueEntities(extras, results) {
   results = results || {};
   var doomed = [];
   (extras.events || []).forEach(function (ev) {
-    if (!ev || String(ev.case_id || "").indexOf("CE-LX-") !== 0) return;
+    if (!ev) return;
+    if (isFalseQueueEntity(ev.company_name, ev.domain)) {
+      doomed.push(ev);
+      return;
+    }
+    if (String(ev.case_id || "").indexOf("CE-LX-") !== 0) return;
     if (partnerKeptQueueCase(results[ev.case_id])) return;
     var reason = "";
     if (!companyNameIsRealEntity(ev.company_name) || isPageHeaderOrFragmentName(ev.company_name)) {
@@ -3616,10 +3628,26 @@ function dropFakeQueueEntities(extras, results) {
     if (reason) doomed.push(ev);
   });
   doomed.forEach(function (ev) {
+    var falseEntity = isFalseQueueEntity(ev.company_name, ev.domain);
     removeExtrasEventAndRelated(extras, ev.case_id, ev.company_id);
-    if (results[ev.case_id] && !isPartnerConfirmedNogoArchive(results[ev.case_id], extras, ev.case_id)) {
+    if (
+      results[ev.case_id] &&
+      (falseEntity || !isPartnerConfirmedNogoArchive(results[ev.case_id], extras, ev.case_id))
+    ) {
       delete results[ev.case_id];
     }
+    n += 1;
+  });
+  if (extras.statuses) {
+    extras.statuses = extras.statuses.filter(function (s) {
+      return !s || !isFalseQueueEntity(s.company_name, s.domain);
+    });
+  }
+  Object.keys(results).forEach(function (caseId) {
+    var rec = results[caseId];
+    var fields = rec && rec.lastFields;
+    if (!fields || !isFalseQueueEntity(fields.company_name, fields.domain)) return;
+    delete results[caseId];
     n += 1;
   });
   return n;
@@ -4228,6 +4256,7 @@ async function runAutoAnalyze(env, opts) {
   };
   var results = (await kvGet(env, "results")) || {};
   var clients = (await kvGet(env, "clients")) || [];
+  var droppedFakeAnalyze = dropFakeQueueEntities(extras, results);
   var clearedBadDomain = clearMismatchedResearch(extras, results);
   var reopenedResearch = reopenDomainResearch(results);
   var reopenedNews = reopenNewsOrgDecisions(extras, results);
@@ -4249,7 +4278,7 @@ async function runAutoAnalyze(env, opts) {
   var ok = 0;
   var errors = 0;
   var outcomes = [];
-  var extrasDirty = clearedBadDomain > 0 || reopenedNews > 0;
+  var extrasDirty = clearedBadDomain > 0 || reopenedNews > 0 || droppedFakeAnalyze > 0;
 
   for (var i = 0; i < batch.length; i++) {
     var ev = batch[i];
@@ -4318,7 +4347,7 @@ async function runAutoAnalyze(env, opts) {
     }
   }
 
-  if (ok || clearedBadDomain || reopenedResearch || reopenedNews) {
+  if (ok || clearedBadDomain || reopenedResearch || reopenedNews || droppedFakeAnalyze) {
     var latestResults = (await kvGet(env, "results")) || {};
     results = mergeResultsBlobs(latestResults, results);
     await kvPut(env, "results", results);
@@ -4506,7 +4535,7 @@ function publisherRationaleSubject(text) {
       t
     );
   if (!newsish && !/\bcovering\b/i.test(t)) return "";
-  var knownSlugs = ["magnar", "harvey", "crosby", "lexroom", "chamelio", "newcode", "crimson", "xapien"];
+  var knownSlugs = ["magnar", "harvey", "crosby", "lexroom", "chamelio", "newcode", "crimson"];
   var si;
   for (si = 0; si < knownSlugs.length; si++) {
     if (new RegExp("\\b" + knownSlugs[si] + "\\b", "i").test(t) && (newsish || /\bcovering\b/i.test(t))) {
@@ -4843,7 +4872,6 @@ function knownSubjectDomainWorker(companyName) {
     harvey: "harvey.ai",
     magnar: "magnar.ai",
     crosby: "crosby.ai",
-    xapien: "xapien.com",
     chamelio: "chamelio.ai",
     chameilo: "chamelio.ai",
     newcode: "newcode.ai",
@@ -5089,7 +5117,7 @@ async function callAnthropicStoryEntity(env, title, text, url) {
           "The target is one real legaltech company that raised money or hired. Return a company name only. Never return a sentence fragment, a page header, a section title, a country, or a practice area.",
           "Never return a company that is not legaltech. Twilio, Stripe, Salesforce, Slack, Microsoft, Google, Amazon, and other general software companies are not legaltech even when a legaltech article mentions them.",
           "The target is the startup that raised money or hired. Never the venture firm, PE firm, or news publisher writing about them (including Startupmag, Foundernews, LatamList, TechCrunch, Lux Capital, The Logic).",
-          "Possessive funding lines count: \"The deal pushes Xapien's total equity funding past $73 million\" → company_name Xapien, domain xapien.com.",
+          "Due-diligence and KYC firms are not the target. Xapien is a due-diligence provider, not a legaltech company. Leave company_name blank for Xapien.",
           "Examples: Lux Capital 'We're Backing Crosby' → Crosby / crosby.ai. LatamList or Exame or Startups.com.br article about Magnar → Magnar / magnar.ai (never Exame, never Startups). Startupmag article 'Legaltech startup Crimson raises £1.9m' → Crimson / crimson.law (never Startupmag). The Logic article 'Teachers invests in legaltech firm Harvey' → Harvey / harvey.ai (never The Logic or thelogic.co). The website in the URL is often the newsroom, not the firm.",
           "Return ONLY labeled lines:",
           "company_name:",
@@ -5228,7 +5256,7 @@ function storyCompanyNameOk(name, allowLower) {
     .trim();
   raw = raw.replace(/[.]/g, " ").replace(/\s+/g, " ").trim();
   raw = stripNameEdges(raw);
-  var leadNoise = /^(?:provider|technology|services|service|research|native|mass|action|litigation|firm|group|holdings|legaltech|legal|software)\s+/i;
+  var leadNoise = /^(?:due[\s-]*diligence|kyc|provider|technology|services|service|research|native|mass|action|litigation|firm|group|holdings|legaltech|legal|software)\s+/i;
   while (leadNoise.test(raw)) raw = raw.replace(leadNoise, "").trim();
   raw = raw.replace(/\s+(?:as|have|has|had|at|of|for|with|from|to|in|on|by)$/i, "").trim();
   raw = String(raw.split(/\s+(?:as|have|has|had|at|of|for|with|from|to|in|on|by)\s+/i)[0] || "").trim();
@@ -5310,7 +5338,8 @@ var NON_LEGALTECH_BRANDS = {
   linkedin: 1, crunchbase: 1, pitchbook: 1, twitter: 1, docusign: 1, intuit: 1,
   quickbooks: 1, xero: 1, netsuite: 1, segment: 1, amplitude: 1, github: 1,
   gitlab: 1, figma: 1, canva: 1, airtable: 1, monday: 1, asana: 1, jira: 1,
-  zoominfo: 1, clearbit: 1, sendbird: 1, auth0: 1, snowflake: 1
+  zoominfo: 1, clearbit: 1, sendbird: 1, auth0: 1, snowflake: 1,
+  kalshi: 1, polymarket: 1, draftkings: 1, fanduel: 1, xapien: 1
 };
 
 var PAGE_HEADER_NAME_RE =
@@ -5318,6 +5347,51 @@ var PAGE_HEADER_NAME_RE =
 
 function companyBrandKey(name) {
   return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function isStoryPhraseNotCompany(name) {
+  var n = String(name || "").replace(/\s+/g, " ").trim();
+  if (!n) return false;
+  if (/^(jobs|job|careers|career|jobs portal|job portal)$/i.test(n)) return true;
+  if (/^(arr|nrr|mrr|cagr)(\s+passes?)?$/i.test(n)) return true;
+  if (/\b(arr|nrr|mrr|cagr)\b/i.test(n) && /\bpasses?\b/i.test(n)) return true;
+  return false;
+}
+
+function isUniversityOrLabHost(host) {
+  var h = normalizeHost(host);
+  if (!h) return false;
+  if (/(^|\.)edu$/i.test(h) || /\.edu\./i.test(h)) return true;
+  if (/(^|\.)ac\.[a-z]{2}$/i.test(h)) return true;
+  return false;
+}
+
+function isJobsPortalHost(host) {
+  var h = normalizeHost(host);
+  if (!h) return false;
+  var leaf = (h.split(".")[0] || "").replace(/[^a-z0-9]/g, "");
+  if (/^(jobs|job|careers|career)$/i.test(leaf)) return true;
+  if (/(^|\.)(greenhouse\.io|lever\.co|ashbyhq\.com|myworkdayjobs\.com|workable\.com)$/i.test(h)) return true;
+  return false;
+}
+
+function isGamblingHost(host) {
+  var h = normalizeHost(host);
+  if (!h) return false;
+  return /(^|\.)(kalshi\.com|polymarket\.com|draftkings\.com|fanduel\.com|betmgm\.com)$/i.test(h);
+}
+
+function isFalseQueueEntity(name, domain) {
+  if (isStoryPhraseNotCompany(name)) return true;
+  if (isKnownNonLegaltechBrand(name)) return true;
+  var key = companyBrandKey(name);
+  if (key === "arrpasses" || key === "jobs") return true;
+  if (key.indexOf("xapien") !== -1 || key.indexOf("kalshi") !== -1) return true;
+  var host = normalizeHost(domain);
+  if (!host) return false;
+  if (host === "xapien.com" || host === "kalshi.com" || host === "research.unc.edu") return true;
+  if (isUniversityOrLabHost(host) || isJobsPortalHost(host) || isGamblingHost(host)) return true;
+  return false;
 }
 
 function isKnownNonLegaltechBrand(name) {
@@ -5363,6 +5437,7 @@ function companyDescribedAsLegaltech(name, title, text) {
 }
 
 function companyNameIsRealEntity(name) {
+  if (isStoryPhraseNotCompany(name)) return "";
   if (isPageHeaderOrFragmentName(name)) return "";
   if (isKnownNonLegaltechBrand(name)) return "";
   var titled = storyCompanyNameOk(name);
@@ -7604,5 +7679,6 @@ export {
   companyNameIsRealEntity,
   companyDescribedAsLegaltech,
   isKnownNonLegaltechBrand,
-  isPageHeaderOrFragmentName
+  isPageHeaderOrFragmentName,
+  isFalseQueueEntity
 };
