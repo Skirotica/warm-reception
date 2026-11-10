@@ -189,7 +189,7 @@ var EXA_SEARCH_COUNT = 100;
 var EXA_MAX_NEW_PER_INGEST = 80;
 var EXA_MAX_COMPANIES_PER_STORY = 6;
 var EXA_PUBLISHER_HOST_RE =
-  /(law\.com|tech\.eu|prnewswire|linkedin|artificiallawyer|techfundingnews|pulse2|reuters|bloomberg|techcrunch|venturebeat|forbes|businesswire|globenewswire|yahoo\.com|medium\.com|substack\.com|latamlist\.com|latamrepublic\.com|thesaasnews\.com|finsmes\.com|crunchbase\.com|pitchbook\.com|axios\.com|sifted\.eu|tech\.eu|geekwire\.com|theregister\.com|zdnet\.com|wired\.com|theverge\.com|thenextweb\.com|tnw\.to|news\.yahoo|google\.com\/news|msn\.com|foundernews\.eu|foundernews|siliconrepublic\.com|siliconrepublic|globallegalpost\.com|globallegalpost|legaltech\.news|legaltechcircle\.com|stiri-juridice\.ro|law360\.com|abovethelaw\.com|artificiallawyer\.com|techfundingnews\.com|startupmag\.co\.uk|startupmag\.com|startupmag|thelogic\.co|exame\.com|startups\.com\.br|braziljournal\.com|neofeed\.com\.br|contxto\.com|infomoney\.com\.br|valor\.globo\.com|valor\.com\.br|bloomberglinea\.com|startupi\.com\.br|startse\.com|baguete\.com\.br|estadao\.com\.br|folha\.uol\.com\.br|uol\.com\.br|globo\.com|istoedinheiro\.com\.br|moneyreport\.com\.br)/i;
+  /(law\.com|tech\.eu|prnewswire|linkedin|artificiallawyer|techfundingnews|pulse2|reuters|bloomberg|techcrunch|venturebeat|forbes|businesswire|globenewswire|yahoo\.com|medium\.com|substack\.com|latamlist\.com|latamrepublic\.com|thesaasnews\.com|finsmes\.com|crunchbase\.com|pitchbook\.com|axios\.com|sifted\.eu|tech\.eu|geekwire\.com|theregister\.com|zdnet\.com|wired\.com|theverge\.com|thenextweb\.com|tnw\.to|news\.yahoo|google\.com\/news|msn\.com|foundernews\.eu|foundernews|siliconrepublic\.com|siliconrepublic|siliconangle\.com|globallegalpost\.com|globallegalpost|legaltech\.news|legaltechcircle\.com|stiri-juridice\.ro|law360\.com|abovethelaw\.com|artificiallawyer\.com|techfundingnews\.com|startupmag\.co\.uk|startupmag\.com|startupmag|thelogic\.co|exame\.com|startups\.com\.br|braziljournal\.com|neofeed\.com\.br|contxto\.com|infomoney\.com\.br|valor\.globo\.com|valor\.com\.br|bloomberglinea\.com|startupi\.com\.br|startse\.com|baguete\.com\.br|estadao\.com\.br|folha\.uol\.com\.br|uol\.com\.br|globo\.com|istoedinheiro\.com\.br|moneyreport\.com\.br|money\.com|fortune\.com|lawsociety\.org\.uk|lawsociety\.ie)/i;
 /** VC / PE firm sites — never the outreach target when the article is about a portfolio company. */
 var EXA_VC_HOST_RE =
   /(luxcapital\.com|a16z\.com|andreessen\.com|sequoiacap\.com|indexventures\.com|greylock\.com|accel\.com|benchmark\.com|lightspeedventure|bessemer\.com|khoslaventures\.com|firstround\.com|initialized\.com|ycombinator\.com|softbank\.com|generalcatalyst\.com|insightpartners\.com|baincapital|sequoia|andreessenhorowitz)/i;
@@ -1378,6 +1378,11 @@ function restoreUnconfirmedNogosToQueue(extras, results) {
     if (byCase[caseId]) return;
 
     var fields = rec.lastFields;
+    if (isFalseQueueEntity(fields.company_name, fields.domain) || fieldsSayNotLegaltechFirm(fields)) {
+      delete results[caseId];
+      changed = true;
+      return;
+    }
     var restoreName = String(fields.company_name || "").trim();
     var restoreDomain = normalizeHost(fields.domain) || "";
     if (
@@ -3519,6 +3524,13 @@ async function findCompanyLinkedInPage(env, name) {
  */
 async function verifyCompanyAdmission(env, companyName, domainHint, title, text, opts) {
   opts = opts || {};
+  if (isNonCompanyQueueName(companyName) || isFalseQueueEntity(companyName, domainHint)) {
+    return {
+      ok: false,
+      reason: isNonCompanyQueueName(companyName) ? "not_a_company" : "not_legaltech",
+      company_name: String(companyName || "")
+    };
+  }
   var clean = companyNameIsRealEntity(companyName);
   if (!clean) return { ok: false, reason: "not_a_company", company_name: String(companyName || "") };
   if (isKnownNonLegaltechBrand(clean)) return { ok: false, reason: "not_legaltech", company_name: clean };
@@ -3606,7 +3618,8 @@ function dropFakeQueueEntities(extras, results) {
   var doomed = [];
   (extras.events || []).forEach(function (ev) {
     if (!ev) return;
-    if (isFalseQueueEntity(ev.company_name, ev.domain)) {
+    var scored = results[ev.case_id] && results[ev.case_id].lastFields;
+    if (isFalseQueueEntity(ev.company_name, ev.domain) || fieldsSayNotLegaltechFirm(scored)) {
       doomed.push(ev);
       return;
     }
@@ -3628,12 +3641,11 @@ function dropFakeQueueEntities(extras, results) {
     if (reason) doomed.push(ev);
   });
   doomed.forEach(function (ev) {
-    var falseEntity = isFalseQueueEntity(ev.company_name, ev.domain);
+    var scored = results[ev.case_id] && results[ev.case_id].lastFields;
+    var mustLeave =
+      isFalseQueueEntity(ev.company_name, ev.domain) || fieldsSayNotLegaltechFirm(scored);
     removeExtrasEventAndRelated(extras, ev.case_id, ev.company_id);
-    if (
-      results[ev.case_id] &&
-      (falseEntity || !isPartnerConfirmedNogoArchive(results[ev.case_id], extras, ev.case_id))
-    ) {
+    if (results[ev.case_id] && (mustLeave || !isPartnerConfirmedNogoArchive(results[ev.case_id], extras, ev.case_id))) {
       delete results[ev.case_id];
     }
     n += 1;
@@ -5381,7 +5393,60 @@ function isGamblingHost(host) {
   return /(^|\.)(kalshi\.com|polymarket\.com|draftkings\.com|fanduel\.com|betmgm\.com)$/i.test(h);
 }
 
+/**
+ * Headline scraps: a sentence chopped into a name. A real company name is
+ * one or two words. Dates, places, categories, and three-word headlines are not.
+ */
+function isHeadlineFragmentName(name) {
+  var n = String(name || "").replace(/\s+/g, " ").trim();
+  if (!n || isKnownLegaltechCompany(n)) return false;
+  var words = n.split(/\s+/);
+  if (words.length > 2) return true;
+  if (/[A-Za-z]\d[A-Za-z]|\d[A-Za-z]/.test(n)) return true;
+  if (/^(above|secures|blackletter|startups?)$/i.test(n)) return true;
+  if (/^(ai\s+startups?|latin america|intellectual property|deal price|accel-led|october\s+\d{1,2}|atreides management|october it)$/i.test(n)) return true;
+  if (/^(view|by|reverses|commercial|summer|returning|uae)\b/i.test(n)) return true;
+  return false;
+}
+
+/** Story scraps and organizations that are not a legaltech company. */
+function isNonCompanyQueueName(name) {
+  var n = String(name || "").replace(/\s+/g, " ").trim();
+  if (!n) return true;
+  if (isStoryPhraseNotCompany(n)) return true;
+  if (isHeadlineFragmentName(n)) return true;
+  if (/^page(\s*\d+)?$/i.test(n)) return true;
+  if (/^(announcement|announcements|announce|announced)\b/i.test(n)) return true;
+  if (/^sophie$/i.test(n)) return true;
+  if (/^(litigation|australia|fundraising|missing)$/i.test(n)) return true;
+  if (/\b(category|ultimately)\b/i.test(n)) return true;
+  if (/^clearest drop it$/i.test(n)) return true;
+  if (/\b(llp|l\.l\.p\.)\b/i.test(n)) return true;
+  if (/^(fox rothschild|wilmerhale|wilmer hale)$/i.test(n)) return true;
+  return false;
+}
+
+function isNeverQueueOrgHost(host) {
+  var h = normalizeHost(host);
+  if (!h) return false;
+  if (
+    h === "money.com" ||
+    h === "fortune.com" ||
+    h === "research.unc.edu" ||
+    h === "who.int" ||
+    h === "siliconangle.com"
+  ) {
+    return true;
+  }
+  if (/(^|\.)lawsociety\./i.test(h)) return true;
+  if (/(^|\.)int$/i.test(h)) return true;
+  if (isUniversityOrLabHost(h)) return true;
+  if (isPublisherHostWorker(h)) return true;
+  return false;
+}
+
 function isFalseQueueEntity(name, domain) {
+  if (isNonCompanyQueueName(name)) return true;
   if (isStoryPhraseNotCompany(name)) return true;
   if (isKnownNonLegaltechBrand(name)) return true;
   var key = companyBrandKey(name);
@@ -5390,7 +5455,40 @@ function isFalseQueueEntity(name, domain) {
   var host = normalizeHost(domain);
   if (!host) return false;
   if (host === "xapien.com" || host === "kalshi.com" || host === "research.unc.edu") return true;
-  if (isUniversityOrLabHost(host) || isJobsPortalHost(host) || isGamblingHost(host)) return true;
+  if (isNeverQueueOrgHost(host) || isJobsPortalHost(host) || isGamblingHost(host)) return true;
+  return false;
+}
+
+/**
+ * A scored rejection that says this is not a legaltech firm, or not a company.
+ * Headcount, a mega round, and an existing client stay. Those can still be legaltech firms.
+ */
+function fieldsSayNotLegaltechFirm(fields) {
+  if (!fields) return false;
+  var name = fields.company_name;
+  var domain = fields.domain;
+  var known = isKnownLegaltechCompany(name) ? knownSubjectDomainWorker(name) : "";
+  var host = normalizeHost(domain);
+  if (known && (!host || host === known)) return false;
+  if (isFalseQueueEntity(name, domain)) return true;
+  var sector = String(fields.sector || "").trim();
+  if (/^no legaltech\b/i.test(sector)) return true;
+  if (/^(entity_management|kyc_due_diligence|media|publisher|law_firm|fintech|consumer)/i.test(sector)) return true;
+  var decision = String(fields.decision || "").toLowerCase();
+  if (!/no-go|out of icp|refused/.test(decision)) return false;
+  var blob = String(fields.reason_or_ambiguity || "") + "\n" + String(fields.why || "");
+  if (/\bexisting client\b|\balready a client\b/i.test(blob) && !/\bnot legaltech\b/i.test(blob)) return false;
+  if (/mega funding|valuation outside/i.test(blob) && !/\bnot legaltech\b/i.test(blob)) return false;
+  if (/\bnot (a )?legal\s*tech\b|\bno legaltech\b/i.test(blob)) return true;
+  if (/\bout of icp sector\b/i.test(blob)) return true;
+  if (/\bnot a company\b|\bsentence fragment\b|\bpage header\b/i.test(blob)) return true;
+  if (/\blaw firm\b/i.test(blob) && !/\b(for|to) law firms\b/i.test(blob)) return true;
+  if (/\bpublisher false positive\b/i.test(blob)) {
+    return !!(host && (isPublisherHostWorker(host) || isNeverQueueOrgHost(host)));
+  }
+  if (/\b(news (site|publisher|organization)|media company)\b/i.test(blob)) return true;
+  if (/\bworld health organization\b|\buniversity\b|\bresearch\.unc\.edu\b/i.test(blob)) return true;
+  if (/\binvestor relationship\b|\bfundraising software\b|\bfund admin/i.test(blob)) return true;
   return false;
 }
 
@@ -5425,18 +5523,40 @@ function localWindowForCompany(name, title, text) {
   return blob.slice(Math.max(0, idx - 140), idx + needle.length + 180);
 }
 
+function sentencesMentioningCompany(name, title, text) {
+  var head = String(title || "").replace(/\s+/g, " ").trim();
+  var body = String(text || "").replace(/\s+/g, " ").trim();
+  var blob = head && body ? head + ". " + body : head || body;
+  var needle = String(name || "").toLowerCase();
+  if (!needle || !blob) return [];
+  return blob.split(/[.!?]+\s+/).filter(function (sentence) {
+    return sentence.toLowerCase().indexOf(needle) !== -1;
+  });
+}
+
+function sentenceLooksLikeRoundupList(sentence) {
+  return /\b(roundup|funding tracker|including|such as|respectively)\b/i.test(String(sentence || ""));
+}
+
 function companyDescribedAsLegaltech(name, title, text) {
-  if (isKnownNonLegaltechBrand(name)) return false;
+  if (isNonCompanyQueueName(name) || isKnownNonLegaltechBrand(name)) return false;
   if (isKnownLegaltechCompany(name)) return true;
-  var windowText = localWindowForCompany(name, title, text);
-  if (!windowText) return false;
-  if (articleClearlyNonLegaltech("", windowText, name, "")) return false;
-  return /\b(legal\s*tech|legaltech|legal\s*ai|for\s+law\s+firms|for\s+lawyers|for\s+attorneys|litigation\s+(?:software|platform|tech)|e-?discovery|ediscovery|matter\s+management|legal\s+operations|in-house\s+legal|practice\s+of\s+law|court\s+filings?|contract\s+(?:review|lifecycle)|clm)\b/i.test(
-    windowText
-  );
+  var product =
+    /\b(for\s+law\s+firms|for\s+lawyers|for\s+attorneys|litigation\s+(?:software|platform|tech)|e-?discovery|ediscovery|matter\s+management|legal\s+operations|in-house\s+legal|practice\s+of\s+law|court\s+filings?|contract\s+(?:review|lifecycle)|clm)\b/i;
+  var label = /\b(legal\s*tech|legaltech|legal\s*ai)\b/i;
+  var sentences = sentencesMentioningCompany(name, title, text);
+  var i;
+  for (i = 0; i < sentences.length; i++) {
+    var sentence = sentences[i];
+    if (articleClearlyNonLegaltech("", sentence, name, "")) continue;
+    if (product.test(sentence)) return true;
+    if (label.test(sentence) && !sentenceLooksLikeRoundupList(sentence)) return true;
+  }
+  return false;
 }
 
 function companyNameIsRealEntity(name) {
+  if (isNonCompanyQueueName(name)) return "";
   if (isStoryPhraseNotCompany(name)) return "";
   if (isPageHeaderOrFragmentName(name)) return "";
   if (isKnownNonLegaltechBrand(name)) return "";
@@ -7680,5 +7800,6 @@ export {
   companyDescribedAsLegaltech,
   isKnownNonLegaltechBrand,
   isPageHeaderOrFragmentName,
-  isFalseQueueEntity
+  isFalseQueueEntity,
+  fieldsSayNotLegaltechFirm
 };

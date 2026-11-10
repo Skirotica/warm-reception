@@ -4195,22 +4195,97 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     var PAGE_HEADER_NAME_RE =
       /^(related(?:\s+(?:stories|articles|news))?|read more|share(?:\s+this)?|subscribe|newsletter|sign in|log in|sign up|about(?:\s+us)?|contact(?:\s+us)?|privacy(?:\s+policy)?|terms(?:\s+of(?:\s+use|service))?|cookies?|menu|home|search|follow(?:\s+us)?|latest(?:\s+news)?|trending|popular|more stories|continue reading|table of contents|key takeaways|in brief|our take|press release|click here|learn more|see also|top stories|breaking news|you may also like|most read)$/i;
 
+    function isHeadlineFragmentNameLive(name) {
+      var n = String(name || "").replace(/\s+/g, " ").trim();
+      if (!n) return false;
+      if (typeof knownSubjectDomainLive === "function" && knownSubjectDomainLive(n)) return false;
+      var words = n.split(/\s+/);
+      if (words.length > 2) return true;
+      if (/[A-Za-z]\d[A-Za-z]|\d[A-Za-z]/.test(n)) return true;
+      if (/^(above|secures|blackletter|startups?)$/i.test(n)) return true;
+      if (/^(ai\s+startups?|latin america|intellectual property|deal price|accel-led|october\s+\d{1,2}|atreides management|october it)$/i.test(n)) return true;
+      if (/^(view|by|reverses|commercial|summer|returning|uae)\b/i.test(n)) return true;
+      return false;
+    }
+
+    function isNonCompanyQueueNameLive(name) {
+      var n = String(name || "").replace(/\s+/g, " ").trim();
+      if (!n) return true;
+      if (/^(jobs|job|careers|career|jobs portal|job portal)$/i.test(n)) return true;
+      if (/^(arr|nrr|mrr|cagr)(\s+passes?)?$/i.test(n)) return true;
+      if (/\b(arr|nrr|mrr|cagr)\b/i.test(n) && /\bpasses?\b/i.test(n)) return true;
+      if (isHeadlineFragmentNameLive(n)) return true;
+      if (/^page(\s*\d+)?$/i.test(n)) return true;
+      if (/^(announcement|announcements|announce|announced)\b/i.test(n)) return true;
+      if (/^sophie$/i.test(n)) return true;
+      if (/^(litigation|australia|fundraising|missing)$/i.test(n)) return true;
+      if (/\b(category|ultimately)\b/i.test(n)) return true;
+      if (/^clearest drop it$/i.test(n)) return true;
+      if (/\b(llp|l\.l\.p\.)\b/i.test(n)) return true;
+      if (/^(fox rothschild|wilmerhale|wilmer hale)$/i.test(n)) return true;
+      return false;
+    }
+
+    function isNeverQueueOrgHostLive(host) {
+      var h = companyDomainLabel(host);
+      if (!h) return false;
+      if (
+        h === "money.com" ||
+        h === "fortune.com" ||
+        h === "research.unc.edu" ||
+        h === "who.int" ||
+        h === "siliconangle.com"
+      ) {
+        return true;
+      }
+      if (/(^|\.)lawsociety\./i.test(h)) return true;
+      if (/(^|\.)int$/i.test(h)) return true;
+      if (/(^|\.)edu$/i.test(h) || /\.edu\./i.test(h) || /(^|\.)ac\.[a-z]{2}$/i.test(h)) return true;
+      if (typeof isPublisherHost === "function" && isPublisherHost(h)) return true;
+      return false;
+    }
+
     function isFalseQueueEntityLive(name, domain) {
       var raw = String(name || "").replace(/\s+/g, " ").trim();
       var key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
-      if (/^(jobs|job|careers|career|jobs portal|job portal)$/i.test(raw)) return true;
-      if (/^(arr|nrr|mrr|cagr)(\s+passes?)?$/i.test(raw)) return true;
-      if (/\b(arr|nrr|mrr|cagr)\b/i.test(raw) && /\bpasses?\b/i.test(raw)) return true;
+      if (isNonCompanyQueueNameLive(raw)) return true;
       if (key === "arrpasses" || key === "jobs") return true;
       if (key.indexOf("xapien") !== -1 || key.indexOf("kalshi") !== -1) return true;
       if (NON_LEGALTECH_BRAND_RE.test(key)) return true;
       var host = companyDomainLabel(domain);
       if (!host) return false;
       if (host === "xapien.com" || host === "kalshi.com" || host === "research.unc.edu") return true;
-      if (/(^|\.)edu$/i.test(host) || /\.edu\./i.test(host) || /(^|\.)ac\.[a-z]{2}$/i.test(host)) return true;
+      if (isNeverQueueOrgHostLive(host)) return true;
       var leaf = (host.split(".")[0] || "").replace(/[^a-z0-9]/g, "");
       if (/^(jobs|job|careers|career)$/i.test(leaf)) return true;
       if (/(^|\.)(kalshi\.com|polymarket\.com|draftkings\.com|fanduel\.com|greenhouse\.io|lever\.co)$/i.test(host)) return true;
+      return false;
+    }
+
+    function fieldsSayNotLegaltechFirmLive(fields) {
+      if (!fields) return false;
+      var known = typeof knownSubjectDomainLive === "function" ? knownSubjectDomainLive(fields.company_name) : "";
+      var host = companyDomainLabel(fields.domain);
+      if (known && (!host || host === known)) return false;
+      if (isFalseQueueEntityLive(fields.company_name, fields.domain)) return true;
+      var sector = String(fields.sector || "").trim();
+      if (/^no legaltech\b/i.test(sector)) return true;
+      if (/^(entity_management|kyc_due_diligence|media|publisher|law_firm|fintech|consumer)/i.test(sector)) return true;
+      var decision = String(fields.decision || "").toLowerCase();
+      if (!/no-go|out of icp|refused/.test(decision)) return false;
+      var blob = String(fields.reason_or_ambiguity || "") + "\n" + String(fields.why || "");
+      if (/\bexisting client\b|\balready a client\b/i.test(blob) && !/\bnot legaltech\b/i.test(blob)) return false;
+      if (/mega funding|valuation outside/i.test(blob) && !/\bnot legaltech\b/i.test(blob)) return false;
+      if (/\bnot (a )?legal\s*tech\b|\bno legaltech\b/i.test(blob)) return true;
+      if (/\bout of icp sector\b/i.test(blob)) return true;
+      if (/\bnot a company\b|\bsentence fragment\b|\bpage header\b/i.test(blob)) return true;
+      if (/\blaw firm\b/i.test(blob) && !/\b(for|to) law firms\b/i.test(blob)) return true;
+      if (/\bpublisher false positive\b/i.test(blob)) {
+        return !!(host && (isNeverQueueOrgHostLive(host) || (typeof isPublisherHost === "function" && isPublisherHost(host))));
+      }
+      if (/\b(news (site|publisher|organization)|media company)\b/i.test(blob)) return true;
+      if (/\bworld health organization\b|\buniversity\b|\bresearch\.unc\.edu\b/i.test(blob)) return true;
+      if (/\binvestor relationship\b|\bfundraising software\b|\bfund admin/i.test(blob)) return true;
       return false;
     }
 
@@ -6647,7 +6722,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         if (byCase[caseId]) return;
         if (resultIsPublisherHuskLocal(rec)) return;
         var fields = rec.lastFields;
-        if (isFalseQueueEntityLive(fields.company_name, fields.domain)) {
+        if (isFalseQueueEntityLive(fields.company_name, fields.domain) || fieldsSayNotLegaltechFirmLive(fields)) {
           delete STORE_RESULTS[caseId];
           changed = true;
           return;
@@ -6728,7 +6803,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
 
       (extras.events || []).forEach(function (ev) {
         if (!ev) return;
-        if (isFalseQueueEntityLive(ev.company_name, ev.domain)) {
+        var scoredLeave = STORE_RESULTS[ev.case_id] && STORE_RESULTS[ev.case_id].lastFields;
+        if (isFalseQueueEntityLive(ev.company_name, ev.domain) || fieldsSayNotLegaltechFirmLive(scoredLeave)) {
           doomed.push(ev);
           return;
         }
@@ -6982,7 +7058,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       });
 
       doomed.forEach(function (ev) {
-        var falseEntity = isFalseQueueEntityLive(ev.company_name, ev.domain);
+        var scoredLeave = STORE_RESULTS[ev.case_id] && STORE_RESULTS[ev.case_id].lastFields;
+        var falseEntity = isFalseQueueEntityLive(ev.company_name, ev.domain) || fieldsSayNotLegaltechFirmLive(scoredLeave);
         if (
           !falseEntity &&
           mustRetainUnconfirmedNogoLocal(STORE_RESULTS[ev.case_id], extras, ev.case_id) &&
@@ -7613,7 +7690,9 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       if (!extras) return { dropped: 0 };
       var doomedFalse = [];
       (extras.events || []).forEach(function (ev) {
-        if (!ev || !isFalseQueueEntityLive(ev.company_name, ev.domain)) return;
+        if (!ev) return;
+        var scored = STORE_RESULTS[ev.case_id] && STORE_RESULTS[ev.case_id].lastFields;
+        if (!isFalseQueueEntityLive(ev.company_name, ev.domain) && !fieldsSayNotLegaltechFirmLive(scored)) return;
         doomedFalse.push(ev);
       });
       doomedFalse.forEach(function (ev) {
@@ -7624,7 +7703,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       Object.keys(STORE_RESULTS || {}).forEach(function (caseId) {
         var rec = STORE_RESULTS[caseId];
         var scored = rec && rec.lastFields;
-        if (!scored || !isFalseQueueEntityLive(scored.company_name, scored.domain)) return;
+        if (!scored || (!isFalseQueueEntityLive(scored.company_name, scored.domain) && !fieldsSayNotLegaltechFirmLive(scored))) return;
         delete STORE_RESULTS[caseId];
         dropped += 1;
       });
