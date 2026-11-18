@@ -376,6 +376,39 @@ body {
   display: block;
   margin-top: 2px;
 }
+.queue-summary .q-new {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.about-blurb {
+  margin: 0 0 var(--sp-3);
+  text-align: left;
+}
+.about-blurb-label {
+  font-size: var(--fs-0);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: left;
+}
+.about-blurb-text {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink);
+  font-size: var(--fs-1);
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+}
 .queue-summary .q-stories {
   color: var(--ink-3);
   font-weight: 600;
@@ -3436,7 +3469,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
 
     const POLICIES = {
       "icp-criteria.md": "Legaltech only (software sold to law firms or in-house legal teams for practice-of-law, litigation, e-discovery, or court workflows). Adjacent sectors such as entity management, corp sec, registered-agent automation, KYC/AML, AI due diligence, or OSINT research platforms (example: Xapien) sold to finance/ops/compliance are out of scope. Preferred employees 50-350. A known headcount outside that band is a note, not a No-go: say the count and that the company is still included. Revenue $15M-$50M preferred; VC/PE backed; TA headcount 0-2. Insufficient info → Table 3 Ambiguous, not No-go. Known disqualifiers other than headcount → Table 2. Whitelist exception applies.",
-      "signal-taxonomy.md": "Qualifying: executive hire, funding, partnership, merger, acquisition, IPO. Disqualifying: bankruptcy, layoffs-as-primary, closure.",
+      "signal-taxonomy.md": "Qualifying: executive hire, funding, partnership, merger, acquisition, IPO. The event itself must be within the last 6 weeks. The article date is not enough. A raise counts only for the company that sentence says raised. Disqualifying: bankruptcy, layoffs-as-primary, closure, a round older than 6 weeks, or a round that belongs to a different company in the same article.",
       "confidence-rubric.md": "Tiers: High, Medium, Low, Ambiguous, Out of ICP. Ambiguous / insufficient info -> Table 3. Live missing/sparse Hunter email with Would-go -> Table 3 Ambiguous. Known hard disqualify -> Table 2. Never No-go only because data is missing.",
       "agent-rules.md": "Never send without approval. Never fabricate. Never guess email. No-go only for known disqualifiers. Live: sparse Hunter / missing verified POC email with Would-go → Table 3 Ambiguous (not REFUSED). Insufficient ICP info → Table 3. Whitelist: skip ICP re-score. Partner Why names Exa.ai / Hunter.io.",
       "prequalified-whitelist.md": "Partner-vetted companies skip ICP re-qualification. Still require qualifying event, verified email, and hard stops. Cite whitelist in citations; say bypass in plain language in Why.",
@@ -3504,6 +3537,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       "FUNDING / CV3: When the trigger is a funding_round or IPO, the console fills {{CV3}} with a fund-raising milestone line (congrats on the round + typical post-round hiring needs). CV3 is not a job search. Do not treat a Series B like an open req. Lead with congratulations and the hiring wave that usually follows, then offer quiet help filling those seats.",
       "FUNDING SEQUENCE: For funding_round or IPO Go cases, the console auto-fills the Fund Raising 13-step sheet (persona-specific variant). Priorities: congratulate on the round; reference the 60-90 day post-funding hiring wave (revenue leadership, AEs, RevOps, TA overflow); never open-req or your {{CV1}} search language. Set persona_used to the normal POC sheet (CRO / CEO / Founder (company event), Head of Talent and HR, etc.); the console routes to the funding milestone copy.",
       "EVENT TYPE LANGUAGE (fundraising vs staffing): Funding_round and IPO triggers are capital events, not open reqs or active searches. Never write your Series A search, your funding search, your Series B search, or your {{CV1}} search when CV1 is a round label (Series A raise, seed round). A press release that mentions future hires after a round is post-funding staffing support, not an open req you are recruiting for. Use congratulations on the round, post-round hiring wave, and quiet help filling seats. Executive_hire and active job postings use search/open-req language; funding events do not.",
+      "EVENT RECENCY: A qualifying event must have happened within the last 6 weeks. The article publish date is not the event date. If the story dates the round, hire, or deal older than 6 weeks, Table 2 No-go. A ranking of total funding, or a sentence that only recalls an older round, is not a new raise.",
+      "ONE COMPANY, ONE EVENT: A raise, hire, or acquisition counts only for the company the sentence says did it. Do not assign one company's round to every other company named in the article. A product launch, model release, or feature announcement is not a funding round. If this company has no qualifying event of its own, Table 2 No-go.",
       "SECTOR CLASSIFICATION: ICP sector is legaltech only. Legaltech = software sold primarily to law firms, in-house legal departments practicing law, or core litigation, e-discovery, e-filing, or court workflows. NOT legaltech (Table 2 No-go for sector): legal entity management, registered agent / corp sec automation sold to finance and operations, HR tech, generic B2B SaaS adjacent to legal ops, AND KYC / AML / AI due diligence / OSINT / third-party risk research platforms (example: Xapien / xapien.com). Banks or law firms buying compliance tools does not make the product legaltech. Law.com or Legaltech News coverage does not automatically mean legaltech. Read company_profile.sector and icp_evaluation.sector_classification. Example: Discern (discern.com) is entity_management, not legaltech. Set sector: entity_management or kyc_due_diligence and No-go for ICP sector even when size and backing fit.",
       "PUBLISHER / VC FALSE POSITIVE (problem-solve, do not stop cold): If company_name or domain is a news/magazine publisher OR a venture firm (Lux Capital / luxcapital.com, Sequoia, a16z, Index Ventures, Foundernews / foundernews.eu, Startupmag / startupmag.co.uk, Exame / exame.com, Startups.com.br, Latam Republic, etc.) and the Exa.ai article is about a portfolio company they covered or funded, that publisher/VC is NOT the outreach target. Read the story body and extract the funded/hired company (possessive funding lines count: \"Xapien's total equity funding\" → Xapien / xapien.com). Example: Startupmag title \"Legaltech startup Crimson raises £1.9m\" → Crimson / crimson.law, never Startupmag. Exame or Startups.com.br covering Magnar → Magnar / magnar.ai, never the news site. If your rationale says the domain is a news publisher covering company X, retarget company_name and domain to X and never leave the publisher as the entity. Retarget company_name and domain to THAT company, then apply ICP. If that company is clearly not legaltech, Table 2 No-go for sector — do not leave Ambiguous unknown-entity. Mega-round / unicorn size ($100M+ raise or ~$1B+ valuation) is Table 2 No-go / Out of ICP even if legaltech. If the startup website is unknown AND size is not clearly out of ICP AND sector is still plausibly legaltech: Table 3 Ambiguous asking for its real domain. Never Hunter.io the publisher or VC. Never REFUSED-ESCALATE just to abandon a clear article subject.",
       "NEWSROOM IS NOT THE COMPANY: The company under review is the legaltech firm in the story. Do not investigate, score, or email the publication that reported it. Do not describe that publication's editors, inboxes, revenue, or sector. If a contact email is on the news domain, ignore that person.",
@@ -4972,6 +5007,12 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         nameSpan.textContent = storyName || "Company";
       }
       nameLine.appendChild(nameSpan);
+      if (ev.unseen === true) {
+        var newMark = document.createElement("span");
+        newMark.className = "q-new";
+        newMark.textContent = "New";
+        nameLine.appendChild(newMark);
+      }
       var storyN = eventSourceUrls(ev).length;
       if (storyN > 1) {
         var stories = document.createElement("span");
@@ -8594,7 +8635,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         row.appendChild(expand);
 
         summary.addEventListener("click", function () {
-          toggleRow(ev.case_id);
+          toggleRow(ev.case_id, { user: true });
         });
 
         runBtn.addEventListener("click", function (e) {
@@ -12989,10 +13030,34 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       dl.appendChild(row);
     }
 
+    function ensureAboutBlurb(root, ev) {
+      if (!root || !ev) return;
+      var host = root.querySelector(".field-list") || root.querySelector(".case-detail") || root;
+      var blurb = host.querySelector(":scope > .about-blurb");
+      if (!blurb) {
+        blurb = document.createElement("div");
+        blurb.className = "about-blurb";
+        var label = document.createElement("div");
+        label.className = "about-blurb-label";
+        label.textContent = "About";
+        var body = document.createElement("p");
+        body.className = "about-blurb-text";
+        blurb.appendChild(label);
+        blurb.appendChild(body);
+        host.insertBefore(blurb, host.firstChild);
+      }
+      var textEl = blurb.querySelector(".about-blurb-text");
+      var text = String(ev.about_text || "").replace(/\s+/g, " ").trim();
+      if (text) textEl.textContent = text;
+      else if (ev.about_checked_at) textEl.textContent = "No about page text was found for this company.";
+      else textEl.textContent = "Looking up the company about page.";
+    }
+
     function renderCaseDetailsPanel(parent, fields, ev) {
       if (fields) fillIcpDetailFields(fields, ev, ev ? byCompanyId(COMPANY_PROFILES, ev.company_id) : null);
       var dl = document.createElement("div");
       dl.className = "field-list";
+      if (ev) ensureAboutBlurb(dl, ev);
       appendCompactMetricTable(dl, fields);
       appendCompactEventRow(dl, fields, ev);
       appendSimpleFieldRow(dl, "poc_name", "POC name", fields.poc_name);
@@ -16289,6 +16354,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     function promoteQualifiedGoFromResearch(ev, resultEl, opts) {
       opts = opts || {};
       if (!ev || !resultEl) return { ok: false, detail: "missing_case" };
+      if (ev.signal_rejected) return { ok: false, detail: "no_qualifying_event" };
       var fieldsNow = resultEl._lastFields || {};
       if (hasGoDecision(fieldsNow) && caseHasUsablePocEmail(fieldsNow)) {
         return { ok: true, detail: "already_go", fields: fieldsNow };
@@ -18910,9 +18976,10 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           tabPend.textContent = "";
         }
       }
-      ["go", "nogo", "ambiguous", "in_sequence"].forEach(function (g) {
+      ["go", "nogo", "ambiguous", "in_sequence", "scoring"].forEach(function (g) {
         var table = queueForGroup(g);
         if (!table) return;
+        sortQueueTable(table);
         var empty = table.querySelector(".empty-group");
         if (counts[g] === 0) {
           if (!empty) {
@@ -18925,6 +18992,97 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           empty.remove();
         }
       });
+    }
+
+    function queueRecencyMs(ev) {
+      var added = Date.parse(ev && ev.added_at || "");
+      if (!isNaN(added)) return added;
+      var tail = String(ev && ev.case_id || "").split("-").pop() || "";
+      function stamp(token) {
+        var n = parseInt(token, 36);
+        if (n > 1600000000000 && n < 2000000000000) return n;
+        return 0;
+      }
+      var fromId = stamp(tail) || (tail.length > 4 ? stamp(tail.slice(0, -1)) : 0);
+      if (fromId) return fromId;
+      var day = Date.parse(ev && (ev.event_date || ev.announced_on || ev.date) || "");
+      if (!isNaN(day)) return day;
+      return 0;
+    }
+
+    function sortQueueTable(table) {
+      if (!table) return;
+      var rows = Array.prototype.filter.call(table.children, function (node) {
+        return node.classList && node.classList.contains("queue-row");
+      });
+      rows.sort(function (a, b) {
+        var ea = CASE_UI[a.getAttribute("data-case-id")];
+        var eb = CASE_UI[b.getAttribute("data-case-id")];
+        return queueRecencyMs(eb && eb.ev) - queueRecencyMs(ea && ea.ev);
+      });
+      rows.forEach(function (row) {
+        table.appendChild(row);
+      });
+    }
+
+    function markQueueEntitySeen(ev) {
+      if (!ev || ev.unseen !== true) return;
+      ev.unseen = false;
+      var extras = loadLiveExtras();
+      (extras.events || []).forEach(function (row) {
+        if (row && row.case_id === ev.case_id) row.unseen = false;
+      });
+      saveLiveExtras(extras);
+      var ui = CASE_UI[ev.case_id];
+      var mark = ui && ui.rowEl && ui.rowEl.querySelector(".q-new");
+      if (mark && mark.parentNode) mark.parentNode.removeChild(mark);
+    }
+
+    function rememberCompanyAbout(caseId, text, url) {
+      var stamped = new Date().toISOString();
+      var extras = loadLiveExtras();
+      (extras.events || []).forEach(function (row) {
+        if (!row || row.case_id !== caseId) return;
+        row.about_text = text || "";
+        row.about_url = url || "";
+        row.about_checked_at = stamped;
+      });
+      saveLiveExtras(extras);
+      var ui = CASE_UI[caseId];
+      if (ui && ui.ev) {
+        ui.ev.about_text = text || "";
+        ui.ev.about_url = url || "";
+        ui.ev.about_checked_at = stamped;
+        if (ui.resultEl) ensureAboutBlurb(ui.resultEl, ui.ev);
+        var detail = ui.rowEl && ui.rowEl.querySelector(".case-detail");
+        if (detail) ensureAboutBlurb(detail, ui.ev);
+      }
+    }
+
+    async function fillMissingAboutPages() {
+      if (!IS_LIVE || IS_PUBLIC_GITHUB_LIVE || !storeEnabled()) return;
+      var extras = loadLiveExtras();
+      var pending = (extras.events || []).filter(function (ev) {
+        if (!ev || ev.about_checked_at) return false;
+        var host = companyDomainLabel(ev.domain);
+        return !!(host && looksLikeRealDomain(host) && !isPublisherHost(host) && !isSyntheticExampleDomain(host));
+      });
+      for (var i = 0; i < pending.length; i++) {
+        var ev = pending[i];
+        var path =
+          "/v1/company-about?domain=" +
+          encodeURIComponent(ev.domain || "") +
+          "&name=" +
+          encodeURIComponent(ev.company_name || "") +
+          "&case_id=" +
+          encodeURIComponent(ev.case_id || "");
+        try {
+          var packed = await storeFetch(path, "GET");
+          var data = packed && packed.data;
+          if (!packed || !packed.ok || !data) continue;
+          rememberCompanyAbout(ev.case_id, data.text || "", data.url || "");
+        } catch (aboutErr) { /* keep the card usable */ }
+      }
     }
 
     function placeRowInGroup(caseId, fields) {
@@ -19156,6 +19314,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
           stampSequenceSubjects(ui.lastFields, ui.ev);
         }
         refreshStoredGoDrafts(ui, resultEl);
+        ensureAboutBlurb(resultEl, ui.ev);
         var oldGate = resultEl.querySelector(".human-gate");
         if (oldGate) oldGate.remove();
         if (ui.lastFields || resultEl.querySelector(".field-list") || resultEl.querySelector(".error-note")) {
@@ -19194,7 +19353,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       }
     }
 
-    function toggleRow(caseId) {
+    function toggleRow(caseId, opts) {
       var ui = CASE_UI[caseId];
       if (!ui) return;
       var wasOpen = ui.rowEl.classList.contains("open");
@@ -19211,6 +19370,8 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       ui.rowEl.classList.add("open");
       setTopbarSelectedEntity(ui.ev);
       restoreResultIntoRow(ui);
+      ensureAboutBlurb(ui.resultEl, ui.ev);
+      if (opts && opts.user) markQueueEntitySeen(ui.ev);
     }
 
     applyAppModeShell();
@@ -19335,6 +19496,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       try {
         await promoteQualifiedAmbiguousCasesOnHydrate();
       } catch (promoHydrateErr) { /* non-blocking */ }
+      fillMissingAboutPages().catch(function () { /* about text can arrive on the next refresh */ });
     }
 
     /**

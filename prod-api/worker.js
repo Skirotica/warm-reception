@@ -2880,7 +2880,28 @@ function stampUnknownIcpIfStillBlank(fields) {
   return fields;
 }
 
+function rejectBorrowedOrStaleSignal(fields, ev) {
+  if (!fields || !ev || !ev.signal_rejected) return fields;
+  var company = String(fields.company_name || ev.company_name || "This company");
+  fields.status = "OK";
+  fields.table = "Table 2";
+  fields.decision = "No-go";
+  fields.confidence_rating = "High";
+  fields.fit_if_email_secured = "Still-blocked";
+  fields.fit_if_email_note = "No current qualifying event, so a contact email does not make this a Go.";
+  fields.reason_or_ambiguity =
+    ev.signal_rejected === "stale_event"
+      ? "Qualifying event is older than 6 weeks"
+      : "No qualifying event for this company";
+  fields.trigger_event = "none";
+  fields.why =
+    String(ev.event_summary || "").trim() ||
+    company + " does not have its own qualifying event from the last 6 weeks. Nothing is sent.";
+  return fields;
+}
+
 function holdGoUntilIcpFacts(fields, ev, profile) {
+  rejectBorrowedOrStaleSignal(fields, ev);
   fillIcpDetailFields(fields, ev, profile);
   if (!fields || !/^go$/i.test(String(fields.decision || "").trim())) return fields;
   var missing = goIcpFactsMissing(fields);
@@ -3067,7 +3088,9 @@ function AUTO_ANALYZE_SYSTEM_PROMPT() {
     "If employee_count or revenue_estimate is not disclosed, decision stays Ambiguous, not Go.",
     "Partner-facing why: plain language, end with a next action. Name the source page for headcount, revenue, and the legaltech call. Name Exa.ai / Hunter.io when relevant. No .md file names in why.",
     "Drafts are filled later by the console. Leave draft fields out. Set persona_used when decision is Go.",
-    "Do not return decision Go when revenue_estimate, vc_pe_backed, ta_headcount, or persona_used is blank. If one of those facts is unknown, use Table 3 Ambiguous and write unknown in that field. A known employee count outside 50-350 is not one of those blanks: keep Go or Ambiguous for the other rules, and add the headcount sentence."
+    "Do not return decision Go when revenue_estimate, vc_pe_backed, ta_headcount, or persona_used is blank. If one of those facts is unknown, use Table 3 Ambiguous and write unknown in that field. A known employee count outside 50-350 is not one of those blanks: keep Go or Ambiguous for the other rules, and add the headcount sentence.",
+    "EVENT RECENCY: The qualifying event itself must have happened within the last 6 weeks. The article publish date is not the event date. If the round, hire, or deal is dated older than 6 weeks, Table 2 No-go. A funding ranking or a sentence that only recalls an older round is not a new raise.",
+    "ONE COMPANY, ONE EVENT: A raise, hire, or acquisition counts only for the company that sentence says did it. Never give one company's round to every company named in the article. A product launch, model release, or feature announcement is not a funding round. If this company has no qualifying event of its own, Table 2 No-go."
   ].join("\n");
 }
 
@@ -3840,6 +3863,100 @@ function applyPublisherRationaleRetarget(ev, fields) {
       (fromDomain ? "/" + fromDomain : "");
   }
   return true;
+}
+
+function cleanAboutPageText(text) {
+  var t = String(text || "").replace(/\s+/g, " ").trim();
+  t = t.replace(
+    /^(skip to (?:main )?content|accept (?:all )?cookies|cookie settings|privacy policy|we use cookies)[.\s]*/i,
+    ""
+  );
+  if (t.length < 80) return "";
+  if (t.length > 1400) {
+    var cut = t.slice(0, 1400);
+    var period = cut.lastIndexOf(". ");
+    t = (period > 400 ? cut.slice(0, period + 1) : cut.replace(/\s+\S*$/, "")).trim();
+  }
+  return t;
+}
+
+/** Opening text from the company's own about page, not the news story that mentioned them. */
+async function fetchCompanyAbout(env, domain, companyName) {
+  var host = normalizeHost(domain);
+  var empty = { text: "", url: "" };
+  if (!host || !looksLikeRealDomainWorker(host) || !env || !env.EXA_API_KEY) return empty;
+  var name = String(companyName || host).replace(/"/g, "").trim() || host;
+  var upstream;
+  try {
+    upstream = await fetch("https://api.exa.ai/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + env.EXA_API_KEY,
+        "x-api-key": env.EXA_API_KEY
+      },
+      body: JSON.stringify({
+        query: name + " about the company",
+        numResults: 4,
+        type: "auto",
+        includeDomains: [host],
+        contents: { text: { maxCharacters: 1800 } }
+      })
+    });
+  } catch (eAbout) {
+    return empty;
+  }
+  var raw = await upstream.json().catch(function () {
+    return null;
+  });
+  if (!upstream.ok || !raw) return empty;
+  var hits = raw.results || [];
+  var best = null;
+  var bestScore = -1;
+  var i;
+  for (i = 0; i < hits.length; i++) {
+    var hit = hits[i] || {};
+    var url = String(hit.url || "");
+    var factHost = hostFromAnyUrl(url);
+    if (normalizeHost(factHost) !== host) continue;
+    var text = cleanAboutPageText(hit.text || "");
+    if (!text) continue;
+    var path = "";
+    try {
+      path = new URL(url).pathname.toLowerCase();
+    } catch (ePath) {
+      path = "";
+    }
+    var score = text.length;
+    if (/about|company|who-we-are|our-story/.test(path)) score += 2000;
+    else if (path === "/" || path === "") score += 400;
+    if (score > bestScore) {
+      bestScore = score;
+      best = { text: text, url: url };
+    }
+  }
+  return best || empty;
+}
+
+async function storeCompanyAbout(env, caseId, domain, about) {
+  var extras = (await kvGet(env, "extras")) || {};
+  var events = Array.isArray(extras.events) ? extras.events : [];
+  var host = normalizeHost(domain);
+  var stamped = new Date().toISOString();
+  var changed = false;
+  events.forEach(function (ev) {
+    if (!ev) return;
+    var sameCase = caseId && ev.case_id === caseId;
+    var sameHost = host && normalizeHost(ev.domain) === host;
+    if (!sameCase && !sameHost) return;
+    if (ev.about_checked_at && String(ev.about_text || "").trim()) return;
+    ev.about_text = (about && about.text) || "";
+    ev.about_url = (about && about.url) || "";
+    ev.about_checked_at = stamped;
+    changed = true;
+  });
+  if (changed) await kvPut(env, "extras", extras);
+  return { changed: changed, about: about || { text: "", url: "" } };
 }
 
 async function lookupCompanySite(env, companyName) {
@@ -5572,16 +5689,190 @@ function companyNameIsRealEntity(name) {
   return titled;
 }
 
+var QUALIFYING_EVENT_MAX_AGE_DAYS = 42;
+
+var MONTH_INDEX = {
+  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+  may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10,
+  dec: 11, december: 11
+};
+
+function pad2(n) {
+  return (n < 10 ? "0" : "") + n;
+}
+
+function ymdFromParts(year, monthIndex, day) {
+  return year + "-" + pad2(monthIndex + 1) + "-" + pad2(day);
+}
+
+function lastDayOfMonth(year, monthIndex) {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+}
+
+function qualifyingEventTooOld(ymd, now) {
+  var age = calendarDaysOld(ymd, now || new Date());
+  if (age == null) return false;
+  return age > QUALIFYING_EVENT_MAX_AGE_DAYS;
+}
+
+function collectDatesInText(text, articleYmd) {
+  var found = [];
+  var t = String(text || "");
+  var articleYear = /^\d{4}/.test(articleYmd || "") ? Number(String(articleYmd).slice(0, 4)) : 0;
+  var articleDay = String(articleYmd || "").slice(0, 10);
+  var month = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+  var dayMonth = new RegExp("\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+" + month + "(?:\\s*,?\\s*(\\d{4}))?", "gi");
+  var monthDay = new RegExp("\\b" + month + "\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,)?\\s*(\\d{4})", "gi");
+  var monthYear = new RegExp("\\b" + month + "(?:\\s*,)?\\s+(\\d{4})\\b", "gi");
+  var m;
+  while ((m = dayMonth.exec(t))) {
+    var mon = MONTH_INDEX[String(m[2] || "").toLowerCase()];
+    var year = m[3] ? Number(m[3]) : articleYear;
+    var day = Number(m[1]);
+    if (mon == null || !year || day < 1 || day > 31) continue;
+    var ymd = ymdFromParts(year, mon, day);
+    if (!m[3] && articleDay && ymd > articleDay) ymd = ymdFromParts(year - 1, mon, day);
+    found.push({ ymd: ymd, index: m.index, specific: true });
+  }
+  while ((m = monthDay.exec(t))) {
+    var mon2 = MONTH_INDEX[String(m[1] || "").toLowerCase()];
+    var day2 = Number(m[2]);
+    var year2 = Number(m[3]);
+    if (mon2 == null || !year2 || day2 < 1 || day2 > 31) continue;
+    found.push({ ymd: ymdFromParts(year2, mon2, day2), index: m.index, specific: true });
+  }
+  while ((m = monthYear.exec(t))) {
+    var mon3 = MONTH_INDEX[String(m[1] || "").toLowerCase()];
+    var year3 = Number(m[2]);
+    if (mon3 == null || !year3) continue;
+    var at = m.index;
+    var covered = found.some(function (row) {
+      return row.specific && Math.abs(row.index - at) < 18;
+    });
+    if (covered) continue;
+    found.push({
+      ymd: ymdFromParts(year3, mon3, lastDayOfMonth(year3, mon3)),
+      index: at,
+      specific: false
+    });
+  }
+  return found;
+}
+
+function companyNamedBefore(text, name, index) {
+  var prior = String(text || "").slice(0, index);
+  var verbRe = /\b(raised|raises|raising|secured|secures|closed|closes|acquired|acquires|appointed|appoints|merged|unveiled|launched|released)\b/gi;
+  var m;
+  var cut = 0;
+  while ((m = verbRe.exec(prior))) cut = m.index + m[0].length;
+  var window = prior.slice(cut);
+  var n = String(name || "").toLowerCase();
+  return n && window.toLowerCase().indexOf(n) !== -1;
+}
+
+function possessiveBackdrop(sentence, name, matchIndex) {
+  var n = String(name || "");
+  var at = sentence.toLowerCase().lastIndexOf(n.toLowerCase(), matchIndex);
+  if (at < 0) return false;
+  if (!/^['’]s\b/i.test(sentence.slice(at + n.length))) return false;
+  var between = sentence.slice(at + n.length, matchIndex);
+  if (/\b(announc|raised|raises|secured|secures|appointed|acquired)\b/i.test(between)) return false;
+  return true;
+}
+
+function signalKindInSentence(name, sentence) {
+  var checks = [
+    {
+      kind: "funding_round",
+      label: "funding round",
+      re: /\b(raised|raises|raising|secured|secures)\b|\bclos(?:ed|es)\s+(?:a\s+)?(?:\$|its\s+)?(?:[\d.,]+\s*)?(?:series|seed|round|funding)\b|\bseries\s+[a-e]\b|\bpre-seed\b|\bseed(?:\s+round)?\b/gi
+    },
+    {
+      kind: "executive_hire",
+      label: "executive hire",
+      re: /\b(?:appointed|appoints|named)\b[^.]{0,80}\b(?:chief|ceo|cfo|coo|cro|vp|head of)\b|\bbecome\s+(?:the\s+)?(?:new\s+)?(?:chief|ceo|cfo|coo|cro)\b|\b(?:joined|joins|joining)\s+[A-Z][^.]{0,50}\sas\s+(?:chief|ceo|cfo|coo|cro|vp|head)\b/gi
+    },
+    { kind: "acquisition", label: "acquisition", re: /\b(acquired|acquires)\b/gi },
+    { kind: "merger", label: "merger", re: /\b(merged|merger)\b/gi },
+    { kind: "ipo", label: "IPO filing", re: /\b(filed\s+for\s+ipo|went\s+public|\bipo\b)\b/gi },
+    { kind: "strategic_partnership", label: "strategic partnership", re: /\b(partnered\s+with|strategic\s+partnership)\b/gi }
+  ];
+  var i;
+  for (i = 0; i < checks.length; i++) {
+    var re = checks[i].re;
+    re.lastIndex = 0;
+    var m;
+    while ((m = re.exec(sentence))) {
+      if (!companyNamedBefore(sentence, name, m.index)) continue;
+      if (possessiveBackdrop(sentence, name, m.index)) continue;
+      return { kind: checks[i].kind, label: checks[i].label, index: m.index };
+    }
+  }
+  return null;
+}
+
+/**
+ * A raise, hire, or deal counts only when this company is the one that did it,
+ * and only when that event itself is inside the last six weeks.
+ * The article date is not the event date. A round named beside other companies does not transfer.
+ */
+function companyQualifyingSignal(name, title, text, articleYmd, now) {
+  var sentences = sentencesMentioningCompany(name, title, text);
+  var best = null;
+  var i;
+  for (i = 0; i < sentences.length; i++) {
+    var sentence = sentences[i];
+    var kind = signalKindInSentence(name, sentence);
+    if (!kind) continue;
+    var dates = collectDatesInText(sentence, articleYmd);
+    if (!dates.length && sentences[i + 1] && String(sentences[i + 1]).toLowerCase().indexOf(String(name || "").toLowerCase()) !== -1) {
+      dates = collectDatesInText(sentences[i + 1], articleYmd);
+    }
+    var occurred = "";
+    if (dates.length) {
+      dates.sort(function (a, b) {
+        return Math.abs(a.index - kind.index) - Math.abs(b.index - kind.index);
+      });
+      occurred = dates[0].ymd;
+    } else if (/\b(today|yesterday|this week|last week|past week)\b/i.test(sentence)) {
+      occurred = String(articleYmd || "").slice(0, 10);
+    }
+    if (occurred && qualifyingEventTooOld(occurred, now)) continue;
+    if (
+      !occurred &&
+      /\b(total(?:\s+\w+){0,3}\s+funding|to date|previously|last round|so far|with\s+\$[\d.,]+\s*(?:[mb]|million|billion)?\s+in\s+funding)\b/i.test(
+        sentence
+      )
+    ) {
+      continue;
+    }
+    if (!occurred) occurred = String(articleYmd || "").slice(0, 10);
+    if (occurred && qualifyingEventTooOld(occurred, now)) continue;
+    var row = {
+      kind: kind.kind,
+      label: kind.label,
+      occurred: occurred,
+      sentence: String(sentence || "").replace(/\s+/g, " ").trim()
+    };
+    if (!best) best = row;
+  }
+  return best;
+}
+
+function summaryFromOwnSignal(name, signal) {
+  var sentence = String((signal && signal.sentence) || "").replace(/\s+/g, " ").trim();
+  if (sentence.length > 320) sentence = sentence.slice(0, 320).replace(/\s+\S*$/, "").trim();
+  if (sentence && !/[.!?]$/.test(sentence)) sentence += ".";
+  if (sentence) return sentence;
+  return String(name || "This company") + " had a " + ((signal && signal.label) || "qualifying event") + ".";
+}
+
 function storyCompanyInScope(name, title, text) {
   if (!companyNameIsRealEntity(name)) return false;
   if (isKnownNonLegaltechBrand(name)) return false;
   if (!companyDescribedAsLegaltech(name, title, text)) return false;
-  var windowText = localWindowForCompany(name, title, text);
-  var trigger = /\braise|raised|raising|funding|series\s+[a-e]|\bseed\b|hire|hired|hiring|appoint|appointed|joined|joins|joining|chief revenue|\bcro\b|announce|secure|acquir|unveiled|released/i.test(
-    windowText + "\n" + String(title || "")
-  );
-  if (trigger) return true;
-  return !!(nameAppearsInTitle(name, title) && isKnownLegaltechCompany(name));
+  return !!companyQualifyingSignal(name, title, text, "", new Date());
 }
 
 function snapSnippetStart(blob, rough, anchor) {
@@ -6146,14 +6437,25 @@ async function runExaIngest(env, source) {
       });
       return;
     }
+    var ownSignal = companyQualifyingSignal(gatedName, r.title, r.text, freshness.date, now);
+    if (!ownSignal) {
+      skipped += 1;
+      skipReasons.push({
+        title: String(r.title || "").slice(0, 80),
+        url: url,
+        publishedDate: String(r.publishedDate || ""),
+        reason: "no_own_recent_event",
+        company_name: gatedName
+      });
+      return;
+    }
     var slug = slugifyTokenWorker(gatedName).toUpperCase().replace(/-/g, "").slice(0, 10) || "X";
     var stamp = Date.now().toString(36) + added;
     var caseId = "CE-LX-" + slug + "-" + stamp;
     var companyId = "CO-LX-" + slug + "-" + stamp;
     var contactId = "CT-LX-" + slug + "-" + stamp;
-    var blob = String(r.title || "") + " " + String(r.text || "");
-    var eventType = inferEventTypeWorker(blob);
-    var summary = signalSummarySentence(gatedName, blob, eventType);
+    var eventType = ownSignal.kind;
+    var summary = summaryFromOwnSignal(gatedName, ownSignal);
     var note = "live_exa_refresh; verified_company_site_linkedin_hunter";
     var ev = {
       case_id: caseId,
@@ -6163,7 +6465,7 @@ async function runExaIngest(env, source) {
       event_type: eventType,
       event_headline: String(r.title || "").slice(0, 160),
       event_summary: summary,
-      event_date: freshness.date,
+      event_date: ownSignal.occurred || freshness.date,
       source_url: url,
       source_urls: [url],
       sector: "legaltech",
@@ -6173,8 +6475,14 @@ async function runExaIngest(env, source) {
       ta_headcount: null,
       entity_note: note,
       linkedin_url: admission.linkedin_url,
-      live_exa: true
+      live_exa: true,
+      added_at: now.toISOString(),
+      unseen: true
     };
+    var aboutPage = await fetchCompanyAbout(env, domain, gatedName);
+    ev.about_text = aboutPage.text || "";
+    ev.about_url = aboutPage.url || "";
+    ev.about_checked_at = now.toISOString();
     extras.events.push(ev);
     upsertExtrasRow(
       extras.profiles,
@@ -7756,6 +8064,46 @@ export default {
       return proxyAnthropic(request, env, cors);
     }
 
+    if (path === "/v1/company-about") {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return jsonResponse({ error: "Use GET /v1/company-about" }, 405, cors);
+      }
+      if (hunterGithubOrigin(origin)) return githubIoPublicBlocked(cors, "Company about");
+      if (!env.DB) return storeMissing(cors);
+      var aboutDomain = url.searchParams.get("domain") || "";
+      var aboutName = url.searchParams.get("name") || "";
+      var aboutCase = url.searchParams.get("case_id") || "";
+      var aboutExtras = (await kvGet(env, "extras")) || {};
+      var aboutEvents = Array.isArray(aboutExtras.events) ? aboutExtras.events : [];
+      var aboutHost = normalizeHost(aboutDomain);
+      var aboutExisting = null;
+      for (var aboutI = 0; aboutI < aboutEvents.length; aboutI++) {
+        var aboutEv = aboutEvents[aboutI];
+        if (!aboutEv) continue;
+        if (aboutCase && aboutEv.case_id === aboutCase) aboutExisting = aboutEv;
+        else if (aboutHost && normalizeHost(aboutEv.domain) === aboutHost && !aboutExisting) aboutExisting = aboutEv;
+      }
+      if (aboutExisting && aboutExisting.about_checked_at) {
+        return jsonResponse(
+          {
+            ok: true,
+            cached: true,
+            text: aboutExisting.about_text || "",
+            url: aboutExisting.about_url || ""
+          },
+          200,
+          cors
+        );
+      }
+      var aboutFresh = await fetchCompanyAbout(env, aboutDomain || (aboutExisting && aboutExisting.domain) || "", aboutName || (aboutExisting && aboutExisting.company_name) || "");
+      await storeCompanyAbout(env, aboutCase || (aboutExisting && aboutExisting.case_id) || "", aboutDomain || (aboutExisting && aboutExisting.domain) || "", aboutFresh);
+      return jsonResponse(
+        { ok: true, cached: false, text: aboutFresh.text || "", url: aboutFresh.url || "" },
+        200,
+        cors
+      );
+    }
+
     if (path === "/search") {
       if (request.method !== "GET") {
         return jsonResponse({ error: "Use GET /search" }, 405, cors);
@@ -7801,5 +8149,7 @@ export {
   isKnownNonLegaltechBrand,
   isPageHeaderOrFragmentName,
   isFalseQueueEntity,
-  fieldsSayNotLegaltechFirm
+  fieldsSayNotLegaltechFirm,
+  companyQualifyingSignal,
+  qualifyingEventTooOld
 };
