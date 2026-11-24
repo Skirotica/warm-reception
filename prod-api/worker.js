@@ -2033,15 +2033,21 @@ async function storeSnapshot(env, cors) {
     var results = (await kvGet(env, "results")) || {};
     if (dropOutreachTestExtras(extras)) await kvPut(env, "extras", extras);
     if (dropOutreachTestResults(results)) await kvPut(env, "results", results);
-    var visible = publishedQueueView(extras, results);
+    // The partner page saves this snapshot straight back. Return the full store.
+    // A filtered copy would erase every company the filter hid. Bad cards are
+    // removed here, in the store, before the page sees them.
+    if (stripBlockedConsumerBrands(extras, results)) {
+      await kvPut(env, "extras", extras);
+      await kvPut(env, "results", results);
+    }
     return jsonResponse(
       {
         ok: true,
         audit: rows.slice().reverse(),
-        extras: visible.extras,
+        extras: extras,
         ingest_status: (await kvGet(env, "ingest_status")) || null,
         voice: (await kvGet(env, "voice")) || null,
-        results: visible.results,
+        results: results,
         clients: (await kvGet(env, "clients")) || [],
         dnc: (await kvGet(env, "dnc")) || [],
         dispatch_status: (await kvGet(env, "dispatch_status")) || null,
@@ -2219,9 +2225,14 @@ async function storePutBlob(request, env, cors, key) {
     }
     if (key === "extras") {
       dropOutreachTestExtras(body);
+      var storedResults = (await kvGet(env, "results")) || {};
+      if (stripBlockedConsumerBrands(body, storedResults)) {
+        await kvPut(env, "results", storedResults);
+      }
     }
     if (key === "results") {
       dropOutreachTestResults(body);
+      stripBlockedConsumerBrands({ events: [] }, body);
     }
     await kvPut(env, key, body);
     return jsonResponse({ ok: true, key: key }, 200, cors);
@@ -3728,6 +3739,9 @@ async function verifyCompanyAdmission(env, companyName, domainHint, title, text,
   if (!domain || !domainBelongsToCompany(clean, domain)) {
     return { ok: false, reason: "no_website", company_name: clean, lookup_ran: !!(env && env.EXA_API_KEY) };
   }
+  if (isBlockedConsumerHost(domain)) {
+    return { ok: false, reason: "not_legaltech", company_name: clean, domain: domain, nature: "Consumer brand, not legal software" };
+  }
   var priorAbout = { text: (site && site.snippet) || "", url: "" };
   var vet = await vetLegaltechFromWeb(env, clean, domain, priorAbout);
   if (!vet.legaltech) {
@@ -3791,6 +3805,39 @@ function partnerKeptQueueCase(rec) {
   return false;
 }
 
+function isBlockedConsumerHost(domain) {
+  var host = normalizeHost(domain);
+  return host === "off.com";
+}
+
+function resultIsBlockedConsumerBrand(rec) {
+  var fields = rec && rec.lastFields;
+  if (!fields) return false;
+  return isBlockedConsumerHost(fields.domain);
+}
+
+/** Remove consumer brands such as Off.com from the store. Returns how many events were removed. */
+function stripBlockedConsumerBrands(extras, results) {
+  var n = 0;
+  extras = extras || {};
+  results = results || {};
+  var doomed = [];
+  (extras.events || []).forEach(function (ev) {
+    if (ev && isBlockedConsumerHost(ev.domain)) doomed.push(ev);
+  });
+  doomed.forEach(function (ev) {
+    removeExtrasEventAndRelated(extras, ev.case_id, ev.company_id);
+    if (results[ev.case_id]) delete results[ev.case_id];
+    n += 1;
+  });
+  Object.keys(results).forEach(function (caseId) {
+    if (!resultIsBlockedConsumerBrand(results[caseId])) return;
+    delete results[caseId];
+    n += 1;
+  });
+  return n;
+}
+
 function dropFakeQueueEntities(extras, results) {
   var n = 0;
   if (!extras) return 0;
@@ -3799,7 +3846,11 @@ function dropFakeQueueEntities(extras, results) {
   (extras.events || []).forEach(function (ev) {
     if (!ev) return;
     var scored = results[ev.case_id] && results[ev.case_id].lastFields;
-    if (isFalseQueueEntity(ev.company_name, ev.domain) || fieldsSayNotLegaltechFirm(scored)) {
+    if (
+      isFalseQueueEntity(ev.company_name, ev.domain) ||
+      fieldsSayNotLegaltechFirm(scored) ||
+      isBlockedConsumerHost(ev.domain)
+    ) {
       doomed.push(ev);
       return;
     }
@@ -4515,6 +4566,15 @@ async function analyzeOnePendingEvent(env, ev, extras, clients, opts) {
       fields: publisherFalsePositiveFields(ev, subjectGuess && subjectGuess.company_name),
       hunterStatus: "skipped_publisher",
       mode: "publisher_guard"
+    };
+  }
+
+  if (isBlockedConsumerHost(ev.domain)) {
+    return {
+      ok: true,
+      unpublish: true,
+      reason: "not_legaltech",
+      nature: "Consumer brand, not legal software"
     };
   }
 
