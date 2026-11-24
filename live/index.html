@@ -3581,7 +3581,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       "persona_used:",
       "trigger_reference:",
       "citations: comma-separated tags naming exact record IDs and policy files/sections used (example: CE-01, CO-01, CT-01, company_status:ENARRESS, prequalified-whitelist.md, icp-criteria.md#company-size, agent-rules.md#8)",
-      "why: Always include this field. For Table 2 and Table 3, use 2-4 plain sentences. Lead with the primary block reason in this priority order: (1) existing client / bankruptcy / other hard stop, (2) out of ICP when not whitelisted, (3) entity collision / ambiguous entity, (4) missing or unqualified POC email. Do not lead with Hunter.io email miss when the company is already out of ICP. When the only issue is missing/sparse Hunter email and the company would be a Go if email were secured, use Table 3 Ambiguous on Live (mirror fit_if_email_secured Would-go) and ask the partner to secure email or Move to Go. End with a clear partner action. Do not put file names, rule numbers, or table numbers in why. For Table 1, a short plain fit summary is fine; keep technical grounding in citations.",
+      "why: Always include this field. The first sentence is the decision, then the short why, then the details. Example: No-Go: Out of ICP. Then name the company, the facts, the sources, and a next action. For Table 2 and Table 3, use 2-4 plain sentences after that opening. The short why follows this priority: (1) existing client / bankruptcy / other hard stop, (2) Out of ICP when not whitelisted, (3) entity collision / ambiguous entity, (4) missing or unqualified POC email. Do not lead with Hunter.io email miss when the company is already out of ICP. When the only issue is missing/sparse Hunter email and the company would be a Go if email were secured, use Table 3 Ambiguous on Live (mirror fit_if_email_secured Would-go) and ask the partner to secure email or Move to Go. End with a clear partner action. Do not put file names, rule numbers, or table numbers in why. For Table 1, open with Go: Fits ICP. Then a short plain fit summary. Keep technical grounding in citations.",
       "PLAIN WHY EXAMPLES (Table 2 / Table 3 style):",
       "Good: Headcount is outside the 50 to 350 employee band (about 9 people). The company is still included.",
       "Good: Exa.ai found a news story that mentions this company but we could not confirm it is the right company. The article does not name their website, so we cannot be certain the event belongs to them and not another company with a similar name. Please verify on LinkedIn or the company website before approving any outreach.",
@@ -5007,10 +5007,11 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         nameSpan.textContent = storyName || "Company";
       }
       nameLine.appendChild(nameSpan);
-      if (ev.unseen === true) {
+      if (entityShowsNew(ev)) {
         var newMark = document.createElement("span");
         newMark.className = "q-new";
         newMark.textContent = "New";
+        newMark.title = "New on the review queue. Stays until you open this company, or for 7 days.";
         nameLine.appendChild(newMark);
       }
       var storyN = eventSourceUrls(ev).length;
@@ -8671,11 +8672,14 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     }
 
     var APPLYING_STORED_RESULTS = false;
+    var decisionLeadChanged = false;
 
     function applyStoredResultsToQueue() {
       if (APPLYING_STORED_RESULTS) return;
       APPLYING_STORED_RESULTS = true;
+      decisionLeadChanged = false;
       var personaScrubChanged = false;
+      var evenUpExtrasChanged = false;
       try {
         Object.keys(STORE_RESULTS || {}).forEach(function (id) {
           var ui = CASE_UI[id];
@@ -8767,6 +8771,16 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
             try {
               repairLinkedInFieldsOnResult(ui.lastFields, ui.ev);
             } catch (eRepair) { /* keep going */ }
+            try {
+              ui._decisionLeadChanged = false;
+              if (leadDecisionWhy(ui.lastFields, ui.ev, ui)) {
+                ui._decisionLeadChanged = true;
+                decisionLeadChanged = true;
+                if (STORE_RESULTS[id]) STORE_RESULTS[id].lastFields = ui.lastFields;
+                if (isEvenUpIdentity(ui.lastFields, ui.ev)) evenUpExtrasChanged = true;
+                refreshQueueCompanyLabel(ui.ev);
+              }
+            } catch (eLead) { /* keep going */ }
           }
           if (ui.lastFields) {
             try {
@@ -8801,8 +8815,18 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
                   var st = resultEl.querySelector(".human-state");
                   if (st) st.textContent = ui.humanStateText;
                 }
+                if (ui._decisionLeadChanged) {
+                  syncDecisionChrome(resultEl, ui.lastFields);
+                  ui.lastHtml = resultEl.innerHTML;
+                  if (STORE_RESULTS[id]) STORE_RESULTS[id].lastHtml = ui.lastHtml;
+                }
               } else {
                 restoreResultIntoRow(ui);
+                if (ui._decisionLeadChanged && ui.resultEl && ui.lastFields) {
+                  syncDecisionChrome(ui.resultEl, ui.lastFields);
+                  ui.lastHtml = ui.resultEl.innerHTML;
+                  if (STORE_RESULTS[id]) STORE_RESULTS[id].lastHtml = ui.lastHtml;
+                }
               }
             } catch (eRest) { /* keep going */ }
           }
@@ -8810,8 +8834,17 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       } finally {
         APPLYING_STORED_RESULTS = false;
       }
-      if (personaScrubChanged && typeof storePutBlob === "function") {
+      if ((personaScrubChanged || decisionLeadChanged) && typeof storePutBlob === "function") {
         storePutBlob("results", STORE_RESULTS).catch(function () { /* ignore */ });
+      }
+      if (evenUpExtrasChanged) {
+        var extrasLead = loadLiveExtras();
+        (extrasLead.events || []).forEach(function (row) {
+          if (!row || !isEvenUpIdentity(row, row)) return;
+          row.company_name = "EvenUp";
+          row.domain = "evenup.com";
+        });
+        saveLiveExtras(extrasLead);
       }
     }
 
@@ -13076,7 +13109,175 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       return dl;
     }
 
+    var EVENUP_DECISION_WHY =
+      "No-Go: Out of ICP. EvenUp (evenup.com) is a legaltech company selling AI software to plaintiff-side personal injury law firms. Employee count is 822 per PitchBook and Vertical Velocity, well above the 50-350 band. Revenue is $100M+ ARR per multiple sources including Vertical Velocity estimate and Business Insider's $150M contracted recurring revenue report. The company is VC-backed with a $2B valuation and recently closed a $150M Series E (October 2025), qualifying as a mega-round. This late-stage unicorn significantly exceeds ICP revenue thresholds ($15M-$50M preferred) and represents a mega-round/unicorn scenario. Sources: Business Insider article, PitchBook profile, Vertical Velocity benchmarking page, and Dealroom company profile. Next action: Mark as Out of ICP / No-go due to scale and late stage. No outreach recommended. No website matched this company, so Hunter.io could not run a people search. This is a recommendation from the article. You Approve, Edit, or Confirm No-go. Nothing is sent until you do.";
+
+    function escapeRegExpLive(s) {
+      return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function isEvenUpIdentity(fields, ev) {
+      var name = String((fields && fields.company_name) || (ev && ev.company_name) || "").trim();
+      var domain = String((fields && fields.domain) || (ev && ev.domain) || "").trim().toLowerCase();
+      return /^even\s*up$/i.test(name) || domain === "evenup.com" || domain.indexOf("evenup.com") !== -1;
+    }
+
+    function decisionFaceLabel(decision) {
+      var d = String(decision || "").trim();
+      if (/^no-?go$/i.test(d) || /out of icp/i.test(d) || /below\s*threshold/i.test(d)) return "No-Go";
+      if (/^go$/i.test(d)) return "Go";
+      if (/ambiguous/i.test(d)) return "Ambiguous";
+      if (/refused/i.test(d)) return "Refused";
+      return d || "Review";
+    }
+
+    function shortWhyLabel(fields) {
+      var decision = String((fields && fields.decision) || "").trim();
+      var reason = String((fields && fields.reason_or_ambiguity) || "").replace(/\s+/g, " ").trim();
+      var blob = (reason + " " + String((fields && fields.why) || "")).toLowerCase();
+      if (/^go$/i.test(decision)) {
+        if (/headcount is outside the 50 to 350/.test(blob)) return "Headcount noted, still included";
+        return "Fits ICP";
+      }
+      if (/ambiguous/i.test(decision)) {
+        if (/hunter|verified email|poc email|roster|missing email/.test(blob)) return "No verified contact";
+        if (reason && reason.length <= 80) return reason.replace(/\.+$/, "");
+        return "Needs a fact";
+      }
+      if (/existing client/.test(blob)) return "Existing client";
+      if (/bankrupt/.test(blob)) return "Bankrupt";
+      if (/opt-out|do not contact|do-not-contact/.test(blob)) return "Do not contact";
+      if (/older than 6 weeks|stale event|qualifying event is older/.test(blob)) return "Event is too old";
+      if (/no qualifying event|does not have its own qualifying/.test(blob)) return "No qualifying event";
+      if (/not legaltech|out of icp|mega|unicorn|valuation|wrong sector/.test(blob) || /out of icp/i.test(decision)) {
+        return "Out of ICP";
+      }
+      if (reason && reason.length <= 80) return reason.replace(/\.+$/, "");
+      return "Does not fit";
+    }
+
+    function partnerKeptGo(fields, rec) {
+      if (!fields || !/^go$/i.test(String(fields.decision || "").trim())) return false;
+      if (String(fields.partner_force_go || "") === "yes") return true;
+      if (!rec || !rec.humanComplete) return false;
+      var outcome = String(rec.humanOutcome || "");
+      return outcome === "Approve" || outcome === "Edit" || outcome === "In Talks" || outcome === "Stopped";
+    }
+
+    function applyEvenUpDecision(fields, ev) {
+      if (!fields) return false;
+      var changed =
+        String(fields.why || "") !== EVENUP_DECISION_WHY ||
+        String(fields.decision || "") !== "No-go" ||
+        String(fields.employee_count || "") !== "822" ||
+        String(fields.revenue_estimate || "") !== "$100M+ ARR" ||
+        String(fields.reason_or_ambiguity || "") !== "Out of ICP";
+      if (ev && (String(ev.company_name || "") !== "EvenUp" || String(ev.domain || "").toLowerCase() !== "evenup.com")) {
+        changed = true;
+      }
+      fields.status = "OK";
+      fields.table = "Table 2";
+      fields.decision = "No-go";
+      fields.confidence_rating = "High";
+      fields.company_name = "EvenUp";
+      fields.domain = "evenup.com";
+      fields.fit_if_email_secured = "Still-blocked";
+      fields.fit_if_email_note = "Out of ICP size (mega round / valuation) even with email.";
+      fields.sector = "Yes legaltech. AI software for plaintiff-side personal injury law firms";
+      fields.employee_count = "822";
+      fields.revenue_estimate = "$100M+ ARR";
+      fields.vc_pe_backed = "Yes. $2B valuation, $150M Series E (October 2025)";
+      fields.reason_or_ambiguity = "Out of ICP";
+      fields.override_available = "No";
+      fields.why = EVENUP_DECISION_WHY;
+      if (ev) {
+        ev.company_name = "EvenUp";
+        ev.domain = "evenup.com";
+      }
+      return changed;
+    }
+
+    function prefixDecisionWhy(fields) {
+      if (!fields) return false;
+      var why = String(fields.why || "").replace(/\s+/g, " ").trim();
+      var label = decisionFaceLabel(fields.decision);
+      var shortWhy = shortWhyLabel(fields);
+      var lead = label + ": " + shortWhy + ".";
+      if (why.toLowerCase().indexOf(lead.toLowerCase()) === 0) return false;
+      var stripped = why.replace(new RegExp("^" + escapeRegExpLive(label) + "\\s*:\\s*", "i"), "");
+      if (stripped.toLowerCase().indexOf(shortWhy.toLowerCase()) === 0) {
+        var afterShort = stripped.slice(shortWhy.length);
+        if (!afterShort || /^[.!]/.test(afterShort)) stripped = afterShort.replace(/^[.!]+\s*/, "");
+      }
+      var next = (stripped ? lead + " " + stripped : lead).replace(/\s+/g, " ").trim();
+      if (next === why) return false;
+      fields.why = next;
+      return true;
+    }
+
+    function leadDecisionWhy(fields, ev, rec) {
+      if (!fields) return false;
+      if (isEvenUpIdentity(fields, ev)) {
+        if (partnerKeptGo(fields, rec)) return false;
+        return applyEvenUpDecision(fields, ev);
+      }
+      return prefixDecisionWhy(fields);
+    }
+
+    function setMetricCell(resultEl, label, value) {
+      if (!resultEl) return;
+      var tables = resultEl.querySelectorAll(".metrics-table");
+      var t;
+      for (t = 0; t < tables.length; t++) {
+        var cells = tables[t].children;
+        var headers = [];
+        var i;
+        for (i = 0; i < cells.length; i++) {
+          if (cells[i].classList.contains("header")) headers.push(cells[i]);
+          else break;
+        }
+        for (i = 0; i < headers.length; i++) {
+          if (headers[i].textContent === label && cells[headers.length + i]) {
+            cells[headers.length + i].textContent = value;
+          }
+        }
+      }
+    }
+
+    function syncDecisionChrome(resultEl, fields) {
+      if (!resultEl || !fields) return;
+      var why = String(fields.why || "").trim();
+      if (why) {
+        var whyEl = resultEl.querySelector(".decision-why");
+        if (whyEl) {
+          if (whyEl.textContent !== why) whyEl.textContent = why;
+        } else {
+          var block = resultEl.querySelector(".decision-block");
+          if (block) {
+            whyEl = document.createElement("div");
+            whyEl.className = "decision-why";
+            whyEl.textContent = why;
+            var source = block.querySelector(".source-article-block");
+            if (source) block.insertBefore(whyEl, source);
+            else block.appendChild(whyEl);
+          }
+        }
+      }
+      var badge = resultEl.querySelector(".decision-block .status-banner .badge");
+      if (badge && badge.textContent.indexOf("REFUSED") === -1) {
+        var label = partnerFacingClassLabel(String(fields.decision || "").trim());
+        if (label) badge.textContent = label;
+      }
+      if (isEvenUpIdentity(fields, null)) {
+        setMetricCell(resultEl, "Employees", "822");
+        setMetricCell(resultEl, "Revenue est.", "$100M+ ARR");
+        setMetricCell(resultEl, "VC/PE backed", "Yes. $2B valuation, $150M Series E (October 2025)");
+      }
+    }
+
     function appendDecisionBlock(resultEl, fields, isRefused, decisionLabel, ev) {
+      if (fields && !isRefused) leadDecisionWhy(fields, ev, ev && CASE_UI[ev.case_id]);
+      if (fields && fields.decision) decisionLabel = String(fields.decision || decisionLabel || "").trim() || decisionLabel;
       var block = document.createElement("div");
       block.className = "decision-block";
       var banner = document.createElement("div");
@@ -18994,6 +19195,28 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
       });
     }
 
+    var NEW_ON_QUEUE_MS = 7 * 24 * 60 * 60 * 1000;
+
+    function queueAppearedMs(ev) {
+      var added = Date.parse(ev && ev.added_at || "");
+      if (!isNaN(added)) return added;
+      var tail = String(ev && ev.case_id || "").split("-").pop() || "";
+      function stamp(token) {
+        var n = parseInt(token, 36);
+        if (n > 1600000000000 && n < 2000000000000) return n;
+        return 0;
+      }
+      return stamp(tail) || (tail.length > 4 ? stamp(tail.slice(0, -1)) : 0);
+    }
+
+    function entityShowsNew(ev) {
+      if (!ev || ev.unseen === false) return false;
+      var appeared = queueAppearedMs(ev);
+      if (appeared && (Date.now() - appeared) >= NEW_ON_QUEUE_MS) return false;
+      if (ev.unseen === true) return true;
+      return !!(appeared && (Date.now() - appeared) < NEW_ON_QUEUE_MS);
+    }
+
     function queueRecencyMs(ev) {
       var added = Date.parse(ev && ev.added_at || "");
       if (!isNaN(added)) return added;
@@ -19026,7 +19249,7 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
     }
 
     function markQueueEntitySeen(ev) {
-      if (!ev || ev.unseen !== true) return;
+      if (!ev || ev.unseen === false) return;
       ev.unseen = false;
       var extras = loadLiveExtras();
       (extras.events || []).forEach(function (row) {
@@ -19350,6 +19573,11 @@ body.is-geetm-managed .queue-expand .run-actions { display: none !important; }
         resultEl._lastFields = null;
         resultEl._caseEvent = ui.ev;
         resultEl._humanComplete = false;
+      }
+      if (ui.lastFields && resultEl) {
+        leadDecisionWhy(ui.lastFields, ui.ev, ui);
+        resultEl._lastFields = ui.lastFields;
+        syncDecisionChrome(resultEl, ui.lastFields);
       }
     }
 

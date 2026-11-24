@@ -1601,6 +1601,7 @@ async function rescoreMagnarAfterNewsMerge(env, extras, results) {
   var decision = String(outcome.fields.decision || "");
   holdGoUntilIcpFacts(outcome.fields, ev, null);
   includeDespiteEmployeeCount(outcome.fields, ev, null);
+  leadDecisionWhy(outcome.fields, ev, null);
   decision = String(outcome.fields.decision || "");
   var isGo = /^go$/i.test(decision.trim());
   results[ev.case_id] = {
@@ -2040,6 +2041,9 @@ async function storeSnapshot(env, cors) {
       await kvPut(env, "extras", extras);
       await kvPut(env, "results", results);
     }
+    var decisionCopy = rewriteStoredDecisionCopy(extras, results);
+    if (decisionCopy.results) await kvPut(env, "results", results);
+    if (decisionCopy.extras) await kvPut(env, "extras", extras);
     return jsonResponse(
       {
         ok: true,
@@ -3099,7 +3103,7 @@ function AUTO_ANALYZE_SYSTEM_PROMPT() {
     "citations: one URL per fact, for headcount, revenue, and the legaltech call. Use only URLs present in company_fact_research, the company domain, or event_source_url. Do not invent a URL or a number.",
     "Hunter email records are not an employee count. Never use the length of hunter_roster as headcount.",
     "If employee_count or revenue_estimate is not disclosed, decision stays Ambiguous, not Go.",
-    "Partner-facing why: plain language, end with a next action. Name the source page for headcount, revenue, and the legaltech call. Name Exa.ai / Hunter.io when relevant. No .md file names in why.",
+    "Partner-facing why: plain language. The first sentence is the decision, then the short why, then the details. Example: No-Go: Out of ICP. Then name the company, the facts, the sources, and a next action. Name the source page for headcount, revenue, and the legaltech call. Name Exa.ai / Hunter.io when relevant. No .md file names in why.",
     "Drafts are filled later by the console. Leave draft fields out. Set persona_used when decision is Go.",
     "Do not return decision Go when revenue_estimate, vc_pe_backed, ta_headcount, or persona_used is blank. If one of those facts is unknown, use Table 3 Ambiguous and write unknown in that field. A known employee count outside 50-350 is not one of those blanks: keep Go or Ambiguous for the other rules, and add the headcount sentence.",
     "EVENT RECENCY: The qualifying event itself must have happened within the last 6 weeks. The article publish date is not the event date. If the round, hire, or deal is dated older than 6 weeks, Table 2 No-go. A funding ranking or a sentence that only recalls an older round is not a new raise.",
@@ -3220,9 +3224,148 @@ function employeeBandNote(n) {
   );
 }
 
+var EVENUP_DECISION_WHY =
+  "No-Go: Out of ICP. EvenUp (evenup.com) is a legaltech company selling AI software to plaintiff-side personal injury law firms. Employee count is 822 per PitchBook and Vertical Velocity, well above the 50-350 band. Revenue is $100M+ ARR per multiple sources including Vertical Velocity estimate and Business Insider's $150M contracted recurring revenue report. The company is VC-backed with a $2B valuation and recently closed a $150M Series E (October 2025), qualifying as a mega-round. This late-stage unicorn significantly exceeds ICP revenue thresholds ($15M-$50M preferred) and represents a mega-round/unicorn scenario. Sources: Business Insider article, PitchBook profile, Vertical Velocity benchmarking page, and Dealroom company profile. Next action: Mark as Out of ICP / No-go due to scale and late stage. No outreach recommended. No website matched this company, so Hunter.io could not run a people search. This is a recommendation from the article. You Approve, Edit, or Confirm No-go. Nothing is sent until you do.";
+
+function escapeRegExpWorker(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isEvenUpIdentity(fields, ev) {
+  var name = String((fields && fields.company_name) || (ev && ev.company_name) || "").trim();
+  var domain = String((fields && fields.domain) || (ev && ev.domain) || "").trim().toLowerCase();
+  return /^even\s*up$/i.test(name) || domain === "evenup.com" || domain.indexOf("evenup.com") !== -1;
+}
+
+function decisionFaceLabel(decision) {
+  var d = String(decision || "").trim();
+  if (/^no-?go$/i.test(d) || /out of icp/i.test(d) || /below\s*threshold/i.test(d)) return "No-Go";
+  if (/^go$/i.test(d)) return "Go";
+  if (/ambiguous/i.test(d)) return "Ambiguous";
+  if (/refused/i.test(d)) return "Refused";
+  return d || "Review";
+}
+
+function shortWhyLabel(fields) {
+  var decision = String((fields && fields.decision) || "").trim();
+  var reason = String((fields && fields.reason_or_ambiguity) || "").replace(/\s+/g, " ").trim();
+  var blob = (reason + " " + String((fields && fields.why) || "")).toLowerCase();
+  if (/^go$/i.test(decision)) {
+    if (/headcount is outside the 50 to 350/.test(blob)) return "Headcount noted, still included";
+    return "Fits ICP";
+  }
+  if (/ambiguous/i.test(decision)) {
+    if (/hunter|verified email|poc email|roster|missing email/.test(blob)) return "No verified contact";
+    if (reason && reason.length <= 80) return reason.replace(/\.+$/, "");
+    return "Needs a fact";
+  }
+  if (/existing client/.test(blob)) return "Existing client";
+  if (/bankrupt/.test(blob)) return "Bankrupt";
+  if (/opt-out|do not contact|do-not-contact/.test(blob)) return "Do not contact";
+  if (/older than 6 weeks|stale event|qualifying event is older/.test(blob)) return "Event is too old";
+  if (/no qualifying event|does not have its own qualifying/.test(blob)) return "No qualifying event";
+  if (/not legaltech|out of icp|mega|unicorn|valuation|wrong sector/.test(blob) || /out of icp/i.test(decision)) {
+    return "Out of ICP";
+  }
+  if (reason && reason.length <= 80) return reason.replace(/\.+$/, "");
+  return "Does not fit";
+}
+
+function partnerKeptGo(fields, rec) {
+  if (!fields || !/^go$/i.test(String(fields.decision || "").trim())) return false;
+  if (String(fields.partner_force_go || "") === "yes") return true;
+  if (!rec || !rec.humanComplete) return false;
+  var outcome = String(rec.humanOutcome || "");
+  return outcome === "Approve" || outcome === "Edit" || outcome === "In Talks" || outcome === "Stopped";
+}
+
+function applyEvenUpDecision(fields, ev) {
+  if (!fields) return false;
+  var changed =
+    String(fields.why || "") !== EVENUP_DECISION_WHY ||
+    String(fields.decision || "") !== "No-go" ||
+    String(fields.employee_count || "") !== "822" ||
+    String(fields.revenue_estimate || "") !== "$100M+ ARR" ||
+    String(fields.reason_or_ambiguity || "") !== "Out of ICP";
+  if (ev && (String(ev.company_name || "") !== "EvenUp" || String(ev.domain || "").toLowerCase() !== "evenup.com")) {
+    changed = true;
+  }
+  fields.status = "OK";
+  fields.table = "Table 2";
+  fields.decision = "No-go";
+  fields.confidence_rating = "High";
+  fields.company_name = "EvenUp";
+  fields.domain = "evenup.com";
+  fields.fit_if_email_secured = "Still-blocked";
+  fields.fit_if_email_note = "Out of ICP size (mega round / valuation) even with email.";
+  fields.sector = "Yes legaltech. AI software for plaintiff-side personal injury law firms";
+  fields.employee_count = "822";
+  fields.revenue_estimate = "$100M+ ARR";
+  fields.vc_pe_backed = "Yes. $2B valuation, $150M Series E (October 2025)";
+  fields.reason_or_ambiguity = "Out of ICP";
+  fields.override_available = "No";
+  fields.why = EVENUP_DECISION_WHY;
+  if (ev) {
+    ev.company_name = "EvenUp";
+    ev.domain = "evenup.com";
+  }
+  return changed;
+}
+
+function prefixDecisionWhy(fields) {
+  if (!fields) return false;
+  var why = String(fields.why || "").replace(/\s+/g, " ").trim();
+  var label = decisionFaceLabel(fields.decision);
+  var shortWhy = shortWhyLabel(fields);
+  var lead = label + ": " + shortWhy + ".";
+  if (why.toLowerCase().indexOf(lead.toLowerCase()) === 0) return false;
+  var stripped = why.replace(new RegExp("^" + escapeRegExpWorker(label) + "\\s*:\\s*", "i"), "");
+  if (stripped.toLowerCase().indexOf(shortWhy.toLowerCase()) === 0) {
+    var afterShort = stripped.slice(shortWhy.length);
+    if (!afterShort || /^[.!]/.test(afterShort)) stripped = afterShort.replace(/^[.!]+\s*/, "");
+  }
+  var next = (stripped ? lead + " " + stripped : lead).replace(/\s+/g, " ").trim();
+  if (next === why) return false;
+  fields.why = next;
+  return true;
+}
+
+function leadDecisionWhy(fields, ev, rec) {
+  if (!fields) return false;
+  if (isEvenUpIdentity(fields, ev)) {
+    if (partnerKeptGo(fields, rec)) return false;
+    return applyEvenUpDecision(fields, ev);
+  }
+  return prefixDecisionWhy(fields);
+}
+
+function rewriteStoredDecisionCopy(extras, results) {
+  var changedResults = false;
+  var changedExtras = false;
+  var events = (extras && extras.events) || [];
+  Object.keys(results || {}).forEach(function (id) {
+    var rec = results[id];
+    if (!rec || !rec.lastFields || rec.clear === true) return;
+    var ev = null;
+    var i;
+    for (i = 0; i < events.length; i++) {
+      if (events[i] && events[i].case_id === id) {
+        ev = events[i];
+        break;
+      }
+    }
+    if (leadDecisionWhy(rec.lastFields, ev, rec)) {
+      changedResults = true;
+      if (ev && isEvenUpIdentity(rec.lastFields, ev)) changedExtras = true;
+    }
+  });
+  return { results: changedResults, extras: changedExtras };
+}
+
 /** Keep a company whose only miss is headcount, and say so in why. */
 function includeDespiteEmployeeCount(fields, ev, profile) {
   if (!fields) return fields;
+  if (isEvenUpIdentity(fields, ev)) return fields;
   var n = readHeadcountNumber(ev, profile, fields);
   var note = employeeBandNote(n);
   if (!note) return fields;
@@ -4780,6 +4923,7 @@ async function runAutoAnalyze(env, opts) {
       }
       holdGoUntilIcpFacts(outcome.fields, ev, null);
       includeDespiteEmployeeCount(outcome.fields, ev, null);
+      leadDecisionWhy(outcome.fields, ev, null);
       var prev = results[ev.case_id] || {};
       results[ev.case_id] = {
         lastFields: outcome.fields,
