@@ -2033,14 +2033,15 @@ async function storeSnapshot(env, cors) {
     var results = (await kvGet(env, "results")) || {};
     if (dropOutreachTestExtras(extras)) await kvPut(env, "extras", extras);
     if (dropOutreachTestResults(results)) await kvPut(env, "results", results);
+    var visible = publishedQueueView(extras, results);
     return jsonResponse(
       {
         ok: true,
         audit: rows.slice().reverse(),
-        extras: extras,
+        extras: visible.extras,
         ingest_status: (await kvGet(env, "ingest_status")) || null,
         voice: (await kvGet(env, "voice")) || null,
-        results: results,
+        results: visible.results,
         clients: (await kvGet(env, "clients")) || [],
         dnc: (await kvGet(env, "dnc")) || [],
         dispatch_status: (await kvGet(env, "dispatch_status")) || null,
@@ -3042,7 +3043,8 @@ function parseLabeledFieldsWorker(text) {
 
 function AUTO_ANALYZE_SYSTEM_PROMPT() {
   return [
-    "You classify one Legaltech recruiting outreach candidate for Recruiting Partners / Black Gavel.",
+    "You classify one recruiting outreach candidate for Recruiting Partners / Black Gavel.",
+    "ORDER OF WORK: Use the company website and company_fact_research to decide what the business sells. Qualify legaltech before any ICP fit check. Legaltech means software sold to law firms or in-house legal teams. A law firm, a legal service, litigation finance, a news site, a fund, or a consumer brand is not legaltech. If the pages do not show legal software, stop. Do not assess headcount, revenue, backing, talent headcount, or ICP fit. Return Table 2, decision No-go, and start sector with No legaltech, then say what the website says the company sells. If the pages do not show what the company sells, stop and do not guess a fit. ICP fit is allowed only after sector starts with Yes legaltech.",
     "Return ONLY labeled fields, one per line. No markdown fences.",
     "status: OK or REFUSED-ESCALATE",
     "table: Table 1 or Table 2 or Table 3",
@@ -3542,8 +3544,152 @@ async function findCompanyLinkedInPage(env, name) {
 }
 
 /**
- * A company may enter the queue only when it is a real legaltech company
- * with its own website, a LinkedIn company page, and at least one Hunter person.
+ * Legaltech means software for law firms or in-house legal teams.
+ * The company's own site has to say that. A news sentence is not enough.
+ */
+function textDescribesLegaltechSoftware(text) {
+  var t = String(text || "");
+  if (
+    /\b(?:legaltech|legal\s*tech|legal\s*ai|e-?discovery|ediscovery|e-?filing|efiling|litigation\s+(?:software|platform|tech|analytics)|practice\s+management\s+software|matter\s+management|court\s+(?:workflow|filing|docket)|contract\s+(?:review|lifecycle|drafting)|legal\s+operations|in-house\s+legal|for\s+law\s+firms|for\s+lawyers|for\s+attorneys|for\s+general\s+counsel|for\s+legal\s+(?:teams|departments|professionals)|clm)\b/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  var sellsSoftware = /\b(?:software|platform|saas)\b/i.test(t);
+  var legalBuyer = /\b(?:law\s+firms|lawyers|attorneys|general\s+counsel|in-house\s+legal|legal\s+teams|legal\s+departments)\b/i.test(t);
+  return sellsSoftware && legalBuyer;
+}
+
+function textIsServiceFirmNotSoftware(text) {
+  var t = String(text || "");
+  var service = /\b(?:we are|we're|this is)\s+(?:a|an)\s+law\s+firm\b|\blaw firm\b|\blegal services provider\b|\blitigation finance\b|\bconveyancing\b|\bnewspaper\b|\bnews (?:site|publication|source)\b/i.test(t);
+  var product = /\b(?:our (?:software|platform)|software platform|\bsaas\b)\b/i.test(t);
+  return service && !product;
+}
+
+/**
+ * A company is legaltech only when its own web pages say it sells legal software.
+ * A short page, a news mention, or a known name is not enough.
+ */
+function legaltechVerdictFromText(companyText) {
+  var text = String(companyText || "").replace(/\s+/g, " ").trim();
+  if (text.length < 80) return { vetted: false, legaltech: false, nature: "" };
+  if (textIsServiceFirmNotSoftware(text)) {
+    return {
+      vetted: true,
+      legaltech: false,
+      nature: "Law firm, legal service, finance, or news, not legal software"
+    };
+  }
+  if (textDescribesLegaltechSoftware(text)) {
+    return {
+      vetted: true,
+      legaltech: true,
+      nature: "Legal software for law firms or in-house legal teams"
+    };
+  }
+  return {
+    vetted: true,
+    legaltech: false,
+    nature: "The website does not describe legal software"
+  };
+}
+
+function eventClearedForSite(ev) {
+  return String((ev && ev.entity_note) || "").indexOf("legaltech_web_vetted") !== -1;
+}
+
+function publishedQueueView(extras, results) {
+  extras = extras || {};
+  results = results || {};
+  var events = (extras.events || []).filter(function (ev) {
+    if (!eventClearedForSite(ev)) return false;
+    var rec = results[ev.case_id];
+    var decision = rec && rec.lastFields && String(rec.lastFields.decision || "").trim();
+    if (decision) return true;
+    return partnerKeptQueueCase(rec);
+  });
+  var companyIds = {};
+  var caseIds = {};
+  events.forEach(function (ev) {
+    if (ev.case_id) caseIds[ev.case_id] = true;
+    if (ev.company_id) companyIds[ev.company_id] = true;
+  });
+  var visibleResults = {};
+  Object.keys(results).forEach(function (caseId) {
+    if (caseIds[caseId]) visibleResults[caseId] = results[caseId];
+  });
+  var view = {};
+  Object.keys(extras).forEach(function (key) {
+    view[key] = extras[key];
+  });
+  view.events = events;
+  view.profiles = (extras.profiles || []).filter(function (row) {
+    return row && companyIds[row.company_id];
+  });
+  view.contacts = (extras.contacts || []).filter(function (row) {
+    return row && companyIds[row.company_id];
+  });
+  view.employment = (extras.employment || []).filter(function (row) {
+    return row && companyIds[row.company_id];
+  });
+  return { extras: view, results: visibleResults };
+}
+
+/**
+ * Companies already on the queue have not had a web legaltech check.
+ * Confirm the business from the web. Drop the rest. Clear a premature ICP score
+ * so fit is judged only after the legaltech check.
+ */
+async function withholdUntilLegaltechVetted(env, extras, results, limit) {
+  var checked = 0;
+  var removed = 0;
+  var stamped = 0;
+  var cap = limit || 8;
+  var events = ((extras && extras.events) || []).slice();
+  var i;
+  for (i = 0; i < events.length && checked < cap; i++) {
+    var ev = events[i];
+    if (!ev || eventClearedForSite(ev)) continue;
+    checked += 1;
+    var vet = await vetLegaltechFromWeb(env, ev.company_name, ev.domain, {
+      text: ev.about_text || "",
+      url: ev.about_url || ""
+    });
+    if (!vet.legaltech) {
+      removeExtrasEventAndRelated(extras, ev.case_id, ev.company_id);
+      if (results && results[ev.case_id]) delete results[ev.case_id];
+      removed += 1;
+      continue;
+    }
+    ev.about_text = vet.about_text || ev.about_text || "";
+    ev.about_url = vet.about_url || ev.about_url || "";
+    ev.sector = "Yes legaltech. " + (vet.nature || "Legal software");
+    if (String(ev.entity_note || "").indexOf("legaltech_web_vetted") === -1) {
+      ev.entity_note =
+        (String(ev.entity_note || "") ? String(ev.entity_note) + "; " : "") + "legaltech_web_vetted";
+    }
+    (extras.profiles || []).forEach(function (p) {
+      if (p && p.company_id === ev.company_id) p.sector = ev.sector;
+    });
+    var rec = results && results[ev.case_id];
+    if (rec && !partnerKeptQueueCase(rec)) delete results[ev.case_id];
+    stamped += 1;
+  }
+  return { checked: checked, removed: removed, stamped: stamped };
+}
+
+function knownLegaltechDomainMatches(name, domain) {
+  if (!isKnownLegaltechCompany(name)) return false;
+  var known = knownSubjectDomainWorker(name);
+  var host = normalizeHost(domain);
+  return !known || !host || host === known;
+}
+
+/**
+ * A company may enter the queue only when its own website says it is legaltech
+ * software, and it has a LinkedIn company page and at least one Hunter person.
  */
 async function verifyCompanyAdmission(env, companyName, domainHint, title, text, opts) {
   opts = opts || {};
@@ -3582,13 +3728,20 @@ async function verifyCompanyAdmission(env, companyName, domainHint, title, text,
   if (!domain || !domainBelongsToCompany(clean, domain)) {
     return { ok: false, reason: "no_website", company_name: clean, lookup_ran: !!(env && env.EXA_API_KEY) };
   }
-  if (
-    site.snippet &&
-    articleClearlyNonLegaltech("", site.snippet, clean, domain) &&
-    !isKnownLegaltechCompany(clean)
-  ) {
-    return { ok: false, reason: "not_legaltech", company_name: clean, domain: domain };
+  var priorAbout = { text: (site && site.snippet) || "", url: "" };
+  var vet = await vetLegaltechFromWeb(env, clean, domain, priorAbout);
+  if (!vet.legaltech) {
+    return {
+      ok: false,
+      reason: vet.vetted ? "not_legaltech" : "company_kind_unverified",
+      company_name: clean,
+      domain: domain,
+      lookup_ran: vet.lookup_ran,
+      company_kind: "",
+      nature: vet.nature || ""
+    };
   }
+  var about = { text: vet.about_text || "", url: vet.about_url || "" };
   var linkedin = await findCompanyLinkedInPage(env, clean);
   if (!linkedin.url) {
     return {
@@ -3619,7 +3772,11 @@ async function verifyCompanyAdmission(env, companyName, domainHint, title, text,
     domain: domain,
     linkedin_url: linkedin.url,
     people: people.slice(0, 3),
-    hunter_detail: hunter.detail || ""
+    hunter_detail: hunter.detail || "",
+    company_kind: "legaltech",
+    nature: vet.nature || "",
+    about_text: (about && about.text) || "",
+    about_url: (about && about.url) || ""
   };
 }
 
@@ -3660,6 +3817,12 @@ function dropFakeQueueEntities(extras, results) {
       !isKnownLegaltechCompany(ev.company_name)
     ) {
       reason = "not_legaltech";
+    } else if (
+      String(ev.about_text || "").trim() &&
+      !textDescribesLegaltechSoftware(ev.about_text) &&
+      !knownLegaltechDomainMatches(ev.company_name, ev.domain)
+    ) {
+      reason = "not_legaltech";
     }
     if (reason) doomed.push(ev);
   });
@@ -3694,8 +3857,16 @@ function applyAdmissionToEvent(extras, ev, admission) {
   ev.domain = admission.domain;
   ev.linkedin_url = admission.linkedin_url;
   var note = String(ev.entity_note || "");
+  if (note.indexOf("verified_company_kind_legaltech") === -1) {
+    note = (note ? note + "; " : "") + "verified_company_kind_legaltech";
+  }
   if (note.indexOf("verified_company_site_linkedin_hunter") === -1) {
-    ev.entity_note = (note ? note + "; " : "") + "verified_company_site_linkedin_hunter";
+    note = (note ? note + "; " : "") + "verified_company_site_linkedin_hunter";
+  }
+  ev.entity_note = note;
+  if (admission.about_text && !String(ev.about_text || "").trim()) {
+    ev.about_text = admission.about_text;
+    ev.about_url = admission.about_url || "";
   }
   (extras.profiles || []).forEach(function (p) {
     if (!p || p.company_id !== ev.company_id) return;
@@ -3762,7 +3933,7 @@ async function backfillQueueVerification(env, extras, results, limit) {
     if (!ev || String(ev.case_id || "").indexOf("CE-LX-") !== 0) continue;
     var rec = results && results[ev.case_id];
     if (partnerKeptQueueCase(rec)) continue;
-    if (String(ev.entity_note || "").indexOf("verified_company_site_linkedin_hunter") !== -1) continue;
+    if (String(ev.entity_note || "").indexOf("verified_company_kind_legaltech") !== -1) continue;
     checked += 1;
     var admission = await verifyCompanyAdmission(
       env,
@@ -4069,6 +4240,80 @@ function redactResearchText(text) {
     .slice(0, 700);
 }
 
+/** What the company sells. The query must not mention legaltech, or the search favors a legal story. */
+async function researchBusinessNature(env, companyName, domain) {
+  var name = String(companyName || "").trim();
+  var out = { snippets: [] };
+  if (!name || !env || !env.EXA_API_KEY) return out;
+  var host = looksLikeRealDomainWorker(domain) ? normalizeHost(domain) : "";
+  var query = "What does " + name.replace(/"/g, "") + " sell, and who buys it?";
+  if (host) query += " " + host;
+  var upstream;
+  try {
+    upstream = await fetch("https://api.exa.ai/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + env.EXA_API_KEY,
+        "x-api-key": env.EXA_API_KEY
+      },
+      body: JSON.stringify({
+        query: query,
+        numResults: 5,
+        type: "auto",
+        contents: { text: { maxCharacters: 1200 } }
+      })
+    });
+  } catch (eNature) {
+    return out;
+  }
+  var raw = await upstream.json().catch(function () {
+    return null;
+  });
+  if (!upstream.ok || !raw) return out;
+  (raw.results || []).forEach(function (hit) {
+    var url = String((hit && hit.url) || "").trim();
+    if (!url) return;
+    var factHost = normalizeHost(hostFromAnyUrl(url));
+    if (!factHost || isNewsReportingHost(factHost) || EXA_PUBLISHER_HOST_RE.test(factHost)) return;
+    var text = redactResearchText(hit.text || hit.title || "");
+    if (!text) return;
+    out.snippets.push({ url: url, host: factHost, text: text });
+  });
+  return out;
+}
+
+/**
+ * Read the company website and other web pages before any ICP check.
+ * Legaltech has to be confirmed from those pages. Otherwise the company stays off the site.
+ */
+async function vetLegaltechFromWeb(env, companyName, domain, about) {
+  var host = normalizeHost(domain);
+  var page = await fetchCompanyAbout(env, domain, companyName);
+  if ((!page || !page.text) && about && about.text) page = about;
+  var web = await researchBusinessNature(env, companyName, host);
+  var ownPages = [];
+  if (page && page.text) ownPages.push(String(page.text));
+  (web.snippets || []).forEach(function (snip) {
+    if (host && snip.host === host) ownPages.push(snip.text);
+  });
+  var verdict = legaltechVerdictFromText(ownPages.join("\n"));
+  var sources = [];
+  if (page && page.url) sources.push(page.url);
+  (web.snippets || []).forEach(function (snip) {
+    if (host && snip.host === host && sources.indexOf(snip.url) === -1) sources.push(snip.url);
+  });
+  return {
+    vetted: verdict.vetted,
+    legaltech: verdict.vetted && verdict.legaltech,
+    nature: verdict.nature || "",
+    sources: sources.slice(0, 4),
+    about_text: (page && page.text) || "",
+    about_url: (page && page.url) || "",
+    lookup_ran: !!(env && env.EXA_API_KEY)
+  };
+}
+
 /** Public pages on headcount, revenue, and what the company sells. No date window: about pages are often undated. */
 async function researchCompanyFacts(env, companyName, domain) {
   var name = String(companyName || "").trim();
@@ -4273,6 +4518,30 @@ async function analyzeOnePendingEvent(env, ev, extras, clients, opts) {
     };
   }
 
+  var alreadyVetted = eventClearedForSite(ev);
+  if (!alreadyVetted) {
+    var vet = await vetLegaltechFromWeb(env, ev.company_name, ev.domain, {
+      text: ev.about_text || "",
+      url: ev.about_url || ""
+    });
+    if (!vet.legaltech) {
+      return {
+        ok: true,
+        unpublish: true,
+        reason: vet.vetted ? "not_legaltech" : "not_vetted",
+        nature: vet.nature || ""
+      };
+    }
+    ev.about_text = vet.about_text || ev.about_text || "";
+    ev.about_url = vet.about_url || ev.about_url || "";
+    ev.sector = "Yes legaltech. " + (vet.nature || "Legal software");
+    if (String(ev.entity_note || "").indexOf("legaltech_web_vetted") === -1) {
+      ev.entity_note =
+        (String(ev.entity_note || "") ? String(ev.entity_note) + "; " : "") + "legaltech_web_vetted";
+    }
+    if (profile) profile.sector = ev.sector;
+  }
+
   dropNewsOrgContacts(extras, ev.company_id);
   contacts = ((extras && extras.contacts) || []).filter(function (c) {
     return c && c.company_id === ev.company_id && !contactEmailIsNewsOrg(c.email);
@@ -4390,6 +4659,11 @@ async function runAutoAnalyze(env, opts) {
   var reopenedResearch = reopenDomainResearch(results);
   var reopenedNews = reopenNewsOrgDecisions(extras, results);
   var reopenedSize = reopenEmployeeCountInclusions(extras, results);
+  var vettedPass = await withholdUntilLegaltechVetted(env, extras, results, 8);
+  if (vettedPass.removed || vettedPass.stamped) {
+    await kvPut(env, "extras", extras);
+    await kvPut(env, "results", results);
+  }
   var events = Array.isArray(extras.events) ? extras.events : [];
   var pending = events.filter(function (ev) {
     return eventReadyForAutoAnalyze(ev) && !caseHasDecision(results[ev.case_id]);
@@ -4408,19 +4682,36 @@ async function runAutoAnalyze(env, opts) {
   var errors = 0;
   var outcomes = [];
   var extrasDirty = clearedBadDomain > 0 || reopenedNews > 0 || droppedFakeAnalyze > 0;
+  var resultsDirty = false;
 
   for (var i = 0; i < batch.length; i++) {
     var ev = batch[i];
     try {
       var beforeName = String(ev.company_name || "");
       var beforeDomain = String(ev.domain || "");
+      var beforeNote = String(ev.entity_note || "");
       var outcome = await analyzeOnePendingEvent(env, ev, extras, clients);
       if (
         String(ev.company_name || "") !== beforeName ||
         String(ev.domain || "") !== beforeDomain ||
-        String(ev.entity_note || "").indexOf("redirected_from_publisher") !== -1
+        String(ev.entity_note || "") !== beforeNote
       ) {
         extrasDirty = true;
+      }
+      if (outcome && outcome.unpublish) {
+        removeExtrasEventAndRelated(extras, ev.case_id, ev.company_id);
+        if (results[ev.case_id]) delete results[ev.case_id];
+        extrasDirty = true;
+        resultsDirty = true;
+        outcomes.push({
+          case_id: ev.case_id,
+          ok: true,
+          decision: "unpublished",
+          mode: outcome.reason || "not_legaltech",
+          company_name: ev.company_name,
+          domain: ev.domain
+        });
+        continue;
       }
       if (!outcome.ok || !outcome.fields) {
         errors += 1;
@@ -4476,7 +4767,7 @@ async function runAutoAnalyze(env, opts) {
     }
   }
 
-  if (ok || clearedBadDomain || reopenedResearch || reopenedNews || droppedFakeAnalyze) {
+  if (ok || resultsDirty || clearedBadDomain || reopenedResearch || reopenedNews || droppedFakeAnalyze) {
     var latestResults = (await kvGet(env, "results")) || {};
     results = mergeResultsBlobs(latestResults, results);
     await kvPut(env, "results", results);
@@ -5640,14 +5931,21 @@ function localWindowForCompany(name, title, text) {
   return blob.slice(Math.max(0, idx - 140), idx + needle.length + 180);
 }
 
+function companyNameMentionPattern(name) {
+  var needle = String(name || "").trim();
+  if (!needle) return null;
+  var escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  return new RegExp("\\b" + escaped + "\\b", "i");
+}
+
 function sentencesMentioningCompany(name, title, text) {
   var head = String(title || "").replace(/\s+/g, " ").trim();
   var body = String(text || "").replace(/\s+/g, " ").trim();
   var blob = head && body ? head + ". " + body : head || body;
-  var needle = String(name || "").toLowerCase();
-  if (!needle || !blob) return [];
+  var pattern = companyNameMentionPattern(name);
+  if (!pattern || !blob) return [];
   return blob.split(/[.!?]+\s+/).filter(function (sentence) {
-    return sentence.toLowerCase().indexOf(needle) !== -1;
+    return pattern.test(sentence);
   });
 }
 
@@ -6456,7 +6754,7 @@ async function runExaIngest(env, source) {
     var contactId = "CT-LX-" + slug + "-" + stamp;
     var eventType = ownSignal.kind;
     var summary = summaryFromOwnSignal(gatedName, ownSignal);
-    var note = "live_exa_refresh; verified_company_site_linkedin_hunter";
+    var note = "live_exa_refresh; legaltech_web_vetted; verified_company_kind_legaltech; verified_company_site_linkedin_hunter";
     var ev = {
       case_id: caseId,
       company_id: companyId,
@@ -6468,7 +6766,7 @@ async function runExaIngest(env, source) {
       event_date: ownSignal.occurred || freshness.date,
       source_url: url,
       source_urls: [url],
-      sector: "legaltech",
+      sector: "Yes legaltech. " + (admission.nature || "Legal software"),
       employee_count: null,
       revenue_estimate_mm: null,
       vc_pe_backed: "yes",
@@ -6479,9 +6777,8 @@ async function runExaIngest(env, source) {
       added_at: now.toISOString(),
       unseen: true
     };
-    var aboutPage = await fetchCompanyAbout(env, domain, gatedName);
-    ev.about_text = aboutPage.text || "";
-    ev.about_url = aboutPage.url || "";
+    ev.about_text = admission.about_text || "";
+    ev.about_url = admission.about_url || "";
     ev.about_checked_at = now.toISOString();
     extras.events.push(ev);
     upsertExtrasRow(
@@ -6490,13 +6787,13 @@ async function runExaIngest(env, source) {
         company_id: companyId,
         company_name: gatedName,
         domain: domain,
-        sector: "legaltech",
+        sector: "Yes legaltech. " + (admission.nature || "Legal software"),
         employee_count: null,
         revenue_estimate_mm: null,
         vc_pe_backed: "yes",
         ta_headcount: null,
         status: "no_prior_contact",
-        notes: "Website, LinkedIn company page, and a Hunter contact were confirmed before this company was queued",
+        notes: "The company website was read and it sells legal software. LinkedIn company page and a Hunter contact were confirmed before this company was queued",
         linkedin_url: admission.linkedin_url
       },
       "company_id"
@@ -6521,7 +6818,7 @@ async function runExaIngest(env, source) {
       status: "no_prior_contact",
       last_interaction_date: "",
       partner_id: "partner_c",
-      notes: "Scheduled Exa ingest; website, LinkedIn page, and Hunter contact confirmed"
+      notes: "Scheduled Exa ingest; company kind, website, LinkedIn page, and Hunter contact confirmed"
     });
     newCaseIds.push(caseId);
     added += 1;
@@ -6572,6 +6869,11 @@ async function runExaIngest(env, source) {
   await kvPut(env, "extras", extras);
   var reopened = reopenDomainResearch(resultsForScrub);
   if (resultsDirty || reopened || backfill.dropped) await kvPut(env, "results", resultsForScrub);
+  var vettedPass = await withholdUntilLegaltechVetted(env, extras, resultsForScrub, 8);
+  if (vettedPass.removed || vettedPass.stamped) {
+    await kvPut(env, "extras", extras);
+    await kvPut(env, "results", resultsForScrub);
+  }
   // Always drain unscored pending after ingest (even if added=0), so backlog
   // from a prior failed score still clears without a partner button click.
   // Only unscored cases; decided Go/No-go/Ambiguous are never re-scored.
@@ -7931,6 +8233,14 @@ export default {
         })
       );
     }
+    // Hourly check: confirm each company is legaltech before it can be scored or shown.
+    if (cron === "15 * * * *" || cron === "0 13 * * *" || cron === "0 0 * * *" || !cron) {
+      ctx.waitUntil(
+        drainPendingAutoAnalyze(env, { limit: 4, maxRounds: 1 }).catch(function (e) {
+          console.log("legaltech_vet_cron_failed", String((e && e.message) || e));
+        })
+      );
+    }
     // Hourly (:15) Sequence Dispatch Bot, and also after ingest crons.
     if (cron === "15 * * * *" || cron === "0 13 * * *" || cron === "0 0 * * *" || !cron) {
       ctx.waitUntil(
@@ -8016,7 +8326,8 @@ export default {
           company_name: admission.company_name || "",
           domain: admission.domain || "",
           linkedin_url: admission.linkedin_url || "",
-          people: admission.people || []
+          people: admission.people || [],
+          company_kind: admission.company_kind || ""
         },
         200,
         cors
@@ -8151,5 +8462,7 @@ export {
   isFalseQueueEntity,
   fieldsSayNotLegaltechFirm,
   companyQualifyingSignal,
-  qualifyingEventTooOld
+  qualifyingEventTooOld,
+  textDescribesLegaltechSoftware,
+  legaltechVerdictFromText
 };
